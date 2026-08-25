@@ -187,6 +187,29 @@
 
   /* ------------------------------------------------------------ write */
 
+  /* Choosing a group. Deliberately OUTSIDE the block below.
+   *
+   * That block is gated on #write-go, which the template only renders once a
+   * group has already been chosen — so the handler never bound on arrival,
+   * and the one click that matters most, the first one, did nothing at all.
+   *
+   * Changing group reloads rather than re-fetching: the hooks, the top posts
+   * and the counts all belong to the group, so re-rendering half of them in
+   * place is how a page ends up showing one group's hooks above another
+   * group's posts.
+   */
+  var writeGrid = document.querySelector(".write-grid");
+  if (writeGrid) {
+    writeGrid.querySelectorAll(".group-chip").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        if (chip.classList.contains("selected")) return;
+        chip.classList.add("is-loading");
+        window.location.href = window.location.pathname
+                             + "?source_id=" + chip.dataset.sourceId;
+      });
+    });
+  }
+
   var writeGo = document.getElementById("write-go");
   if (writeGo) {
     var writeStatus = document.getElementById("write-status");
@@ -196,16 +219,6 @@
     var postPicker = document.getElementById("post-picker");
     var mode = "pattern";
     var chosenHook = "";
-
-    // Changing group reloads rather than re-fetching: the hooks, the top
-    // posts and the counts all belong to the group, so re-rendering half of
-    // them in place is how a page ends up showing one group's hooks above
-    // another group's posts.
-    document.querySelectorAll(".group-chip").forEach(function (chip) {
-      chip.addEventListener("click", function () {
-        window.location.search = "?source_id=" + chip.dataset.sourceId;
-      });
-    });
 
     function selectOne(nodes, chosen) {
       nodes.forEach(function (n) { n.classList.toggle("selected", n === chosen); });

@@ -2711,3 +2711,7 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 @media (max-width: 620px) {
   .mode-picker { grid-template-columns: 1fr; }
 }
+
+/* A group chip navigates, so it dims while the next page loads rather than
+   looking like the click was missed. */
+.group-chip.is-loading { opacity: 0.55; pointer-events: none; }

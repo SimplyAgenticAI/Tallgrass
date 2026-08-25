@@ -37,13 +37,12 @@
 <div class="write-grid">
   <div class="write-form">
 
-    {# 1 — the group IS the audience. Competitors ask the writer to describe
-       who they are writing for; this already knows, because the reader chose
-       which rooms to capture. #}
+    {# 1 — the group is what everything below is measured against, so it is
+       chosen first and nothing else renders until it is. #}
     <section class="glass panel reveal spotlight">
       <div class="panel-head">
-        <h2><span class="step-n">1</span> Which room</h2>
-        <span class="sub">This is your audience — no need to describe it.</span>
+        <h2><span class="step-n">1</span> Which group</h2>
+        <span class="sub">Only groups with enough posts to score are listed.</span>
       </div>
       <div class="group-picker">
         {% for s in sources %}
