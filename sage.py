@@ -502,8 +502,13 @@ Hard rules:
   in `read` and return fewer ideas rather than inventing a pattern."""
 
 
-def generate_ideas(source_name, posts, count=3):
-    """Write new post ideas modelled on what outperformed in one group."""
+def generate_ideas(source_name, posts, count=3, hook="", instructions=""):
+    """Write new post ideas modelled on what outperformed in one group.
+
+    `hook` is usually an opening line lifted from a post that already beat
+    this group's median, so it is given as an instruction rather than a
+    suggestion — the operator picked it because it is evidence.
+    """
     config = get_config()
     if not config["has_key"]:
         return None, "No API key set. Add one in Settings to generate ideas."
@@ -522,8 +527,22 @@ def generate_ideas(source_name, posts, count=3):
             f"{(post['body'] or '').strip()[:400]}\n"
         )
 
+    # Both go FIRST and are named as authoritative. Buried under the data they
+    # read as one consideration among many, which is how a chosen opening line
+    # ends up paraphrased into something else.
+    lead = ""
+    if hook:
+        lead += (
+            "OPEN EVERY IDEA WITH THIS EXACT LINE, or something very close to "
+            f'it. It is the opening of a post that already beat this group:\n"{hook}"\n\n')
+    if instructions:
+        lead += (
+            "FOLLOW THIS DIRECTION FROM THE OPERATOR EXACTLY. Where it "
+            f"conflicts with anything below, IT WINS:\n{instructions}\n\n")
+
     user_content = (
-        f"Group: {source_name}\n"
+        lead
+        + f"Group: {source_name}\n"
         f"Median post scores {posts[0]['baseline']:.0f} on the weighted scale.\n\n"
         f"Its top-performing posts, best first:\n\n"
         + "\n---\n".join(lines)

@@ -185,6 +185,190 @@
     if (!el.closest(".reveal")) countUp(el);
   });
 
+  /* ------------------------------------------------------------ write */
+
+  var writeGo = document.getElementById("write-go");
+  if (writeGo) {
+    var writeStatus = document.getElementById("write-status");
+    var writeOutput = document.getElementById("write-output");
+    var writeStop = document.getElementById("write-stop");
+    var hookInput = document.getElementById("hook-own-input");
+    var postPicker = document.getElementById("post-picker");
+    var mode = "pattern";
+    var chosenHook = "";
+
+    // Changing group reloads rather than re-fetching: the hooks, the top
+    // posts and the counts all belong to the group, so re-rendering half of
+    // them in place is how a page ends up showing one group's hooks above
+    // another group's posts.
+    document.querySelectorAll(".group-chip").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        window.location.search = "?source_id=" + chip.dataset.sourceId;
+      });
+    });
+
+    function selectOne(nodes, chosen) {
+      nodes.forEach(function (n) { n.classList.toggle("selected", n === chosen); });
+    }
+
+    document.querySelectorAll(".mode-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        if (card.hasAttribute("disabled")) return;
+        mode = card.dataset.mode;
+        selectOne(document.querySelectorAll(".mode-card"), card);
+        if (postPicker) postPicker.hidden = (mode !== "beat");
+      });
+    });
+
+    document.querySelectorAll(".pick-post").forEach(function (row) {
+      row.addEventListener("click", function () {
+        selectOne(document.querySelectorAll(".pick-post"), row);
+      });
+    });
+
+    document.querySelectorAll(".hook-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        var already = card.classList.contains("selected");
+        selectOne(document.querySelectorAll(".hook-card"), already ? null : card);
+        var own = card.classList.contains("hook-own") && !already;
+        if (hookInput) {
+          hookInput.hidden = !own;
+          if (own) hookInput.focus();
+        }
+        chosenHook = already ? "" : (card.dataset.hook || "");
+      });
+    });
+
+    function selectedPostId() {
+      var row = document.querySelector(".pick-post.selected");
+      return row ? row.dataset.postId : null;
+    }
+
+    function hookValue() {
+      var own = document.querySelector(".hook-card.hook-own.selected");
+      if (own && hookInput) return hookInput.value.trim();
+      return chosenHook;
+    }
+
+    writeGo.addEventListener("click", function () {
+      var steer = document.getElementById("write-steer");
+      var body = {
+        hook: hookValue(),
+        instructions: steer ? steer.value.trim() : ""
+      };
+
+      var url;
+      if (mode === "beat") {
+        var postId = selectedPostId();
+        if (!postId) {
+          writeStatus.className = "msg-line error";
+          writeStatus.textContent = "Pick the post you want to beat.";
+          return;
+        }
+        url = "/api/remix/" + postId;
+        body.angles = ["same_hook", "personal", "question"];
+      } else {
+        url = "/api/ideas/" + writeGo.dataset.sourceId;
+      }
+
+      writeGo.disabled = true;
+      writeGo.textContent = "Writing…";
+      writeStatus.className = "msg-line";
+      writeStatus.textContent = "Working from this group's own numbers — "
+                              + "usually 20 to 40 seconds.";
+
+      post(url, body)
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not write that");
+          renderWritten(data.result, mode);
+          writeStatus.textContent = "";
+          toast("Ready");
+        })
+        .catch(function (error) {
+          writeStatus.className = "msg-line error";
+          writeStatus.textContent = error.message;
+        })
+        .finally(function () {
+          writeGo.disabled = false;
+          writeGo.textContent = "Write it";
+          if (writeStop) writeStop.hidden = true;
+        });
+    });
+
+    function renderWritten(result, usedMode) {
+      var empty = document.getElementById("write-empty");
+      if (empty) empty.remove();
+      writeOutput.innerHTML = "";
+
+      var panel = document.createElement("div");
+      panel.className = "glass panel reveal in";
+
+      // "why_it_worked" from remix, "read" from ideas — the same claim under
+      // two names, because the two endpoints grew separately.
+      var lead = result.why_it_worked || result.read;
+      if (lead) {
+        var why = document.createElement("p");
+        why.className = "why";
+        var label = document.createElement("b");
+        label.textContent = usedMode === "beat"
+          ? "Why the original worked: " : "What wins in this group: ";
+        why.appendChild(label);
+        // textContent throughout — model output is never injected as HTML.
+        why.appendChild(document.createTextNode(lead));
+        panel.appendChild(why);
+      }
+
+      var items = result.variants || result.ideas || [];
+      items.forEach(function (item, index) {
+        var block = document.createElement("div");
+        block.className = "variant";
+        block.style.animationDelay = (index * 90) + "ms";
+
+        var head = document.createElement("div");
+        head.className = "variant-head";
+        var name = document.createElement("span");
+        name.className = "variant-angle";
+        name.textContent = item.angle || item.format || ("Option " + (index + 1));
+        head.appendChild(name);
+
+        var copyBtn = document.createElement("button");
+        copyBtn.className = "btn btn-ghost";
+        copyBtn.type = "button";
+        copyBtn.textContent = "Copy";
+        copyBtn.addEventListener("click", function () {
+          navigator.clipboard.writeText(item.body || "").then(function () {
+            toast("Copied");
+          });
+        });
+        head.appendChild(copyBtn);
+        block.appendChild(head);
+
+        if (item.hook) {
+          var hookLine = document.createElement("p");
+          hookLine.className = "variant-hook";
+          hookLine.textContent = item.hook;
+          block.appendChild(hookLine);
+        }
+
+        var copy = document.createElement("p");
+        copy.className = "variant-body";
+        copy.textContent = item.body || "";
+        block.appendChild(copy);
+
+        if (item.why) {
+          var note = document.createElement("p");
+          note.className = "fine";
+          note.textContent = item.why;
+          block.appendChild(note);
+        }
+
+        panel.appendChild(block);
+      });
+
+      writeOutput.appendChild(panel);
+    }
+  }
+
   /* ------------------------------------------------ admin: reset links */
 
   var resetIssue = document.getElementById("reset-issue");

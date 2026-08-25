@@ -15,6 +15,7 @@ from werkzeug.exceptions import HTTPException
 import auth
 import billing
 import db
+import hooks
 import mailer
 import outliers
 import remix
@@ -593,6 +594,60 @@ def ideas_page():
     )
 
 
+@app.route("/write")
+@auth.login_required
+def write_page():
+    """One place to write, with every choice backed by this account's own data.
+
+    Replaces asking the writer to describe their audience, pick from a wall of
+    post types and choose a hook off a list somebody wrote once. The group is
+    the audience, the pattern is measured, and the openings on offer are the
+    ones that actually beat this group's median — with the number attached.
+    """
+    source_id = request.args.get("source_id", type=int)
+    fb_id = request.args.get("source")
+
+    with db.get_db() as conn:
+        if fb_id:
+            row = conn.execute(
+                "SELECT * FROM sources WHERE fb_id = ? AND user_id = ?",
+                (fb_id, _uid())).fetchone()
+        elif source_id:
+            row = conn.execute(
+                "SELECT * FROM sources WHERE id = ? AND user_id = ?",
+                (source_id, _uid())).fetchone()
+        else:
+            row = None
+
+    sources = [s for s in _sources_with_stats()
+               if s["stats"] and s["stats"]["has_baseline"]]
+
+    # Default to the group with the most to teach, so the page is useful on
+    # arrival rather than asking a question before it shows anything.
+    source = dict(row) if row else (
+        dict(sources[0]) if len(sources) == 1 else None)
+
+    scored = []
+    if source:
+        scored = [p for p in outliers.score_posts(
+            _fetch_posts(source_id=source["id"])) if p["has_baseline"]]
+        scored.sort(key=lambda p: p["outlier_multiple"] or 0, reverse=True)
+
+    return render_template(
+        "write.html",
+        source=source,
+        sources=sources,
+        scored_count=len(scored),
+        top_posts=scored[:6],
+        hook_set=hooks.for_source(scored),
+        shape_labels=hooks.SHAPE_LABELS,
+        has_brand=sage.has_brand(),
+        configured=sage.is_configured(),
+        version=APP_VERSION,
+        active="write",
+    )
+
+
 @app.route("/api/ideas/<int:source_id>", methods=["POST"])
 @auth.login_required
 def api_ideas(source_id):
@@ -613,7 +668,12 @@ def api_ideas(source_id):
                      "with engagement before there's a pattern to work from.",
         }), 400
 
-    result, error = sage.generate_ideas(row["name"], scored)
+    body = request.get_json(silent=True) or {}
+    result, error = sage.generate_ideas(
+        row["name"], scored,
+        hook=(body.get("hook") or "").strip()[:200],
+        instructions=(body.get("instructions") or "").strip()[:600],
+    )
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
@@ -2071,6 +2131,15 @@ def api_remix(post_id):
     # The operator's own steer. Optional — with none supplied the variants are
     # assembled exactly as they were before.
     instructions = (body.get("instructions") or "").strip()
+
+    # An opening line the operator picked, usually one that already beat this
+    # group's median. Folded into the steer rather than added as a separate
+    # argument, because it IS a steer — the strongest one available.
+    hook = (body.get("hook") or "").strip()[:200]
+    if hook:
+        instructions = (
+            'Open with this exact line, or something very close to it: "%s"\n%s'
+            % (hook, instructions)).strip()
 
     scored = outliers.score_posts(_fetch_posts())
     post = next((s for s in scored if s["id"] == post_id), None)

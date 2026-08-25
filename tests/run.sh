@@ -44,6 +44,8 @@ echo "--- service worker ---"
 node tests/worker.test.js
 echo "--- self-update ---"
 node tests/updater.test.js
+echo "--- hooks from real posts ---"
+python tests/hooks.test.py
 echo "--- capture resilience ---"
 python tests/capture.test.py
 echo "--- scoring accuracy rules ---"

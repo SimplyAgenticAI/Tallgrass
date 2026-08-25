@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Write — {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>Write</h1>
+    <p class="sub">
+      {% if source %}
+        Modelled on what actually outperformed in <b>{{ source.name }}</b>.
+      {% else %}
+        Every choice here comes from posts that beat their own group's median —
+        not from a list of hooks somebody wrote once.
+      {% endif %}
+    </p>
+  </div>
+</section>
+
+{% if not configured %}
+<div class="glass notice reveal">
+  <b>Writing needs an API key.</b>
+  Add a Claude or OpenAI key in <a href="{{ url_for('settings') }}">Settings</a> first.
+</div>
+{% endif %}
+
+{% if not sources %}
+<div class="glass empty-panel">
+  <p>
+    No group has enough scored posts to learn from yet. A group needs
+    <b>8+ posts</b> with engagement before there's a baseline — and without a
+    baseline there's no evidence of what works there.
+  </p>
+  <a class="btn btn-primary" href="{{ url_for('capture') }}">Capture a group</a>
+</div>
+{% else %}
+
+<div class="write-grid">
+  <div class="write-form">
+
+    {# 1 — the group IS the audience. Competitors ask the writer to describe
+       who they are writing for; this already knows, because the reader chose
+       which rooms to capture. #}
+    <section class="glass panel reveal spotlight">
+      <div class="panel-head">
+        <h2><span class="step-n">1</span> Which room</h2>
+        <span class="sub">This is your audience — no need to describe it.</span>
+      </div>
+      <div class="group-picker">
+        {% for s in sources %}
+        <button class="group-chip {{ 'selected' if source and s.id == source.id }}"
+                data-source-id="{{ s.id }}">
+          <span class="gc-name">{{ s.name }}</span>
+          <span class="gc-meta">
+            {{ s.stats.post_count }} posts{% if s.stats.top_multiple is not none %} · best {{ s.stats.top_multiple }}×{% endif %}
+            {% if s.is_demo %}<span class="demo-chip">sample</span>{% endif %}
+          </span>
+        </button>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if source %}
+    {# 2 — two ways to work, not twenty-five post types. Both are grounded in
+       the same data; they differ only in whether you copy one post or the
+       pattern across several. #}
+    <section class="glass panel reveal spotlight">
+      <div class="panel-head">
+        <h2><span class="step-n">2</span> What to model</h2>
+      </div>
+      <div class="mode-picker">
+        <button class="mode-card selected" data-mode="pattern">
+          <span class="mode-name">Work the pattern</span>
+          <span class="mode-why">
+            The mechanic shared across this group's best posts. Use when you
+            want something new that follows what wins here.
+          </span>
+        </button>
+        <button class="mode-card" data-mode="beat" {{ 'disabled' if not top_posts }}>
+          <span class="mode-name">Beat one post</span>
+          <span class="mode-why">
+            {% if top_posts %}
+              Rewrite a specific winner in your own voice, several ways.
+            {% else %}
+              Needs at least one scored post in this group.
+            {% endif %}
+          </span>
+        </button>
+      </div>
+
+      {% if top_posts %}
+      <div class="post-picker" id="post-picker" hidden>
+        <p class="fine">Which post are we beating?</p>
+        {% for p in top_posts %}
+        <button class="pick-post {{ 'selected' if loop.first }}" data-post-id="{{ p.id }}">
+          <span class="pp-mult tier-{{ p.tier }}">{{ p.outlier_multiple }}×</span>
+          <span class="pp-body">
+            {{ (p.body or 'No caption — ' + (p.post_type or 'post'))[:96] }}{% if (p.body or '')|length > 96 %}…{% endif %}
+          </span>
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+    {# 3 — the differentiator. Real openings with real numbers, or clearly
+       marked archetypes. Never both. #}
+    <section class="glass panel reveal spotlight">
+      <div class="panel-head">
+        <h2><span class="step-n">3</span> Opening line</h2>
+        <span class="sub">Optional — leave it and the model chooses.</span>
+      </div>
+
+      {% if hook_set.generic %}
+      <p class="hook-note is-generic">
+        <b>These are generic.</b> Nothing in {{ source.name }} is scored yet,
+        so none of these openings is backed by your data — they're the standard
+        archetypes, shown so the page still works. Capture more of this group
+        and they'll be replaced by lines that actually won here.
+      </p>
+      {% else %}
+      <p class="hook-note">
+        Each of these opened a post that beat this group's median. The number
+        is what that post actually did.
+      </p>
+      {% endif %}
+
+      <div class="hook-picker">
+        {% for h in hook_set.hooks %}
+        <button class="hook-card{{ ' is-generic' if h.generic }}"
+                data-hook="{{ h.text }}">
+          <span class="hook-top">
+            <span class="hook-shape">{{ shape_labels.get(h.shape, h.shape) }}</span>
+            {% if h.multiple is not none %}
+            <span class="hook-mult">{{ h.multiple }}×</span>
+            {% else %}
+            <span class="hook-mult is-none">generic</span>
+            {% endif %}
+          </span>
+          <span class="hook-text">{{ h.text }}</span>
+        </button>
+        {% endfor %}
+        <button class="hook-card hook-own" data-hook="">
+          <span class="hook-top"><span class="hook-shape">Your own</span></span>
+          <span class="hook-text">Write the opening yourself</span>
+        </button>
+      </div>
+      <input type="text" class="hook-own-input" id="hook-own-input" hidden
+             maxlength="160" placeholder="Type your opening line…">
+    </section>
+
+    {# 4 — one optional steer, replacing a wall of fields. Brand voice already
+       lives in Settings and is applied automatically. #}
+    <section class="glass panel reveal spotlight">
+      <div class="panel-head">
+        <h2><span class="step-n">4</span> Anything to steer it</h2>
+        <span class="sub">Optional.</span>
+      </div>
+      <input type="text" id="write-steer" maxlength="600"
+             placeholder="e.g. keep it about title work, no emoji, shorter">
+      <p class="fine" style="margin:9px 0 0">
+        {% if has_brand %}
+          Your brand voice from <a href="{{ url_for('settings') }}">Settings</a>
+          is applied automatically.
+        {% else %}
+          Set your <a href="{{ url_for('settings') }}">brand voice</a> once and
+          every post here is written for your audience, in your voice.
+        {% endif %}
+      </p>
+
+      <button class="btn btn-primary write-go" id="write-go"
+              {{ 'disabled' if not configured }}
+              data-source-id="{{ source.id }}">Write it</button>
+      <button class="btn btn-ghost" type="button" id="write-stop" hidden>Stop</button>
+      <div class="msg-line" id="write-status" role="status" aria-live="polite"></div>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="write-output" id="write-output">
+    {% if source %}
+    <div class="glass panel write-empty" id="write-empty">
+      <h3>Nothing written yet</h3>
+      <p class="fine">
+        Pick how you want to work and press <b>Write it</b>. Everything you get
+        back is built from the {{ scored_count }} scored
+        post{{ '' if scored_count == 1 else 's' }} in this group — not from a
+        template.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
