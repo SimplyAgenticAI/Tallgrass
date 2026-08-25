@@ -120,7 +120,11 @@
                 data-reactions="{{ post.likes }}"
                 data-comments="{{ post.comments }}"
                 data-shares="{{ post.shares }}"
-                data-kind="{{ 'comment' if post.item_type == 'comment' else 'group' }}"
+                {# The real kind, not always "group". The explainer says "normal
+                   for its group" using this, so a post captured from a page or
+                   a profile was described as being scored against a group it
+                   was never in. source_kind has always been on the row. #}
+                data-kind="{{ 'comment' if post.item_type == 'comment' else (post.source_kind or 'group') }}"
                 data-tier="{{ tier_labels[post.tier] }}">?</button>
       </div>
     </div>

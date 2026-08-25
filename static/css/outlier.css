@@ -2600,9 +2600,13 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 
 /* Two columns: the choices on the left stay put while the output fills the
    right, so a long generation never pushes the controls off screen. */
+/* Near-even columns rather than a narrow rail beside a wide empty space.
+   The right side holds nothing until something is written, so a 420px-and-
+   the-rest split left most of the screen looking abandoned. */
 .write-grid {
-  display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
-  gap: 18px; align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 20px; align-items: start;
 }
 .write-form { display: flex; flex-direction: column; gap: 14px; }
 .write-output { position: sticky; top: 18px; }
@@ -2715,3 +2719,23 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 /* A group chip navigates, so it dims while the next page loads rather than
    looking like the click was missed. */
 .group-chip.is-loading { opacity: 0.55; pointer-events: none; }
+
+/* A long error message was clipped to one line, so the useful half of it —
+   which is always the end — was the half nobody could read. */
+.msg-line { overflow-wrap: anywhere; line-height: 1.55; }
+
+/* What KIND of source this is. A group, a page and a profile are scored the
+   same way but they are not the same thing. */
+.kind-chip {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 2px 6px; border-radius: 5px; flex-shrink: 0;
+  background: rgba(110,231,183,0.09); border: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+/* The empty side fills its column instead of sitting as a short box at the
+   top of a tall gap. */
+.write-empty {
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 320px;
+}

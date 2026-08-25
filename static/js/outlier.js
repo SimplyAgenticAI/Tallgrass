@@ -34,6 +34,45 @@
     });
   }
 
+  /* --------------------------------------------------- server-sent events */
+
+  /* Server-sent events arrive in whatever sized pieces the network hands over,
+   * so frames are reassembled here rather than assumed to be whole.
+   *
+   * Lives at this level because both Sage and Write stream. It was defined
+   * inside the Sage block, which meant it simply did not exist on any other
+   * page — Write called it and got "readEvents is not defined" the moment
+   * anybody pressed the button.
+   */
+  function readEvents(reader, onEvent) {
+    var decoder = new TextDecoder();
+    var buffer = "";
+
+    function handle(frame) {
+      var line = frame.trim();
+      if (line.indexOf("data:") !== 0) return;
+      try {
+        onEvent(JSON.parse(line.slice(5).trim()));
+      } catch (error) {
+        /* A frame we can't parse is skipped rather than killing the stream. */
+      }
+    }
+
+    function pump() {
+      return reader.read().then(function (chunk) {
+        if (chunk.done) return;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var frames = buffer.split("\n\n");
+        // The last piece may be half a frame — hold it for the next read.
+        buffer = frames.pop();
+        frames.forEach(handle);
+        return pump();
+      });
+    }
+
+    return pump();
+  }
+
   /* ------------------------------------------------------------ toast */
 
   var toastEl = document.getElementById("toast");
@@ -290,7 +329,7 @@
       writeGo.textContent = "Writing…";
       if (writeStop) writeStop.hidden = false;
       writeStatus.className = "msg-line";
-      writeStatus.textContent = "Working from this group's own numbers…";
+      writeStatus.textContent = "Working from what actually won here…";
 
       var panel = startWriting();
       var count = 0;
@@ -392,7 +431,7 @@
           lead.textContent = "";
           var label = document.createElement("b");
           label.textContent = usedMode === "beat"
-            ? "Why the original worked: " : "What wins in this group: ";
+            ? "Why the original worked: " : "What wins here: ";
           lead.appendChild(label);
           // textContent — model output is never injected as HTML.
           lead.appendChild(document.createTextNode(text));
@@ -1331,37 +1370,6 @@
       if (chatStop) chatStop.hidden = !asking;
     }
 
-    // Server-sent events arrive in whatever sized pieces the network hands
-    // over, so frames are reassembled here rather than assumed to be whole.
-    function readEvents(reader, onEvent) {
-      var decoder = new TextDecoder();
-      var buffer = "";
-
-      function handle(frame) {
-        var line = frame.trim();
-        if (line.indexOf("data:") !== 0) return;
-        try {
-          onEvent(JSON.parse(line.slice(5).trim()));
-        } catch (error) {
-          /* A frame we can't parse is skipped rather than killing the stream. */
-        }
-      }
-
-      function pump() {
-        return reader.read().then(function (chunk) {
-          if (chunk.done) return;
-          buffer += decoder.decode(chunk.value, { stream: true });
-          var frames = buffer.split("\n\n");
-          // The last piece may be half a frame — hold it for the next read.
-          buffer = frames.pop();
-          frames.forEach(handle);
-          return pump();
-        });
-      }
-
-      return pump();
-    }
-
     function askSage(question) {
       if (!question) return;
 
@@ -1877,9 +1885,11 @@
     function explainHTML(d) {
       var isComment = d.kind === "comment";
       var thing = isComment ? "comment" : "post";
-      var place = isComment ? "thread" : "group";
-      var pool = isComment ? "comments in this source" : "posts in this group";
-      var medWord = isComment ? "comment median" : "group median";
+      // d.kind carries the real source kind now, so a post captured from a
+      // page is no longer described as scored against a group.
+      var place = isComment ? "thread" : (d.kind || "group");
+      var pool = isComment ? "comments in this source" : "posts in this " + place;
+      var medWord = isComment ? "comment median" : place + " median";
       return (
         '<p>Every ' + thing + ' is scored against what is <b>normal for its ' + place +
           '</b> — never a global number, because ' + commas(d.typical) +

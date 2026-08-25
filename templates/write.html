@@ -9,8 +9,8 @@
       {% if source %}
         Modelled on what actually outperformed in <b>{{ source.name }}</b>.
       {% else %}
-        Every choice here comes from posts that beat their own group's median —
-        not from a list of hooks somebody wrote once.
+        Every choice here comes from posts that beat their own median — not
+        from a list of hooks somebody wrote once.
       {% endif %}
     </p>
   </div>
@@ -26,7 +26,8 @@
 {% if not sources %}
 <div class="glass empty-panel">
   <p>
-    No group has enough scored posts to learn from yet. A group needs
+    Nothing captured has enough scored posts to learn from yet. A group, page
+    or profile needs
     <b>8+ posts</b> with engagement before there's a baseline — and without a
     baseline there's no evidence of what works there.
   </p>
@@ -41,15 +42,20 @@
        chosen first and nothing else renders until it is. #}
     <section class="glass panel reveal spotlight">
       <div class="panel-head">
-        <h2><span class="step-n">1</span> Which group</h2>
-        <span class="sub">Only groups with enough posts to score are listed.</span>
+        <h2><span class="step-n">1</span> Which group, page or profile</h2>
+        <span class="sub">Only those with enough posts to score are listed.</span>
       </div>
       <div class="group-picker">
         {% for s in sources %}
+        {# The kind is shown per row rather than assumed. A profile and a group
+           are scored the same way but they are not the same thing, and a list
+           headed "group" that quietly contains pages is the sort of small lie
+           this app does not tell. #}
         <button class="group-chip {{ 'selected' if source and s.id == source.id }}"
                 data-source-id="{{ s.id }}">
           <span class="gc-name">{{ s.name }}</span>
           <span class="gc-meta">
+            <span class="kind-chip">{{ s.kind }}</span>
             {{ s.stats.post_count }} posts{% if s.stats.top_multiple is not none %} · best {{ s.stats.top_multiple }}×{% endif %}
             {% if s.is_demo %}<span class="demo-chip">sample</span>{% endif %}
           </span>
@@ -70,7 +76,7 @@
         <button class="mode-card selected" data-mode="pattern">
           <span class="mode-name">Work the pattern</span>
           <span class="mode-why">
-            The mechanic shared across this group's best posts. Use when you
+            The mechanic shared across this {{ source.kind }}'s best posts. Use when you
             want something new that follows what wins here.
           </span>
         </button>
@@ -80,7 +86,7 @@
             {% if top_posts %}
               Rewrite a specific winner in your own voice, several ways.
             {% else %}
-              Needs at least one scored post in this group.
+              Needs at least one scored post here.
             {% endif %}
           </span>
         </button>
@@ -113,12 +119,12 @@
       <p class="hook-note is-generic">
         <b>These are generic.</b> Nothing in {{ source.name }} is scored yet,
         so none of these openings is backed by your data — they're the standard
-        archetypes, shown so the page still works. Capture more of this group
+        archetypes, shown so the page still works. Capture more of this {{ source.kind }}
         and they'll be replaced by lines that actually won here.
       </p>
       {% else %}
       <p class="hook-note">
-        Each of these opened a post that beat this group's median. The number
+        Each of these opened a post that beat this {{ source.kind }}'s median. The number
         is what that post actually did.
       </p>
       {% endif %}
@@ -182,7 +188,7 @@
       <p class="fine">
         Pick how you want to work and press <b>Write it</b>. Everything you get
         back is built from the {{ scored_count }} scored
-        post{{ '' if scored_count == 1 else 's' }} in this group — not from a
+        post{{ '' if scored_count == 1 else 's' }} here — not from a
         template.
       </p>
     </div>
