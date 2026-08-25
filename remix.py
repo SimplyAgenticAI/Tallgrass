@@ -7,6 +7,8 @@ its engagement profile and produces variants on different angles.
 
 import os
 
+import jsonstream
+
 MODEL = "claude-opus-5"
 
 # What actually made the post work varies, so generate across distinct angles
@@ -255,6 +257,22 @@ def remix_post(post, angles=None, count=3, instructions=""):
     if not cfg["has_key"]:
         return None, "Add an AI key on the Settings page to enable remixing."
 
+    prompt, error = _remix_prompt(post, angles=angles, count=count,
+                                  instructions=instructions)
+    if error:
+        return None, error
+
+    if cfg["provider"] == "openai":
+        return _remix_openai(cfg, prompt)
+    return _remix_anthropic(cfg, prompt)
+
+
+def _remix_prompt(post, angles=None, count=3, instructions=""):
+    """Build the user message. Returns (prompt, error).
+
+    Shared by the blocking and streaming paths, so the two cannot drift into
+    asking for different things.
+    """
     body, image_text, image_desc, copy_len = _material(post)
 
     # Refuse rather than invent.
@@ -361,9 +379,7 @@ would still work if every noun changed. Name it in why_it_worked, then build
 all three variants on it. Three variants of one mechanic beat three unrelated
 posts that each did something clever."""
 
-    if cfg["provider"] == "openai":
-        return _remix_openai(cfg, user_content)
-    return _remix_anthropic(cfg, user_content)
+    return user_content, None
 
 
 def _remix_anthropic(cfg, user_content):
@@ -410,6 +426,113 @@ def _remix_anthropic(cfg, user_content):
         return json.loads(text), None
     except json.JSONDecodeError:
         return None, "Could not parse the model's response."
+
+
+def _stream_anthropic(cfg, user_content, array_key="variants",
+                      lead_key="why_it_worked"):
+    """Yield each variant as it finishes, rather than all of them at the end.
+
+    The response is one JSON object, so there is nothing readable in its raw
+    tokens — but the array is written in order, and the first variant is done
+    long before the last one starts. Handing each over as it closes is the
+    difference between a page that fills in and a page that sits still for
+    forty seconds.
+
+    Events: {"type": "lead"|"item"|"done"|"error", ...}
+    """
+    try:
+        import anthropic
+    except ImportError:
+        yield {"type": "error",
+               "error": "The anthropic package is not installed. Run: pip install anthropic"}
+        return
+
+    import json as _json
+    client = anthropic.Anthropic(api_key=cfg["key"])
+    scanner = jsonstream.ArrayScanner(array_key)
+    whole = []
+    lead_sent = False
+
+    try:
+        with client.messages.stream(
+            model=MODEL,
+            max_tokens=8000,
+            system=SYSTEM,
+            thinking={"type": "adaptive"},
+            output_config={
+                "effort": "high",
+                "format": {"type": "json_schema", "schema": VARIANT_SCHEMA},
+            },
+            messages=[{"role": "user", "content": user_content}],
+        ) as stream:
+            for chunk in stream.text_stream:
+                whole.append(chunk)
+
+                if not lead_sent:
+                    lead = jsonstream.leading_string("".join(whole), lead_key)
+                    if lead:
+                        lead_sent = True
+                        yield {"type": "lead", "text": lead}
+
+                for item in scanner.feed(chunk).take():
+                    yield {"type": "item", "data": item}
+
+            final = stream.get_final_message()
+    except anthropic.RateLimitError:
+        yield {"type": "error", "error": "Rate limited by Anthropic — try again in a moment."}
+        return
+    except anthropic.AuthenticationError:
+        yield {"type": "error",
+               "error": "That Anthropic key was rejected. Check the key on the Settings page."}
+        return
+    except anthropic.APIStatusError as exc:
+        yield {"type": "error", "error": f"Anthropic error ({exc.status_code}): {exc.message}"}
+        return
+    except anthropic.APIConnectionError:
+        yield {"type": "error", "error": "Could not reach Anthropic — check your network connection."}
+        return
+
+    if final.stop_reason == "refusal":
+        yield {"type": "error", "error": "The model declined to rewrite this post."}
+        return
+
+    # The authority on what was produced. Anything the scanner missed is
+    # recovered here, so a preview that fell short never costs the result.
+    try:
+        yield {"type": "done", "result": _json.loads("".join(whole))}
+    except ValueError:
+        yield {"type": "error", "error": "Could not parse the model's response."}
+
+
+def remix_post_stream(post, angles=None, count=3, instructions=""):
+    """Streaming twin of remix_post. Yields events, never raises."""
+    cfg = _config()
+    if not cfg["has_key"]:
+        yield {"type": "error",
+               "error": "No API key set. Add one in Settings to remix posts."}
+        return
+
+    prompt, error = _remix_prompt(post, angles=angles, count=count,
+                                  instructions=instructions)
+    if error:
+        yield {"type": "error", "error": error}
+        return
+
+    if cfg["provider"] == "openai":
+        # One provider streams; the other is replayed whole. The event
+        # contract is identical either way, so the page needs no branch.
+        result, error = _remix_openai(cfg, prompt)
+        if error:
+            yield {"type": "error", "error": error}
+            return
+        if result.get("why_it_worked"):
+            yield {"type": "lead", "text": result["why_it_worked"]}
+        for item in result.get("variants", []):
+            yield {"type": "item", "data": item}
+        yield {"type": "done", "result": result}
+        return
+
+    yield from _stream_anthropic(cfg, prompt)
 
 
 def _remix_openai(cfg, user_content):

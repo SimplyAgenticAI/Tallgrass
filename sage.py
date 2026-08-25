@@ -14,6 +14,7 @@ import json
 import os
 
 import db
+import jsonstream
 import outliers
 
 ANTHROPIC_MODEL = "claude-opus-5"
@@ -516,6 +517,20 @@ def generate_ideas(source_name, posts, count=3, hook="", instructions=""):
     if not posts:
         return None, "No scored posts in this group yet."
 
+    messages = _ideas_messages(source_name, posts, count=count, hook=hook,
+                               instructions=instructions)
+
+    if config["provider"] == "openai":
+        return _ideas_openai(config, messages)
+    return _ideas_anthropic(config, messages)
+
+
+def _ideas_messages(source_name, posts, count=3, hook="", instructions=""):
+    """The user message for an ideas request.
+
+    Shared by the blocking and streaming paths so the two cannot drift into
+    asking for different things.
+    """
     lines = []
     for post in posts[:15]:
         lines.append(
@@ -549,11 +564,90 @@ def generate_ideas(source_name, posts, count=3, hook="", instructions=""):
         + f"\n\nWrite {count} new post ideas for this group."
     )
 
-    messages = [{"role": "user", "content": user_content}]
+    return [{"role": "user", "content": user_content}]
+
+
+def generate_ideas_stream(source_name, posts, count=3, hook="", instructions=""):
+    """Streaming twin of generate_ideas. Yields events, never raises.
+
+    Same event contract as remix: lead, then one item per finished idea, then
+    done carrying the whole parsed result.
+    """
+    config = get_config()
+    if not config["has_key"]:
+        yield {"type": "error",
+               "error": "No API key set. Add one in Settings to generate ideas."}
+        return
+    if not posts:
+        yield {"type": "error", "error": "No scored posts in this group yet."}
+        return
+
+    messages = _ideas_messages(source_name, posts, count=count, hook=hook,
+                               instructions=instructions)
 
     if config["provider"] == "openai":
-        return _ideas_openai(config, messages)
-    return _ideas_anthropic(config, messages)
+        result, error = _ideas_openai(config, messages)
+        if error:
+            yield {"type": "error", "error": error}
+            return
+        if result.get("read"):
+            yield {"type": "lead", "text": result["read"]}
+        for item in result.get("ideas", []):
+            yield {"type": "item", "data": item}
+        yield {"type": "done", "result": result}
+        return
+
+    try:
+        import anthropic
+    except ImportError:
+        yield {"type": "error", "error": "The anthropic package is not installed."}
+        return
+
+    client = anthropic.Anthropic(api_key=config["key"])
+    scanner = jsonstream.ArrayScanner("ideas")
+    whole = []
+    lead_sent = False
+
+    try:
+        with client.messages.stream(
+            model=config["model"] or ANTHROPIC_MODEL,
+            max_tokens=8000,
+            system=IDEAS_SYSTEM,
+            thinking={"type": "adaptive"},
+            output_config={
+                "effort": "high",
+                "format": {"type": "json_schema", "schema": IDEAS_SCHEMA},
+            },
+            messages=messages,
+        ) as stream:
+            for chunk in stream.text_stream:
+                whole.append(chunk)
+                if not lead_sent:
+                    lead = jsonstream.leading_string("".join(whole), "read")
+                    if lead:
+                        lead_sent = True
+                        yield {"type": "lead", "text": lead}
+                for item in scanner.feed(chunk).take():
+                    yield {"type": "item", "data": item}
+            final = stream.get_final_message()
+    except anthropic.AuthenticationError:
+        yield {"type": "error", "error": "That Anthropic key was rejected."}
+        return
+    except anthropic.APIStatusError as exc:
+        yield {"type": "error", "error": f"Anthropic error ({exc.status_code}): {exc.message}"}
+        return
+    except anthropic.APIConnectionError:
+        yield {"type": "error", "error": "Could not reach Anthropic."}
+        return
+
+    if final.stop_reason == "refusal":
+        yield {"type": "error", "error": "The model declined this request."}
+        return
+
+    try:
+        yield {"type": "done", "result": json.loads("".join(whole))}
+    except ValueError:
+        yield {"type": "error", "error": "Could not parse the response."}
 
 
 def _ideas_anthropic(config, messages):

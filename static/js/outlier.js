@@ -250,14 +250,16 @@
       return chosenHook;
     }
 
+    var writeAbort = null;
+
     writeGo.addEventListener("click", function () {
       var steer = document.getElementById("write-steer");
       var body = {
+        mode: mode,
         hook: hookValue(),
         instructions: steer ? steer.value.trim() : ""
       };
 
-      var url;
       if (mode === "beat") {
         var postId = selectedPostId();
         if (!postId) {
@@ -265,37 +267,93 @@
           writeStatus.textContent = "Pick the post you want to beat.";
           return;
         }
-        url = "/api/remix/" + postId;
+        body.post_id = parseInt(postId, 10);
         body.angles = ["same_hook", "personal", "question"];
       } else {
-        url = "/api/ideas/" + writeGo.dataset.sourceId;
+        body.source_id = parseInt(writeGo.dataset.sourceId, 10);
       }
 
       writeGo.disabled = true;
       writeGo.textContent = "Writing…";
+      if (writeStop) writeStop.hidden = false;
       writeStatus.className = "msg-line";
-      writeStatus.textContent = "Working from this group's own numbers — "
-                              + "usually 20 to 40 seconds.";
+      writeStatus.textContent = "Working from this group's own numbers…";
 
-      post(url, body)
-        .then(function (data) {
-          if (!data.ok) throw new Error(data.error || "Could not write that");
-          renderWritten(data.result, mode);
+      var panel = startWriting();
+      var count = 0;
+      var failure = null;
+      writeAbort = new AbortController();
+
+      fetch("/api/write/stream", {
+        method: "POST",
+        headers: { "X-CSRF-Token": CSRF, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: writeAbort.signal
+      })
+        .then(function (response) {
+          if (response.status === 401) {
+            window.location.href = "/login";
+            throw new Error("Signed out");
+          }
+          if (!response.ok || !response.body) {
+            // An error before the stream opens is still JSON.
+            return response.json().then(function (data) {
+              throw new Error(data.error || "Could not write that");
+            }, function () {
+              throw new Error("Server error (" + response.status + ")");
+            });
+          }
+          return readEvents(response.body.getReader(), function (event) {
+            if (event.type === "lead") {
+              panel.setLead(event.text, mode);
+            } else if (event.type === "item") {
+              count++;
+              panel.addItem(event.data, count - 1);
+              writeStatus.textContent =
+                count + (count === 1 ? " post ready…" : " posts ready…");
+            } else if (event.type === "error") {
+              failure = event.error;
+            }
+          });
+        })
+        .then(function () {
+          if (failure) throw new Error(failure);
+          if (!count) throw new Error("Nothing came back — try again.");
+          writeStatus.className = "msg-line";
           writeStatus.textContent = "";
-          toast("Ready");
+          toast(count === 1 ? "1 post ready" : count + " posts ready");
         })
         .catch(function (error) {
+          if (error.name === "AbortError") {
+            // Whatever already arrived is real and stays on screen.
+            writeStatus.className = "msg-line";
+            writeStatus.textContent = count
+              ? "Stopped — kept the " + count + " already written."
+              : "Stopped.";
+            return;
+          }
+          if (!count) panel.remove();
           writeStatus.className = "msg-line error";
           writeStatus.textContent = error.message;
         })
         .finally(function () {
+          panel.finish();
+          writeAbort = null;
           writeGo.disabled = false;
           writeGo.textContent = "Write it";
           if (writeStop) writeStop.hidden = true;
         });
     });
 
-    function renderWritten(result, usedMode) {
+    if (writeStop) {
+      writeStop.addEventListener("click", function () {
+        if (writeAbort) writeAbort.abort();
+      });
+    }
+
+    /* The output panel, filled in as posts arrive rather than replaced at the
+     * end. Each finished post is appended the moment the server has one. */
+    function startWriting() {
       var empty = document.getElementById("write-empty");
       if (empty) empty.remove();
       writeOutput.innerHTML = "";
@@ -303,70 +361,82 @@
       var panel = document.createElement("div");
       panel.className = "glass panel reveal in";
 
-      // "why_it_worked" from remix, "read" from ideas — the same claim under
-      // two names, because the two endpoints grew separately.
-      var lead = result.why_it_worked || result.read;
-      if (lead) {
-        var why = document.createElement("p");
-        why.className = "why";
-        var label = document.createElement("b");
-        label.textContent = usedMode === "beat"
-          ? "Why the original worked: " : "What wins in this group: ";
-        why.appendChild(label);
-        // textContent throughout — model output is never injected as HTML.
-        why.appendChild(document.createTextNode(lead));
-        panel.appendChild(why);
-      }
+      var lead = document.createElement("p");
+      lead.className = "why";
+      lead.hidden = true;
+      panel.appendChild(lead);
 
-      var items = result.variants || result.ideas || [];
-      items.forEach(function (item, index) {
-        var block = document.createElement("div");
-        block.className = "variant";
-        block.style.animationDelay = (index * 90) + "ms";
-
-        var head = document.createElement("div");
-        head.className = "variant-head";
-        var name = document.createElement("span");
-        name.className = "variant-angle";
-        name.textContent = item.angle || item.format || ("Option " + (index + 1));
-        head.appendChild(name);
-
-        var copyBtn = document.createElement("button");
-        copyBtn.className = "btn btn-ghost";
-        copyBtn.type = "button";
-        copyBtn.textContent = "Copy";
-        copyBtn.addEventListener("click", function () {
-          navigator.clipboard.writeText(item.body || "").then(function () {
-            toast("Copied");
-          });
-        });
-        head.appendChild(copyBtn);
-        block.appendChild(head);
-
-        if (item.hook) {
-          var hookLine = document.createElement("p");
-          hookLine.className = "variant-hook";
-          hookLine.textContent = item.hook;
-          block.appendChild(hookLine);
-        }
-
-        var copy = document.createElement("p");
-        copy.className = "variant-body";
-        copy.textContent = item.body || "";
-        block.appendChild(copy);
-
-        if (item.why) {
-          var note = document.createElement("p");
-          note.className = "fine";
-          note.textContent = item.why;
-          block.appendChild(note);
-        }
-
-        panel.appendChild(block);
-      });
+      var pending = document.createElement("div");
+      pending.className = "thinking";
+      pending.innerHTML = "<span></span><span></span><span></span>";
+      panel.appendChild(pending);
 
       writeOutput.appendChild(panel);
+
+      return {
+        setLead: function (text, usedMode) {
+          lead.hidden = false;
+          lead.textContent = "";
+          var label = document.createElement("b");
+          label.textContent = usedMode === "beat"
+            ? "Why the original worked: " : "What wins in this group: ";
+          lead.appendChild(label);
+          // textContent — model output is never injected as HTML.
+          lead.appendChild(document.createTextNode(text));
+        },
+        addItem: function (item, index) {
+          panel.insertBefore(buildVariant(item, index), pending);
+        },
+        finish: function () { pending.remove(); },
+        remove: function () { panel.remove(); }
+      };
     }
+
+    function buildVariant(item, index) {
+      var block = document.createElement("div");
+      block.className = "variant";
+      block.style.animationDelay = "0ms";
+
+      var head = document.createElement("div");
+      head.className = "variant-head";
+      var name = document.createElement("span");
+      name.className = "variant-angle";
+      name.textContent = item.angle || item.format || ("Option " + (index + 1));
+      head.appendChild(name);
+
+      var copyBtn = document.createElement("button");
+      copyBtn.className = "btn btn-ghost";
+      copyBtn.type = "button";
+      copyBtn.textContent = "Copy";
+      copyBtn.addEventListener("click", function () {
+        navigator.clipboard.writeText(item.body || "").then(function () {
+          toast("Copied");
+        });
+      });
+      head.appendChild(copyBtn);
+      block.appendChild(head);
+
+      if (item.hook) {
+        var hookLine = document.createElement("p");
+        hookLine.className = "variant-hook";
+        hookLine.textContent = item.hook;
+        block.appendChild(hookLine);
+      }
+
+      var copy = document.createElement("p");
+      copy.className = "variant-body";
+      copy.textContent = item.body || "";
+      block.appendChild(copy);
+
+      if (item.why) {
+        var note = document.createElement("p");
+        note.className = "fine";
+        note.textContent = item.why;
+        block.appendChild(note);
+      }
+      return block;
+    }
+
   }
 
   /* ------------------------------------------------ admin: reset links */

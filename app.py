@@ -648,6 +648,86 @@ def write_page():
     )
 
 
+@app.route("/api/write/stream", methods=["POST"])
+@auth.login_required
+def api_write_stream():
+    """Write, with each finished post arriving as it is finished.
+
+    The model returns one JSON object, so there is nothing readable in its raw
+    tokens — but the array inside it is written in order. Each element is
+    forwarded the moment its closing brace lands, which turns forty seconds of
+    spinner into a page that fills in.
+    """
+    body = request.get_json(silent=True) or {}
+    mode = body.get("mode")
+    hook = (body.get("hook") or "").strip()[:200]
+    instructions = (body.get("instructions") or "").strip()[:600]
+
+    if mode == "beat":
+        post_id = body.get("post_id")
+        scored = outliers.score_posts(_fetch_posts())
+        post = next((s for s in scored if s["id"] == post_id), None)
+        if not post:
+            return jsonify({"ok": False, "error": "Post not found"}), 404
+
+        if hook:
+            instructions = (
+                'Open with this exact line, or something very close to it: '
+                '"%s"\n%s' % (hook, instructions)).strip()
+
+        events = remix.remix_post_stream(
+            post, angles=body.get("angles") or None, instructions=instructions)
+        saved_post_id = post_id
+
+    else:
+        source_id = body.get("source_id")
+        with db.get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM sources WHERE id = ? AND user_id = ?",
+                (source_id, _uid())).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Group not found"}), 404
+
+        scored = [p for p in outliers.score_posts(
+            _fetch_posts(source_id=source_id)) if p["has_baseline"]]
+        if not scored:
+            return jsonify({
+                "ok": False,
+                "error": "This group has no scored posts yet — it needs 8+ "
+                         "posts with engagement before there's a pattern.",
+            }), 400
+
+        events = sage.generate_ideas_stream(
+            row["name"], scored, hook=hook, instructions=instructions)
+        saved_post_id = None
+
+    uid = _uid()
+
+    def stream():
+        result = None
+        try:
+            for event in events:
+                if event["type"] == "done":
+                    result = event["result"]
+                yield "data: " + json.dumps(event) + "\n\n"
+        finally:
+            # Written after the stream, not during: the reader has already
+            # seen it, so it belongs in the history whether or not they
+            # stayed on the page.
+            if result and saved_post_id:
+                with db.get_db() as conn:
+                    conn.execute(
+                        "INSERT INTO remixes (post_id, user_id, angle, output, model) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (saved_post_id, uid, "write", json.dumps(result), remix.MODEL))
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/api/ideas/<int:source_id>", methods=["POST"])
 @auth.login_required
 def api_ideas(source_id):
