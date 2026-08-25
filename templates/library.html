@@ -25,6 +25,7 @@
 </section>
 {% else %}
 <div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
   <p>Nothing saved yet. Hit the bookmark icon on any post in the feed to keep it here.</p>
   <a class="btn btn-primary" href="{{ url_for('feed') }}">Browse the feed</a>
 </div>

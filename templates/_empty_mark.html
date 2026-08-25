@@ -1,0 +1,11 @@
+{# The product in one picture: a row of ordinary results and one that broke
+   away. The feed's empty state has had this since the beginning; every other
+   empty state had a sentence in a box. Included rather than copied, so there
+   is one of it. #}
+<svg class="empty-mark" viewBox="0 0 120 60" aria-hidden="true">
+  <line class="em-base" x1="6" y1="46" x2="114" y2="46"/>
+  {% for x, y, d in [(16,48,0),(30,43,1),(44,49,2),(58,42,3),(72,47,4),(86,44,5)] %}
+  <circle class="em-dot" cx="{{ x }}" cy="{{ y }}" r="3" style="animation-delay: {{ d * 0.07 }}s"/>
+  {% endfor %}
+  <circle class="em-out" cx="104" cy="14" r="5"/>
+</svg>

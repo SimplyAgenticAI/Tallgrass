@@ -159,7 +159,7 @@
        rel="noopener noreferrer" title="Open this post on Facebook">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
-              fill="none" stroke="currentColor" stroke-width="2"
+              fill="none" stroke="currentColor" stroke-width="1.9"
               stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </a>
@@ -171,14 +171,14 @@
     <a class="icon-btn" href="{{ post.source_url.rstrip('/') }}/search/?q={{ post.body.split()[:10] | join(' ') | urlencode }}"
        target="_blank" rel="noopener noreferrer" title="Find this post in the group">
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
-        <path d="M16.5 16.5 21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.9"/>
+        <path d="M16.5 16.5 21 21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
       </svg>
     </a>
     {% endif %}
     <a class="icon-btn" href="{{ url_for('post_detail', post_id=post.id) }}" title="Open and remix">
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 12h12M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2"
+        <path d="M4 12h12M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.9"
               stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </a>
@@ -189,7 +189,7 @@
             title="Delete this post">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"
-              fill="none" stroke="currentColor" stroke-width="2"
+              fill="none" stroke="currentColor" stroke-width="1.9"
               stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>

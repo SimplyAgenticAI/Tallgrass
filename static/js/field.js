@@ -37,14 +37,60 @@
     return Math.max(40, Math.min(150, Math.round(width / 9)));
   }
 
+  /* The reader's own scores, when the page has them.
+   *
+   * The tall blades used to be picked by `index % 11 === 4` — decoration in
+   * the shape of the idea. But the numbers exist: the page can hand over the
+   * multiples of everything scored, and then the meadow IS the data. The tall
+   * ones are your actual breakouts, at their actual heights, in their actual
+   * proportion.
+   *
+   * Signed out, or on a page with nothing scored, it falls back to the old
+   * arbitrary rhythm — which is honest, because there is nothing to draw.
+   */
+  var scores = [];
+  try {
+    var raw = document.body.getAttribute("data-field-scores");
+    if (raw) {
+      scores = JSON.parse(raw).filter(function (n) {
+        return typeof n === "number" && isFinite(n) && n > 0;
+      });
+    }
+  } catch (error) {
+    scores = [];
+  }
+
+  // Everything is drawn relative to the biggest, so one runaway post does not
+  // flatten the rest of the field into stubble.
+  var topScore = scores.reduce(function (a, b) { return Math.max(a, b); }, 0);
+
   function makeBlade(index, total) {
-    // Outliers are rare and much taller — the one that broke away.
-    var isOutlier = index % 11 === 4;
-    var baseHeight = height * (isOutlier ? 0.30 : 0.13);
+    var multiple = null;
+    var isOutlier;
+
+    if (scores.length) {
+      // Spread the real scores across the width rather than clustering them,
+      // so the field reads as a field and not as a bar chart.
+      multiple = scores[Math.floor(index * scores.length / total) % scores.length];
+      isOutlier = multiple >= 5;          // the same threshold the feed uses
+    } else {
+      isOutlier = index % 11 === 4;
+    }
+
+    var baseHeight;
+    if (multiple !== null && topScore > 0) {
+      // Square root, not linear: a 90x post is not thirty times taller than a
+      // 3x one on any screen, and compressing the top keeps the ordinary
+      // blades tall enough to still be a meadow.
+      var share = Math.sqrt(multiple / topScore);
+      baseHeight = height * (0.10 + share * 0.26);
+    } else {
+      baseHeight = height * (isOutlier ? 0.30 : 0.13);
+    }
 
     return {
       x: (index / total) * width + (Math.random() - 0.5) * 14,
-      height: baseHeight * (0.65 + Math.random() * 0.7),
+      height: baseHeight * (0.8 + Math.random() * 0.4),
       // Thicker blades read as nearer; drawn later so they sit in front.
       depth: isOutlier ? 1 : 0.35 + Math.random() * 0.5,
       phase: Math.random() * Math.PI * 2,

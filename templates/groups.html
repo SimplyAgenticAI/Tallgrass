@@ -101,6 +101,7 @@
 </section>
 {% else %}
 <div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
   <p>No sources yet. Install the extension and scan a Facebook group to start.</p>
   <a class="btn btn-primary" href="{{ url_for('capture') }}">Get the extension</a>
 </div>

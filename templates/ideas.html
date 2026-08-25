@@ -61,6 +61,7 @@
 </section>
 {% else %}
 <div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
   <p>No group has enough scored posts yet. Capture a group first.</p>
   <a class="btn btn-primary" href="{{ url_for('capture') }}">Capture a group</a>
 </div>

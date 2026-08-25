@@ -171,7 +171,8 @@
   {% endif %}
   {% else %}
   <div class="glass empty-panel">
-    {# Unscored posts are shown now, so an empty list means the *filter* is
+    {% include "_empty_mark.html" %}
+  {# Unscored posts are shown now, so an empty list means the *filter* is
        empty — not that the data is hidden. #}
     {% if tier_filter != 'all' and unscored_count %}
       <p>

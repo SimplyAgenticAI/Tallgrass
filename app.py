@@ -126,7 +126,11 @@ CSP = "; ".join((
     "frame-ancestors 'none'",
     "form-action 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
+    # Two named origins, for the typeface and nothing else. script-src is
+    # untouched and still strict, which is the half that actually matters:
+    # a stylesheet or a font file cannot execute.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https:",
     "connect-src 'self'",
 ))
@@ -1236,11 +1240,47 @@ def capture():
 # ---------------------------------------------------------------- ingest API
 
 
+def _field_scores(limit=90):
+    """The reader's own multiples, for the meadow in the background.
+
+    The tall blades used to be picked arbitrarily — decoration in the shape of
+    the idea. These are the real ones, so the field behind every page is a
+    picture of what this account actually captured.
+
+    Cheap on purpose: one indexed read of a single column, capped, and only
+    for a signed-in reader. Nothing here is worth a slow page.
+    """
+    user = auth.current_user()
+    if not user:
+        return []
+    try:
+        with db.get_db() as conn:
+            rows = conn.execute(
+                "SELECT likes, comments, shares FROM posts "
+                "WHERE user_id = ? AND is_demo = 0 AND engagement_read IS NOT 0 "
+                "ORDER BY id DESC LIMIT ?", (user["id"], limit * 4)
+            ).fetchall()
+    except Exception:                     # noqa: BLE001 - never break a page
+        return []
+
+    weighted = sorted(
+        (outliers.weighted_engagement(dict(r)) for r in rows), reverse=True)
+    weighted = [w for w in weighted if w > 0][:limit]
+    if len(weighted) < 8:
+        return []
+
+    # Expressed against the median of what is here, which is the same thing
+    # the score means — so a blade's height and a post's multiple agree.
+    middle = weighted[len(weighted) // 2] or 1
+    return [round(w / middle, 2) for w in weighted]
+
+
 @app.context_processor
 def inject_globals():
     """Values every page needs, so no route can forget them."""
     return {
         "ephemeral": db.storage_is_ephemeral(),
+        "field_scores": json.dumps(_field_scores()),
         "user": auth.current_user(),
         "csrf_token": auth.csrf_token,
         "app_name": APP_NAME,
