@@ -2297,9 +2297,15 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 /* The operator's art direction, opened by the Generate graphic button.
    Gold rather than emerald, because everything to do with generating an
    image already reads in gold and the box belongs to that button. */
+/* A stack, not a row.
+   This was display:flex with the textarea and the button side by side, which
+   was fine while those were the only two children. Adding the words checkbox,
+   its input and its note put five controls on one horizontal line — crushing
+   the textarea, and getting worse the moment the box was ticked and two more
+   appeared. They belong under each other. */
 .graphic-direction {
-  display: flex; gap: 8px; align-items: flex-start;
-  margin-top: 10px; padding: 10px;
+  display: grid; gap: 11px;
+  margin-top: 12px; padding: 14px 15px;
   border-radius: var(--r-md);
   background: rgba(217, 180, 95, 0.06);
   border: 1px solid rgba(217, 180, 95, 0.22);
@@ -2307,8 +2313,8 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 .graphic-direction[hidden] { display: none; }
 
 .graphic-brief {
-  flex: 1; min-width: 0; resize: vertical;
-  padding: 8px 10px; border-radius: var(--r-sm);
+  width: 100%; min-width: 0; resize: vertical;
+  padding: 10px 12px; border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   color: var(--text); font-size: 13px; line-height: 1.5;
@@ -2320,7 +2326,8 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   border-color: rgba(217, 180, 95, 0.55);
 }
 
-.graphic-go { flex-shrink: 0; font-size: 12px; padding: 8px 14px; }
+/* Sits at the end of the stack, aligned right — the last thing you do. */
+.graphic-go { justify-self: end; font-size: 12.5px; padding: 9px 18px; }
 
 /* The wait for an image, made visible.
    Square because that is what the API returns (1024x1024), so the picture
@@ -2362,9 +2369,7 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 }
 
 @media (max-width: 560px) {
-  /* Side by side leaves the box too narrow to write a brief in. */
-  .graphic-direction { flex-direction: column; }
-  .graphic-go { width: 100%; }
+  .graphic-go { width: 100%; justify-self: stretch; }
 }
 
 /* Operator brand profile form. */
@@ -2905,15 +2910,44 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 /* Words on the graphic — off by default, because image models set lettering
    badly and a wrong default costs a generation. */
 .graphic-words {
-  display: flex; align-items: center; gap: 8px; margin-top: 10px;
-  font-size: 12.5px; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; color: var(--text-muted); cursor: pointer;
+  user-select: none;
 }
 .graphic-words input { accent-color: var(--emerald); cursor: pointer; }
 .graphic-words-text {
-  width: 100%; margin-top: 8px; padding: 9px 12px;
+  width: 100%; padding: 10px 12px;
   border-radius: var(--r-md);
   background: rgba(6,20,13,0.6); border: 1px solid var(--border-lit);
   color: var(--text); font-size: 13px;
 }
 .graphic-words-text:focus { outline: none; border-color: var(--emerald); }
-.graphic-words-note { margin: 7px 0 0; }
+.graphic-words-note { margin: -4px 0 0; }
+
+/* ------------------------------------------------------------ scrollbars */
+
+/* Only the meadow strip was ever styled, so every other scrollbar in the app
+   — the page, the chat, a textarea, the notification panel — was the
+   browser's default grey sitting on a near-black forest UI. It is the one
+   piece of chrome that never matched anything else.
+
+   Firefox takes the two-value shorthand; WebKit needs the pseudo-elements.
+   Both are set, so the app looks the same either way. */
+/* Both properties inherit, so the root is enough — no universal selector. */
+html { scrollbar-color: rgba(110, 231, 183, 0.28) transparent; scrollbar-width: thin; }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  border-radius: var(--r-pill);
+  background: rgba(110, 231, 183, 0.22);
+  /* Inset by a transparent border, so the thumb reads as a slim pill with
+     room around it rather than a bar wedged against the edge. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(110, 231, 183, 0.4); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* The meadow strip keeps its own, which is part of the drawing rather than
+   chrome — it echoes the median line the blades are rooted in. */
