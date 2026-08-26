@@ -1209,7 +1209,6 @@ def capture():
         has_data=db.has_any_posts(_uid()),
         # The name filter moved here from Settings: it is a rule about how
         # scanning behaves, not a personal detail.
-        viewer_names=sage.get_setting(db.VIEWER_NAMES_KEY, ""),
         version=APP_VERSION,
         active="capture",
     )
@@ -2042,7 +2041,6 @@ def api_capture():
         # the server means it does not depend on finding the right container,
         # and it does not depend on which build of the extension is installed
         # — an old extension that still sends "Jeff" gets it stripped anyway.
-        viewer_parts = db.viewer_name_parts(conn, api_user["id"])
 
         # How many authors each short caption in THIS batch has already
         # appeared under — asked once for the whole batch rather than once per
@@ -2055,6 +2053,20 @@ def api_capture():
         # scan re-imported the junk the last sweep had removed and the fix
         # lasted exactly until the next scroll.
         caption_context = db.ingest_caption_context(conn, api_user["id"])
+
+        # The same tally, but for THIS batch.
+        #
+        # caption_author_counts reads stored posts, so when Facebook prints a
+        # name as the caption on two people's posts and both arrive in the
+        # same scan, neither is stored yet and the count is zero. It was
+        # caught on the next scan, which is a lag nobody should have to know
+        # about. Counting within the batch as well closes it.
+        batch_authors = {}
+        for _p in posts:
+            _b = (_p.get("body") or "").strip()
+            if _b and db.furniture_caption(_b):
+                batch_authors.setdefault(_b, set()).add(
+                    (_p.get("author_name") or "").strip().lower())
 
         capture_failure = None
 
@@ -2072,14 +2084,6 @@ def api_capture():
                 continue
 
             try:
-                # Done before the id matters: the extension already computed
-                # fb_post_id and sent it, so clearing the body here cannot
-                # change the identity of the row or duplicate it on the next
-                # scan.
-                if db.is_viewer_name_body(post.get("body"), viewer_parts):
-                    post["body"] = ""
-                    post["body_from_image"] = 0
-
                 # A post captured from the home or groups feed carries its own
                 # origin, because the post above it came from somewhere else.
                 # Filing a whole feed under one source would score unrelated
@@ -2108,7 +2112,12 @@ def api_capture():
                 # furniture whatever it says — which is what catches the case
                 # the name filter misses when nobody has filled the field in.
                 _body = (post.get("body") or "").strip()
-                if db.furniture_caption(_body) and author_counts.get(_body, 0) >= 2:
+                # Stored history or this batch — either is evidence that no one
+                # person wrote it. max(), not a sum: the same author can appear
+                # in both, and over-counting would clear a real caption.
+                _authors = max(author_counts.get(_body, 0),
+                               len(batch_authors.get(_body, ())))
+                if db.furniture_caption(_body) and _authors >= 2:
                     post["body"] = ""
                     post["body_from_image"] = 0
 
@@ -2621,24 +2630,6 @@ def api_notifications_read():
     body = request.get_json(silent=True) or {}
     unread = db.mark_notifications_read(user["id"], body.get("id"))
     return jsonify({"ok": True, "unread": unread})
-
-
-@app.route("/api/viewer-name", methods=["POST"])
-@auth.login_required
-def api_viewer_name():
-    """Declare the names that belong to the reader, not to any author.
-
-    Stored rather than detected. Detecting it from Facebook's own markup was
-    tried three times and missed every time; the reader is the one party who
-    knows this for certain, so they are asked once and it is applied on every
-    capture from then on.
-    """
-    body = request.get_json(silent=True) or {}
-    raw = (body.get("names") or body.get("name") or "").strip()
-    # Comma separated, capped — this is a name list, not a document.
-    names = [n.strip() for n in raw.split(",") if n.strip()][:5]
-    sage.set_setting(db.VIEWER_NAMES_KEY, ", ".join(names)[:200])
-    return jsonify({"ok": True, "names": names})
 
 
 @app.route("/api/post/<int:post_id>", methods=["DELETE"])

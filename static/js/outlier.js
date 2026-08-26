@@ -1526,23 +1526,6 @@
     });
   }
 
-  var saveViewerName = document.getElementById("save-viewer-name");
-  if (saveViewerName) {
-    saveViewerName.addEventListener("click", function () {
-      var field = document.getElementById("viewer-name");
-      var value = field ? field.value.trim() : "";
-      saveViewerName.disabled = true;
-      post("/api/viewer-name", { names: value })
-        .then(function (data) {
-          if (!data.ok) throw new Error("Could not save");
-          toast(value
-            ? "Saved. Your name will not be stored as a caption again."
-            : "Cleared — no name is being filtered.");
-        })
-        .catch(function () { toast("Could not save that name", true); })
-        .finally(function () { saveViewerName.disabled = false; });
-    });
-  }
 
 
   var resetAll = document.getElementById("reset-all");

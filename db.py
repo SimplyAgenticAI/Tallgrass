@@ -807,7 +807,15 @@ VIEWER_NAMES_KEY = "viewer_names"
 
 
 def get_viewer_names(conn, user_id):
-    """The names this account has declared as its own. Comma separated."""
+    """The names this account has declared as its own. Comma separated.
+
+    Nothing writes this any more. The setting that did was removed once the
+    automatic detection landed: a caption that is nothing but a name is caught
+    because that name is already an author in the captured data, or because it
+    turned up under two different authors, and neither needs telling. It is
+    still READ, by _name_parts, so an account that filled it in before keeps
+    the benefit without having to know it once existed.
+    """
     row = conn.execute(
         "SELECT value FROM user_settings WHERE user_id = ? AND key = ?",
         (user_id, VIEWER_NAMES_KEY),
@@ -815,25 +823,6 @@ def get_viewer_names(conn, user_id):
     raw = (row["value"] if row else "") or ""
     return [n.strip() for n in raw.split(",") if n.strip()]
 
-
-def viewer_name_parts(conn, user_id):
-    """Each word of each declared name, lowercased.
-
-    Parts and not just the whole string, because the name lands in a caption
-    as "Jeff" far more often than as "Jeff Randle".
-    """
-    parts = set()
-    for name in get_viewer_names(conn, user_id):
-        # The whole name as well as its pieces: it arrives as "Jeff" most of
-        # the time, but a header echo can carry "Jeff Randle" intact.
-        whole = " ".join(name.split()).strip(".,:;!?'\"’‘").lower()
-        if len(whole) >= 2:
-            parts.add(whole)
-        for part in name.split():
-            part = part.strip(".,:;!?'\"’‘").lower()
-            if len(part) >= 2:
-                parts.add(part)
-    return parts
 
 
 def repeated_caption_bodies(conn, user_id, min_authors=2):
@@ -905,18 +894,6 @@ def caption_author_counts(conn, user_id, bodies):
     )
     return {r["body"]: r["n"] for r in rows}
 
-
-def is_viewer_name_body(body, parts):
-    """Is this whole caption nothing but one of those names?
-
-    Whole-block only, and matched against a closed set of declared names — so
-    a caption that merely contains the name is writing, and is never touched.
-    "Jeff" and "Jeff Randle" go; "Jeff was right about this" stays.
-    """
-    text = " ".join((body or "").split())
-    if not text or not parts:
-        return False
-    return text.strip(".,:;!?'\"’‘").lower() in parts
 
 
 def _name_parts(conn, user_id, names):

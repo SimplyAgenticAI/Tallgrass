@@ -184,6 +184,35 @@ def main():
           body_of("p206"), "A real post with actual writing in it")
 
     print()
+    print("a name printed by Facebook is caught with nothing configured")
+    # There used to be a setting where you typed your own name in. It is gone:
+    # a caption that is nothing but a name is evidence on its own, and asking
+    # somebody to configure their way out of a bug is not a fix.
+    def named(n, author, text):
+        p = post(n)
+        p["author_name"] = author
+        p["body"] = text
+        return p
+
+    # Same short caption under two different authors, in ONE batch — the case
+    # that used to need a second scan, because the tally read stored rows only.
+    send([named(300, "Doug Hensley", "Jeff"), named(301, "Kaylee Merry", "Jeff")])
+    check("cleared on both, same batch",
+          body_of("p300") == "" and body_of("p301") == "", True)
+
+    # And where the name is simply a known author in the data.
+    send([named(310, "Marcus Vane", "A real post with actual writing in it")])
+    send([named(311, "Someone Else", "Marcus")])
+    check("a known author's name is cleared", body_of("p311"), "")
+
+    send([named(320, "Someone Else", "Marcus was right about the roof"),
+          named(321, "A Person", "Congratulations")])
+    check("a post ABOUT them keeps every word",
+          body_of("p320"), "Marcus was right about the roof")
+    check("an ordinary one-word caption survives",
+          body_of("p321"), "Congratulations")
+
+    print()
     print("a crash outside the loop is still an answer, not a blank 500")
     real_counts = db.caption_author_counts
     db.caption_author_counts = lambda *a, **k: (_ for _ in ()).throw(
