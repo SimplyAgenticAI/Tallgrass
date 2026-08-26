@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from flask import (Flask, Response, jsonify, redirect, render_template, request,
@@ -13,6 +14,7 @@ from flask import (Flask, Response, jsonify, redirect, render_template, request,
 from werkzeug.exceptions import HTTPException
 
 import auth
+import backup
 import billing
 import db
 import hooks
@@ -77,6 +79,27 @@ log = logging.getLogger("tallgrass")
 db.init_db()
 db.promote_sole_account()
 
+
+def _daily_backup():
+    """One snapshot a day, taken by whoever happens to be using the app.
+
+    No scheduler and no second process: a background thread on a single worker
+    is another thing to supervise, and Render's cron is a paid add-on. A check
+    on the way past costs one stat call and means the snapshot happens on any
+    day the app is used at all — which is every day it has data worth keeping.
+    """
+    try:
+        newest = backup.latest()
+        if newest and (time.time() - os.path.getmtime(newest)) < 86400:
+            return
+        path, error = backup.run()
+        if error:
+            log.warning("automatic backup failed: %s", error)
+        else:
+            log.info("automatic daily backup: %s", os.path.basename(path))
+    except Exception:                         # noqa: BLE001 - never break a page
+        pass
+
 # Signed sessions. Secure is off for localhost only — a Secure cookie is never
 # sent over plain HTTP, which would break local development entirely.
 app.secret_key = auth.get_secret_key()
@@ -134,6 +157,14 @@ CSP = "; ".join((
     "img-src 'self' data: https:",
     "connect-src 'self'",
 ))
+
+
+@app.before_request
+def _maybe_backup():
+    # Only on real page loads, so static assets and the extension's capture
+    # posts do not each pay for a stat call.
+    if request.method == "GET" and not request.path.startswith(("/static", "/api")):
+        _daily_backup()
 
 
 @app.errorhandler(Exception)
@@ -652,6 +683,22 @@ def write_page():
     )
 
 
+def _ai_gate(kind):
+    """Check, then record, one owner-funded generation. Returns None or a 402.
+
+    One place, so a new AI endpoint cannot quietly be added without a ceiling
+    — which is exactly how all four of them ended up without one.
+    """
+    user = auth.current_user()
+    source = sage.get_config().get("key_source")
+    allowed, reason = billing.ai_allowed(user, source)
+    if not allowed:
+        return jsonify({"ok": False, "error": reason, "upgrade": True}), 402
+    if source == "environment":
+        db.record_ai_call(user["id"], kind)
+    return None
+
+
 @app.route("/api/write/stream", methods=["POST"])
 @auth.login_required
 def api_write_stream():
@@ -662,6 +709,9 @@ def api_write_stream():
     forwarded the moment its closing brace lands, which turns forty seconds of
     spinner into a page that fills in.
     """
+    blocked = _ai_gate("write")
+    if blocked:
+        return blocked
     body = request.get_json(silent=True) or {}
     mode = body.get("mode")
     hook = (body.get("hook") or "").strip()[:200]
@@ -772,6 +822,9 @@ def api_sage_stream():
     The words exist long before the request finishes, so they are sent as they
     arrive instead of being held back until the last one.
     """
+    blocked = _ai_gate("sage")
+    if blocked:
+        return blocked
     body = request.get_json(silent=True) or {}
     question = (body.get("message") or "").strip()
     if not question:
@@ -1576,6 +1629,36 @@ def reset_password(token):
     ), (400 if error else 200)
 
 
+@app.route("/api/admin/backup", methods=["POST"])
+@auth.login_required
+def api_admin_backup():
+    """Take a snapshot of the database now."""
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+    path, error = backup.run()
+    if error:
+        log.error("manual backup failed: %s", error)
+        return jsonify({"ok": False, "error": error}), 500
+    return jsonify({"ok": True, "name": os.path.basename(path),
+                    "backups": backup.listing()})
+
+
+@app.route("/admin/backup/<name>")
+@auth.login_required
+def admin_backup_download(name):
+    """Hand a snapshot over, so a copy can exist somewhere that is not Render.
+
+    A backup on the same disk survives corruption but not losing the disk.
+    This is the offsite copy an operator can actually make today.
+    """
+    if not _require_admin():
+        return render_template("403.html", version=APP_VERSION), 403
+    path = backup.path_for(name)
+    if not path:
+        return render_template("404.html", version=APP_VERSION), 404
+    return send_file(path, as_attachment=True, download_name=name)
+
+
 @app.route("/api/admin/reset-link", methods=["POST"])
 @auth.login_required
 def api_admin_reset_link():
@@ -2233,6 +2316,10 @@ def api_save(post_id):
 @app.route("/api/remix/<int:post_id>", methods=["POST"])
 @auth.login_required
 def api_remix(post_id):
+    blocked = _ai_gate("remix")
+    if blocked:
+        return blocked
+
     body = request.get_json(silent=True) or {}
     angles = body.get("angles") or None
     # The operator's own steer. Optional — with none supplied the variants are
@@ -2271,6 +2358,9 @@ def api_remix(post_id):
 @auth.login_required
 def api_graphic():
     """Turn a remix variant's hook into a shareable illustration (OpenAI)."""
+    blocked = _ai_gate("graphic")
+    if blocked:
+        return blocked
     body = request.get_json(silent=True) or {}
     hook = (body.get("hook") or body.get("text") or "").strip()
     # The operator's own art direction. Optional — with none supplied the
@@ -2474,6 +2564,13 @@ def admin():
         # Who is locked out right now, and whether this instance can even
         # send them a link on its own.
         pending_resets=db.pending_reset_requests(),
+        backups=backup.listing(),
+        # Who is spending the owner's key, so abuse is visible before it is
+        # a bill rather than after.
+        ai_usage=db.ai_usage_summary(),
+        ai_limits=billing.AI_LIMITS,
+        shared_key=bool(os.environ.get("ANTHROPIC_API_KEY")
+                        or os.environ.get("OPENAI_API_KEY")),
         email=mailer.config_summary(),
         # The provider's own words about the last failed send, if any.
         mail_error=db.get_setting(MAIL_ERROR_KEY, ""),

@@ -544,6 +544,30 @@
 
   }
 
+  /* ---------------------------------------------------- admin: backups */
+
+  var backupNow = document.getElementById("backup-now");
+  if (backupNow) {
+    var backupMsg = document.getElementById("backup-msg");
+    backupNow.addEventListener("click", function () {
+      backupNow.disabled = true;
+      backupMsg.className = "msg-line";
+      backupMsg.textContent = "Taking a snapshot…";
+      post("/api/admin/backup")
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Backup failed");
+          backupMsg.textContent = "Saved " + data.name + ". Reloading…";
+          toast("Backup taken");
+          window.setTimeout(function () { window.location.reload(); }, 700);
+        })
+        .catch(function (error) {
+          backupMsg.className = "msg-line error";
+          backupMsg.textContent = error.message;
+        })
+        .finally(function () { backupNow.disabled = false; });
+    });
+  }
+
   /* ------------------------------------------------ admin: reset links */
 
   var resetIssue = document.getElementById("reset-issue");

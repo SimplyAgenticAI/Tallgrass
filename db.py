@@ -66,6 +66,23 @@ CREATE TABLE IF NOT EXISTS password_resets (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Generation calls, one row each.
+--
+-- Recorded ONLY when the call was billed to the instance owner's key. A user
+-- who saved their own key is spending their own money and is nobody else's
+-- problem, so metering them would be charging rent on their own petrol.
+--
+-- Exists because there was no record at all: an account could generate
+-- unlimited images and the only way to find out was the bill.
+CREATE TABLE IF NOT EXISTS ai_usage (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    kind        TEXT NOT NULL,          -- graphic | write | remix | sage | vision
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage(user_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_resets_hash ON password_resets(token_hash);
 CREATE INDEX IF NOT EXISTS idx_resets_user ON password_resets(user_id);
 
@@ -804,6 +821,45 @@ _WORD_RE = re.compile(r"^[A-Za-z][A-Za-z'’‘-]{1,29}$")
 # extension is installed, because it happens on the server after the post has
 # already been sent.
 VIEWER_NAMES_KEY = "viewer_names"
+
+
+def record_ai_call(user_id, kind):
+    """Note one generation. Never raises — a counter must not break a feature."""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO ai_usage (user_id, kind) VALUES (?, ?)",
+                (user_id, kind))
+    except Exception:                         # noqa: BLE001
+        pass
+
+
+def ai_calls_this_month(user_id):
+    """How many owner-funded generations this account has made in 30 days."""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM ai_usage "
+                "WHERE user_id = ? AND created_at >= datetime('now', '-30 days')",
+                (user_id,)).fetchone()
+        return row["n"] if row else 0
+    except Exception:                         # noqa: BLE001
+        return 0
+
+
+def ai_usage_summary(limit=20):
+    """Who is spending the owner's key, worst first. For the admin page."""
+    try:
+        with get_db() as conn:
+            return [dict(r) for r in conn.execute(
+                """
+                SELECT u.email, u.plan, COUNT(a.id) AS calls
+                FROM ai_usage a JOIN users u ON u.id = a.user_id
+                WHERE a.created_at >= datetime('now', '-30 days')
+                GROUP BY a.user_id ORDER BY calls DESC LIMIT ?
+                """, (limit,)).fetchall()]
+    except Exception:                         # noqa: BLE001
+        return []
 
 
 def get_viewer_names(conn, user_id):

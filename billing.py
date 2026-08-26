@@ -231,6 +231,51 @@ def is_pro(user):
     )
 
 
+# Generations funded by the INSTANCE OWNER's key, per rolling 30 days.
+#
+# Nothing metered generation at all: any signed-up account could produce
+# unlimited images, remixes and answers, and where the owner's key was the
+# fallback, unlimited meant unlimited on the owner's card with no way to
+# notice until the bill.
+#
+# Deliberately generous. This is a runaway guard, not a second pricing tier —
+# a free user who hits it is using the product hard, which is the outcome the
+# free tier is for.
+AI_LIMITS = {"free": 40, "pro": 600}
+
+
+def ai_allowed(user, key_source):
+    """Returns (allowed, reason). Only meters calls the owner pays for.
+
+    `key_source` comes from sage.get_config(): "saved" when the user supplied
+    their own key, "environment" when the instance owner's is being used.
+    Somebody spending their own money is nobody else's problem, so they are
+    never metered — metering them would be charging rent on their own petrol.
+    """
+    if key_source != "environment":
+        return True, None
+    if is_admin(user):
+        return True, None
+
+    import db
+    used = db.ai_calls_this_month(user["id"])
+    cap = AI_LIMITS["pro"] if is_pro(user) else AI_LIMITS["free"]
+    if used < cap:
+        return True, None
+
+    if is_pro(user):
+        return False, (
+            "You've used %d generations this month, which is the ceiling on "
+            "the shared key. Add your own API key in Settings and there is no "
+            "limit at all." % cap
+        )
+    return False, (
+        "Free covers %d generations a month on the shared key and you've "
+        "reached it. Upgrade, or add your own API key in Settings — with your "
+        "own key there is no limit." % cap
+    )
+
+
 def capture_allowed(user):
     """Returns (allowed, reason). Enforced at ingest, where it actually bites."""
     if is_admin(user) or is_pro(user):

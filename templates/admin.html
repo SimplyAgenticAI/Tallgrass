@@ -44,6 +44,73 @@
   </div>
 </div>
 
+{# Backups and shared-key spend. Neither existed: the database had no copy
+   anywhere, and generation was unmetered, so the first sign of either problem
+   would have been losing the data or seeing the bill. #}
+<section class="glass panel reveal" style="margin-bottom:20px">
+  <h2 style="margin:0 0 4px;font-size:16px">Backups</h2>
+  <p class="fine" style="margin:0 0 12px">
+    A snapshot is taken automatically once a day. Kept on the same disk, which
+    survives corruption but <b>not</b> losing the disk — download one now and
+    then so a copy exists somewhere that isn't Render.
+  </p>
+  <div class="demo-actions" style="gap:10px">
+    <button class="btn btn-primary" id="backup-now">Back up now</button>
+  </div>
+  <div class="msg-line" id="backup-msg" role="status" aria-live="polite"></div>
+  {% if backups %}
+  <table class="admin-table" style="margin-top:12px">
+    <thead><tr><th>Snapshot</th><th>Size</th><th>Taken</th><th></th></tr></thead>
+    <tbody>
+      {% for b in backups %}
+      <tr>
+        <td class="fine">{{ b.name }}</td>
+        <td class="fine">{{ '{:,}'.format(b.bytes // 1024) }} KB</td>
+        <td class="fine">{{ b.modified }}</td>
+        <td><a class="mini-btn" href="{{ url_for('admin_backup_download', name=b.name) }}">Download</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="fine" style="margin-top:10px">No snapshots yet.</p>
+  {% endif %}
+</section>
+
+<section class="glass panel reveal" style="margin-bottom:20px">
+  <h2 style="margin:0 0 4px;font-size:16px">Shared-key usage</h2>
+  {% if shared_key %}
+  <p class="fine" style="margin:0 0 12px">
+    An API key is set in this instance's environment, so any account without
+    its own key generates on <b>yours</b>. Capped at
+    <b>{{ ai_limits.free }}</b> a month on free and
+    <b>{{ ai_limits.pro }}</b> on Pro; accounts using their own key are never
+    metered and never appear here.
+  </p>
+  {% else %}
+  <p class="fine" style="margin:0 0 12px">
+    No shared key is set, so every account uses its own and nothing here is
+    billed to you. Nothing is metered.
+  </p>
+  {% endif %}
+  {% if ai_usage %}
+  <table class="admin-table">
+    <thead><tr><th>Account</th><th>Plan</th><th>Generations (30d)</th></tr></thead>
+    <tbody>
+      {% for row in ai_usage %}
+      <tr>
+        <td class="fine">{{ row.email }}</td>
+        <td class="fine">{{ row.plan }}</td>
+        <td class="fine">{{ row.calls }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="fine">Nothing charged to the shared key in the last 30 days.</p>
+  {% endif %}
+</section>
+
 {% if capture_error or unhandled_error %}
 {# A crash reaches the extension as a bare status code and the browser as an
    error page. The reason existed only in a traceback nobody opens, so a

@@ -48,6 +48,8 @@ echo "--- streamed json ---"
 python tests/jsonstream.test.py
 echo "--- hooks from real posts ---"
 python tests/hooks.test.py
+echo "--- money and backups ---"
+python tests/safety.test.py
 echo "--- capture resilience ---"
 python tests/capture.test.py
 echo "--- scoring accuracy rules ---"

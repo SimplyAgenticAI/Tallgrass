@@ -14,7 +14,19 @@ services:
     # one writer, and several gunicorn processes writing the same file will
     # produce "database is locked" errors under capture load. Threads give
     # concurrency without multiple writing processes.
-    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
+    # Threads raised from 4, timeout from 120.
+    #
+    # Four threads meant four concurrent requests for the whole app, and a
+    # streaming Sage or Write response holds its thread for the entire
+    # generation — so four people writing at once left nothing for anybody
+    # else, including the extension's captures, which is the part users
+    # notice. The single worker is still deliberate: SQLite tolerates many
+    # readers and exactly one writer, and the writer count is unchanged.
+    #
+    # 120s was cutting it fine for the longest path — Write at high effort
+    # with 8000 max_tokens can sit quiet through the model's thinking before
+    # the first token, and gunicorn kills a worker it believes is stuck.
+    startCommand: gunicorn app:app --workers 1 --threads 12 --timeout 300
 
     healthCheckPath: /api/ping
 
