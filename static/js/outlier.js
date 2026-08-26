@@ -979,9 +979,18 @@
     stage.className = "cap-stage";
     stage.appendChild(img);
 
+    /* Centre guides. Shown only while the headline is actually snapped, so
+       they read as confirmation rather than decoration. */
+    var guideX = document.createElement("div");
+    guideX.className = "cap-guide cap-guide-x";
+    var guideY = document.createElement("div");
+    guideY.className = "cap-guide cap-guide-y";
+    stage.appendChild(guideX);
+    stage.appendChild(guideY);
+
     var layer = document.createElement("div");
     layer.className = "cap-layer";
-    layer.title = "Drag to move";
+    layer.title = "Drag to move · double-click to centre";
     stage.appendChild(layer);
     wrap.appendChild(stage);
 
@@ -1006,19 +1015,60 @@
       layer.classList.add("is-dragging");
       event.preventDefault();
     });
+    /* Sticky centre.
+     *
+     * Dead centre is the position people actually want most of the time, and
+     * hitting 0.500 by hand on a dragged element is luck. Within SNAP_PX of
+     * the middle the headline locks to exactly 0.5 and a guide appears; drag
+     * further and it releases. Measured in PIXELS, not in fractions of the
+     * image, so the pull feels identical whatever size the picture is
+     * displayed at — a fraction would snap hard on a small preview and
+     * barely at all on a large one.
+     */
+    var SNAP_PX = 11;
+
     layer.addEventListener("pointermove", function (event) {
       if (!dragging) return;
       var box = stage.getBoundingClientRect();
+      var x = (event.clientX - box.left) / box.width;
+      var y = (event.clientY - box.top) / box.height;
+
+      var snapX = Math.abs(x - 0.5) * box.width <= SNAP_PX;
+      var snapY = Math.abs(y - 0.5) * box.height <= SNAP_PX;
+      if (snapX) x = 0.5;
+      if (snapY) y = 0.5;
+
       // Clamped, so the headline cannot be dragged off its own picture.
-      state.x = Math.max(0.04, Math.min((event.clientX - box.left) / box.width, 0.96));
-      state.y = Math.max(0.06, Math.min((event.clientY - box.top) / box.height, 0.94));
+      state.x = Math.max(0.04, Math.min(x, 0.96));
+      state.y = Math.max(0.06, Math.min(y, 0.94));
+
+      guideX.classList.toggle("is-on", snapX);
+      guideY.classList.toggle("is-on", snapY);
+      layer.classList.toggle("is-snapped", snapX || snapY);
       paint();
     });
     ["pointerup", "pointercancel"].forEach(function (name) {
       layer.addEventListener(name, function () {
         dragging = false;
         layer.classList.remove("is-dragging");
+        // The guides said "you are snapped"; the drag is over, so they stop.
+        guideX.classList.remove("is-on");
+        guideY.classList.remove("is-on");
       });
+    });
+
+    // The way back to dead centre that needs no aim at all.
+    layer.addEventListener("dblclick", function () {
+      state.x = 0.5;
+      state.y = 0.5;
+      paint();
+      layer.classList.add("is-snapped");
+      guideX.classList.add("is-on");
+      guideY.classList.add("is-on");
+      window.setTimeout(function () {
+        guideX.classList.remove("is-on");
+        guideY.classList.remove("is-on");
+      }, 420);
     });
 
     var controls = document.createElement("div");
@@ -1115,7 +1165,9 @@
 
     var hint = document.createElement("p");
     hint.className = "fine cap-hint";
-    hint.textContent = "Drag the words to move them.";
+    hint.textContent =
+      "Drag the words to move them — they snap to the centre. "
+      + "Double-click to put them back.";
     controls.appendChild(hint);
 
     wrap.appendChild(controls);

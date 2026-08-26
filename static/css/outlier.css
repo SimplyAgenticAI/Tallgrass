@@ -3017,3 +3017,25 @@ html { scrollbar-color: rgba(110, 231, 183, 0.28) transparent; scrollbar-width: 
   .cap-row { gap: 10px; }
   .cap-size { min-width: 100%; }
 }
+
+/* Centre guides. Visible only while the headline is snapped, so they confirm
+   the lock rather than sitting over the picture permanently. Emerald, because
+   in this app that colour means "this is a real, measured thing". */
+.cap-guide {
+  position: absolute; pointer-events: none;
+  background: var(--emerald-bright);
+  opacity: 0; transition: opacity 0.12s var(--ease);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+.cap-guide.is-on { opacity: 0.9; }
+/* X marks the vertical midline — it appears when the horizontal position is
+   locked, which is the axis a vertical line actually shows. */
+.cap-guide-x { left: 50%; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; }
+.cap-guide-y { top: 50%; left: 0; right: 0; height: 1px; margin-top: -0.5px; }
+
+/* The headline itself acknowledges the lock. */
+.cap-layer.is-snapped { outline-color: var(--emerald-bright); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cap-guide { transition: none; }
+}
