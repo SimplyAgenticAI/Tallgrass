@@ -232,6 +232,36 @@ def main():
     check("the reason is recorded", "RuntimeError" in recorded, True)
 
     print()
+    print("the server will not fetch a link into its own network")
+    # image_url arrives in the capture payload, so it is whatever the caller
+    # put there — and the server fetches it to read the graphic. Without this
+    # guard, storing a post whose image_url is the cloud metadata endpoint and
+    # then pressing a button makes the server read it, and the description
+    # hands the contents straight back.
+    import remix
+    for bad in ("http://169.254.169.254/latest/meta-data/",
+                "http://127.0.0.1:5050/admin",
+                "http://localhost/",
+                "http://10.0.0.5/",
+                "http://192.168.1.1/",
+                "file:///etc/passwd",
+                "gopher://evil/",
+                "http://[::1]/"):
+        blocked = False
+        try:
+            remix._check_public_url(bad)
+        except Exception:
+            blocked = True
+        check("refuses %s" % bad[:38], blocked, True)
+
+    ok = True
+    try:
+        remix._check_public_url("https://scontent.xx.fbcdn.net/v/t1.jpg")
+    except Exception:
+        ok = False
+    check("but still reads a real CDN link", ok, True)
+
+    print()
     print("deliberate HTTP answers are not swallowed as crashes")
     # The handler must pass HTTPExceptions straight through, or every 404 and
     # 401 in the app would start reporting itself as an internal error.

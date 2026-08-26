@@ -6,6 +6,7 @@ its engagement profile and produces variants on different angles.
 """
 
 import os
+import urllib.request
 
 import jsonstream
 
@@ -633,6 +634,77 @@ VISION_PROMPT = (
 )
 
 
+class _BlockedURL(Exception):
+    """A URL the server must not fetch."""
+
+
+def _check_public_url(url):
+    """Raise unless this points at a public host over http(s).
+
+    image_url arrives in the capture payload, so it is whatever the caller
+    put there — and the server fetches it. Without this, posting a row with
+    image_url set to the cloud metadata endpoint and then pressing a button
+    makes the server read it, and the vision description hands the contents
+    back. That is not blind SSRF; it is an exfiltration path.
+
+    Checked by resolved ADDRESS rather than by hostname, because a name the
+    attacker controls can point anywhere, and re-checked on every redirect
+    for the same reason.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url or "")
+    # file://, ftp://, gopher:// and friends have no business here.
+    if parsed.scheme not in ("http", "https"):
+        raise _BlockedURL("only http and https images can be read")
+    if not parsed.hostname:
+        raise _BlockedURL("that link has no host")
+
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or
+                                   (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror:
+        raise _BlockedURL("that host could not be resolved")
+
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        # Loopback, link-local (the metadata endpoint), private ranges,
+        # reserved and multicast are all off limits.
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast
+                or address.is_unspecified):
+            raise _BlockedURL("that link points inside the server's own network")
+    return url
+
+
+class _NoPrivateRedirects(urllib.request.HTTPRedirectHandler):
+    """Re-check every hop.
+
+    A public host is free to redirect to a private one, so validating only the
+    URL we were handed would check the doormat and not the room.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch_image(url):
+    """Fetch an image from a public host. Returns (bytes, media_type).
+
+    Raises _BlockedURL for anything that should not be fetched, and whatever
+    urllib raises for ordinary network failures.
+    """
+    _check_public_url(url)
+    opener = urllib.request.build_opener(_NoPrivateRedirects)
+    request = urllib.request.Request(url, headers={"User-Agent": "Tallgrass/1.0"})
+    with opener.open(request, timeout=VISION_TIMEOUT) as response:
+        media_type = (response.headers.get("Content-Type") or "image/jpeg").split(";")[0]
+        return response.read(VISION_MAX_BYTES + 1), media_type
+
+
 def _inline_image(url):
     """Fetch a remote image and return it as a data: URL, or None.
 
@@ -640,12 +712,8 @@ def _inline_image(url):
     which still displays — it only costs the download.
     """
     import base64
-    import urllib.request
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Tallgrass/1.0"})
-        with urllib.request.urlopen(request, timeout=VISION_TIMEOUT) as response:
-            media_type = (response.headers.get("Content-Type") or "image/png").split(";")[0]
-            raw = response.read(VISION_MAX_BYTES + 1)
+        raw, media_type = _fetch_image(url)
     except Exception:                         # noqa: BLE001 - optional upgrade
         return None
     if len(raw) > VISION_MAX_BYTES or not media_type.startswith("image/"):
@@ -679,15 +747,14 @@ def describe_original_graphic(post):
     except ImportError:
         return None, "The anthropic package is not installed."
 
-    # Fetched with the stdlib rather than a new dependency. Facebook's CDN
-    # links are public but they expire, so a failure here is ordinary and is
-    # reported rather than raised.
-    import urllib.request
+    # Fetched with the stdlib rather than a new dependency, and only from a
+    # public host — image_url comes from the capture payload, so it is
+    # whatever the caller put there. Facebook's CDN links are public but they
+    # expire, so an ordinary failure here is reported rather than raised.
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Tallgrass/1.0"})
-        with urllib.request.urlopen(request, timeout=VISION_TIMEOUT) as response:
-            media_type = (response.headers.get("Content-Type") or "image/jpeg").split(";")[0]
-            raw = response.read(VISION_MAX_BYTES + 1)
+        raw, media_type = _fetch_image(url)
+    except _BlockedURL as exc:
+        return None, "That image link cannot be read: %s." % exc
     except Exception as exc:                  # noqa: BLE001 - reported, not raised
         return None, ("Could not fetch the original image — Facebook's image "
                       "links expire, so this one may simply be too old. (%s)" % exc)
