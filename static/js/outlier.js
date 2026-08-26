@@ -857,6 +857,11 @@
 
     post("/api/graphic", {
       hook: button.dataset.hook || "",
+      // Set only by the "another like the original" button. The server turns
+      // it into a brief from what was actually captured about that post's
+      // graphic, and refuses if nothing was.
+      like_post_id: button.dataset.likePostId
+        ? parseInt(button.dataset.likePostId, 10) : null,
       // The body as well as the hook. A hook is a fragment written to intrigue
       // and describes no scene, which is why the pictures had nothing to do
       // with the post they illustrated.
@@ -1852,6 +1857,23 @@
       head.appendChild(angle);
       head.appendChild(copy);
       head.appendChild(graphic);
+
+      // Offered only when the page says this post actually had a graphic worth
+      // echoing — the same condition the server-rendered path uses, read off
+      // the page rather than guessed.
+      var echoable = document.getElementById("remix-btn");
+      if (echoable && echoable.dataset.graphicBrief === "1") {
+        var echo = document.createElement("button");
+        echo.type = "button";
+        echo.className = "graphic-btn is-echo";
+        echo.textContent = "Another like the original";
+        echo.title = "A sibling of the graphic on the original post — " +
+                     "same kind of scene, different execution";
+        echo.dataset.hook = variant.hook || variant.body || "";
+        echo.dataset.body = variant.body || "";
+        echo.dataset.likePostId = echoable.dataset.postId || "";
+        head.appendChild(echo);
+      }
 
       var body = document.createElement("p");
       body.className = "variant-body";

@@ -1070,6 +1070,10 @@ def post_detail(post_id):
         remixes=remix_rows,
         angles=remix.ANGLES,
         remix_ready=remix.is_configured(),
+        # Whether this post's graphic left us anything to echo. None means no
+        # words were read from the image and no description was captured, so
+        # there is nothing to be "like" and the option is not offered.
+        graphic_brief=remix.original_graphic_brief(post) is not None,
         tier_labels=outliers.TIER_LABELS,
         version=APP_VERSION,
         active="feed",
@@ -2311,9 +2315,32 @@ def api_graphic():
     # The variant's full copy, not just its opening line. A hook describes no
     # scene, so illustrating one produced pictures unrelated to the post.
     copy = (body.get("body") or "").strip()
-    if not hook and not instructions and not copy:
+
+    # "Another like the one that worked." The brief comes from the post's own
+    # captured image_text and image_desc — never from a picture we re-host,
+    # and never invented: a post with neither yields None, and the button that
+    # sends this is not offered in the first place.
+    like_original = None
+    if body.get("like_post_id"):
+        scored = outliers.score_posts(_fetch_posts())
+        original = next(
+            (s for s in scored if s["id"] == body["like_post_id"]), None)
+        if not original:
+            return jsonify({"ok": False, "error": "Post not found"}), 404
+        like_original = remix.original_graphic_brief(original)
+        if not like_original:
+            return jsonify({
+                "ok": False,
+                "error": "Nothing was captured about that post's graphic — no "
+                         "words read from it and no description — so there is "
+                         "nothing to make another one like.",
+            }), 400
+
+    if not hook and not instructions and not copy and not like_original:
         return jsonify({"ok": False, "error": "Nothing to illustrate."}), 400
-    image, error = remix.generate_graphic(hook, instructions=instructions, body=copy)
+
+    image, error = remix.generate_graphic(
+        hook, instructions=instructions, body=copy, like_original=like_original)
     if error:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True, "image": image})

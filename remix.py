@@ -615,8 +615,38 @@ def _wants_text(instructions):
     return bool(instructions and _WANTS_TEXT_RE.search(instructions))
 
 
-def generate_graphic(hook, instructions="", body=""):
+def original_graphic_brief(post):
+    """What is actually known about the graphic on a post, or None.
+
+    Two sources, and they are not the same thing: image_text is the author's
+    own words set into the picture, image_desc is a machine's description of
+    what the picture shows. Both are Facebook's reading of the image, not ours
+    — we never re-host the file.
+
+    None when neither exists, and that is the whole reason this function is
+    separate: without it there is nothing to be "like", and offering to make
+    another one like the original would be offering to invent one.
+    """
+    if not post:
+        return None
+    image_text = (post.get("image_text") or "").strip()
+    image_desc = (post.get("image_desc") or "").strip()
+    if not image_text and not image_desc:
+        return None
+    return {
+        "image_text": image_text[:600],
+        "image_desc": image_desc[:400],
+        "multiple": post.get("outlier_multiple"),
+    }
+
+
+def generate_graphic(hook, instructions="", body="", like_original=None):
     """Turn a post's hook into a shareable illustration. Returns (image, error).
+
+    `like_original` is the brief from a graphic that already worked — see
+    original_graphic_brief. With it, the model is asked for a fresh image in
+    the same vein rather than a fresh idea: same kind of scene, same treatment,
+    different execution. Without it, nothing changes.
 
     `image` is a data: URL (gpt-image-1 returns base64) or an https URL (DALL-E).
 
@@ -701,8 +731,42 @@ def generate_graphic(hook, instructions="", body=""):
     else:
         about = subject or opening
 
+    # What the graphic that already worked actually contained.
+    #
+    # Placed above the house style and below the operator's own direction, so
+    # it steers the picture without overriding an explicit brief. The ask is
+    # deliberately "same vein, different execution" rather than "reproduce":
+    # copying a graphic somebody else made is not what this is for, and a
+    # near-duplicate posted into the same group would be obvious.
+    echo = ""
+    if like_original:
+        parts = []
+        if like_original.get("image_text"):
+            parts.append(
+                "Words the author set INTO that image: "
+                f"\"{like_original['image_text']}\"")
+        if like_original.get("image_desc"):
+            parts.append(
+                "What that image showed, as described by Facebook (a machine's "
+                f"description, not the author's words): {like_original['image_desc']}")
+        multiple = like_original.get("multiple")
+        did = (f" It beat its group's median by {multiple}x."
+               if multiple else "")
+        echo = (
+            "MAKE ANOTHER ONE LIKE THE GRAPHIC THAT ALREADY WORKED.\n"
+            f"The original post carried a graphic and it performed.{did}\n"
+            + "\n".join(parts) + "\n\n"
+            "Match its KIND: the same sort of scene, the same visual treatment, "
+            "the same energy and framing. Do NOT reproduce it — this is a "
+            "sibling, not a copy, and a near-duplicate posted into the same "
+            "room would be recognised immediately. Change the specifics: a "
+            "different moment, a different angle, a different subject within "
+            "the same idea.\n\n"
+        )
+
     prompt = (
         f"{lead}"
+        f"{echo}"
         "A single photographic-quality image for a social post. Award-winning "
         "art direction: one clear subject, dramatic directional light, shallow "
         "depth of field, rule-of-thirds composition with room to breathe.\n\n"

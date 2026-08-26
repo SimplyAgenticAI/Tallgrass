@@ -2869,3 +2869,13 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 }
 .empty-panel { text-align: center; padding: 40px 26px; }
 .empty-panel p { max-width: 46ch; margin-inline: auto; }
+
+/* "Another like the original" sits beside Generate graphic but is a different
+   proposition — it echoes something that already worked rather than starting
+   from nothing. Outlined in the colour used for measured things. */
+.graphic-btn.is-echo {
+  border-color: var(--border-lit);
+  color: var(--emerald-bright);
+  background: rgba(52, 211, 153, 0.08);
+}
+.graphic-btn.is-echo:hover { background: rgba(52, 211, 153, 0.16); }

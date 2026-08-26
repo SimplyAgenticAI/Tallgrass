@@ -183,7 +183,11 @@
       <input type="text" id="remix-instructions" maxlength="600"
              placeholder="e.g. keep it about title work, no emoji, shorter">
     </label>
-    <button class="btn btn-primary" id="remix-btn" data-post-id="{{ post.id }}">
+    {# graphic-brief tells the client whether "another like the original" is
+       worth offering on variants it builds itself, rather than the client
+       guessing at what was captured. #}
+    <button class="btn btn-primary" id="remix-btn" data-post-id="{{ post.id }}"
+            data-graphic-brief="{{ '1' if graphic_brief else '0' }}">
       Generate variants
     </button>
     {# Remix runs long enough that silence is indistinguishable from failure. #}
@@ -208,6 +212,18 @@
               <button type="button" class="graphic-btn"
                       data-hook="{{ variant.hook or variant.body }}"
                       data-body="{{ variant.body }}">Generate graphic</button>
+              {# Only when something about the original graphic was actually
+                 captured. With no words read from it and no description there
+                 is nothing to be "like", and the button would be offering to
+                 invent an original rather than echo one. #}
+              {% if graphic_brief %}
+              <button type="button" class="graphic-btn is-echo"
+                      data-hook="{{ variant.hook or variant.body }}"
+                      data-body="{{ variant.body }}"
+                      data-like-post-id="{{ post.id }}"
+                      title="A sibling of the graphic on the original post — same kind of scene, different execution">
+                Another like the original</button>
+              {% endif %}
             </div>
             <p class="variant-body" id="v{{ loop.index }}-{{ row.id }}">{{ variant.body }}</p>
           </div>
