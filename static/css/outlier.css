@@ -2951,3 +2951,69 @@ html { scrollbar-color: rgba(110, 231, 183, 0.28) transparent; scrollbar-width: 
 
 /* The meadow strip keeps its own, which is part of the drawing rather than
    chrome — it echoes the median line the blades are rooted in. */
+
+/* ------------------------------------------------ caption over a graphic */
+
+/* The picture and the words it carries. The stage is the positioning context
+   for the headline, so the layer's percentages resolve against the image
+   rather than the column. */
+.cap-stage { position: relative; line-height: 0; }
+.cap-stage img { display: block; width: 100%; border-radius: var(--r-lg); }
+
+.cap-layer {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  /* Centred, and wrapping like a headline rather than running off the edge. */
+  text-align: center;
+  max-width: 84%;
+  line-height: 1.18;
+  font-weight: 600;
+  cursor: grab;
+  touch-action: none;          /* the drag is ours, not the browser's scroll */
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  /* Invisible until you go near it, so the graphic is seen as it will be
+     saved and the handle only appears when it is wanted. */
+  outline: 1px dashed transparent;
+  transition: outline-color 0.15s var(--ease);
+}
+.cap-layer:hover { outline-color: rgba(255,255,255,0.45); }
+.cap-layer.is-dragging { cursor: grabbing; outline-color: var(--emerald-bright); }
+
+.cap-controls { display: grid; gap: 10px; margin-top: 12px; }
+.cap-text {
+  width: 100%; padding: 10px 12px; border-radius: var(--r-md);
+  background: rgba(6,20,13,0.6); border: 1px solid var(--border-lit);
+  color: var(--text); font-size: 13.5px;
+}
+.cap-text:focus { outline: none; border-color: var(--emerald); }
+
+.cap-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.cap-size { flex: 1; min-width: 110px; accent-color: var(--emerald); }
+.cap-font {
+  padding: 7px 10px; border-radius: var(--r-sm);
+  background: rgba(6,20,13,0.7); border: 1px solid var(--border);
+  color: var(--text); font-size: 12.5px;
+}
+.cap-swatches { display: flex; gap: 6px; }
+.cap-swatch {
+  width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(255,255,255,0.22); padding: 0;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.cap-swatch:hover { transform: scale(1.12); }
+.cap-swatch.selected { border-color: var(--emerald-bright); transform: scale(1.12); }
+.cap-shadow {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text-muted); cursor: pointer; user-select: none;
+}
+.cap-shadow input { accent-color: var(--emerald); cursor: pointer; }
+.cap-hint { margin: -2px 0 0; }
+
+@media (max-width: 560px) {
+  .cap-row { gap: 10px; }
+  .cap-size { min-width: 100%; }
+}

@@ -888,8 +888,8 @@
       wordsNote.className = "fine graphic-words-note";
       wordsNote.hidden = true;
       wordsNote.textContent =
-        "Keep it short — one line sets cleanly, a paragraph comes back as " +
-        "nonsense. 120 characters max.";
+        "The picture is made with clear space for it. You can drag the words, "
+        + "resize and recolour them after it appears.";
 
       wordsOn.addEventListener("change", function () {
         wordsText.hidden = !wordsOn.checked;
@@ -918,6 +918,269 @@
     }
     runGraphic(button, block);
   });
+
+  /* ------------------------------------------------- caption over image */
+
+  /* Real type, laid over the picture rather than painted into it.
+   *
+   * The image model used to set the lettering, which meant it was frequently
+   * misspelled, always a gamble, and — being pixels — impossible to move,
+   * resize or recolour afterwards. The picture is now generated as a clean
+   * plate with quiet space through the middle, and the words go on top here.
+   *
+   * Position is kept as a FRACTION of the image, never pixels: the editor
+   * shows the picture at whatever width the column allows, while the export
+   * draws it at its native 1024. Storing pixels would put the headline
+   * somewhere else in the saved file than it sat on screen.
+   */
+  var CAPTION_FONTS = [
+    { label: "Display", stack: "'Fraunces', Georgia, serif" },
+    { label: "Sans", stack: "'Inter', system-ui, sans-serif" },
+    { label: "Mono", stack: "ui-monospace, SFMono-Regular, Menlo, monospace" }
+  ];
+  var CAPTION_COLOURS = ["#ffffff", "#050b07", "#6ee7b7", "#d9b45f", "#e07a5f"];
+
+  function buildCaptionEditor(wrap, img, text) {
+    var state = {
+      text: text,
+      x: 0.5,            // dead centre to begin with
+      y: 0.5,
+      size: 0.075,       // fraction of image height, so it survives export
+      font: CAPTION_FONTS[0].stack,
+      colour: "#ffffff",
+      shadow: true
+    };
+
+    var stage = document.createElement("div");
+    stage.className = "cap-stage";
+    stage.appendChild(img);
+
+    var layer = document.createElement("div");
+    layer.className = "cap-layer";
+    layer.title = "Drag to move";
+    stage.appendChild(layer);
+    wrap.appendChild(stage);
+
+    function paint() {
+      layer.style.left = (state.x * 100) + "%";
+      layer.style.top = (state.y * 100) + "%";
+      layer.style.fontSize = (state.size * (stage.clientHeight || 512)) + "px";
+      layer.style.fontFamily = state.font;
+      layer.style.color = state.colour;
+      layer.style.textShadow = state.shadow
+        ? "0 2px 18px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.45)"
+        : "none";
+      layer.textContent = state.text;
+    }
+
+    /* Pointer events rather than mouse events, so a finger behaves like a
+       cursor and the drag survives leaving the element. */
+    var dragging = false;
+    layer.addEventListener("pointerdown", function (event) {
+      dragging = true;
+      layer.setPointerCapture(event.pointerId);
+      layer.classList.add("is-dragging");
+      event.preventDefault();
+    });
+    layer.addEventListener("pointermove", function (event) {
+      if (!dragging) return;
+      var box = stage.getBoundingClientRect();
+      // Clamped, so the headline cannot be dragged off its own picture.
+      state.x = Math.max(0.04, Math.min((event.clientX - box.left) / box.width, 0.96));
+      state.y = Math.max(0.06, Math.min((event.clientY - box.top) / box.height, 0.94));
+      paint();
+    });
+    ["pointerup", "pointercancel"].forEach(function (name) {
+      layer.addEventListener(name, function () {
+        dragging = false;
+        layer.classList.remove("is-dragging");
+      });
+    });
+
+    var controls = document.createElement("div");
+    controls.className = "cap-controls";
+
+    var edit = document.createElement("input");
+    edit.type = "text";
+    edit.className = "cap-text";
+    edit.value = state.text;
+    edit.maxLength = 120;
+    edit.setAttribute("aria-label", "Headline text");
+    edit.addEventListener("input", function () {
+      state.text = edit.value;
+      paint();
+    });
+    controls.appendChild(edit);
+
+    var row = document.createElement("div");
+    row.className = "cap-row";
+
+    var size = document.createElement("input");
+    size.type = "range";
+    size.min = "3";
+    size.max = "16";
+    size.step = "0.5";
+    size.value = String(state.size * 100);
+    size.className = "cap-size";
+    size.setAttribute("aria-label", "Text size");
+    size.addEventListener("input", function () {
+      state.size = parseFloat(size.value) / 100;
+      paint();
+    });
+    row.appendChild(size);
+
+    var font = document.createElement("select");
+    font.className = "cap-font";
+    font.setAttribute("aria-label", "Typeface");
+    CAPTION_FONTS.forEach(function (option) {
+      var el = document.createElement("option");
+      el.value = option.stack;
+      el.textContent = option.label;
+      font.appendChild(el);
+    });
+    font.addEventListener("change", function () {
+      state.font = font.value;
+      paint();
+    });
+    row.appendChild(font);
+
+    var swatches = document.createElement("div");
+    swatches.className = "cap-swatches";
+    CAPTION_COLOURS.forEach(function (colour) {
+      var dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "cap-swatch" + (colour === state.colour ? " selected" : "");
+      dot.style.background = colour;
+      dot.title = colour;
+      dot.setAttribute("aria-label", "Text colour " + colour);
+      dot.addEventListener("click", function () {
+        state.colour = colour;
+        swatches.querySelectorAll(".cap-swatch").forEach(function (other) {
+          other.classList.toggle("selected", other === dot);
+        });
+        paint();
+      });
+      swatches.appendChild(dot);
+    });
+    row.appendChild(swatches);
+
+    var shadow = document.createElement("label");
+    shadow.className = "cap-shadow";
+    var shadowOn = document.createElement("input");
+    shadowOn.type = "checkbox";
+    shadowOn.checked = state.shadow;
+    shadowOn.addEventListener("change", function () {
+      state.shadow = shadowOn.checked;
+      paint();
+    });
+    shadow.appendChild(shadowOn);
+    shadow.appendChild(document.createTextNode("Shadow"));
+    row.appendChild(shadow);
+
+    controls.appendChild(row);
+
+    // Composites on the way out. A plain link would save the bare plate.
+    var save = document.createElement("button");
+    save.type = "button";
+    save.className = "btn btn-ghost graphic-dl";
+    save.textContent = "Download";
+    save.addEventListener("click", function () {
+      exportCaptioned(img, state, save);
+    });
+    controls.appendChild(save);
+
+    var hint = document.createElement("p");
+    hint.className = "fine cap-hint";
+    hint.textContent = "Drag the words to move them.";
+    controls.appendChild(hint);
+
+    wrap.appendChild(controls);
+
+    // Sized against the rendered image, so this waits for layout.
+    requestAnimationFrame(paint);
+    window.addEventListener("resize", paint);
+  }
+
+  /* Composite at the image's own resolution rather than the size it happens to
+     be displayed at, so the saved file is the full 1024 and not a screenshot
+     of a column. */
+  function exportCaptioned(img, state, button) {
+    var label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Saving…";
+
+    // The face has to be loaded, or canvas quietly falls back to a default and
+    // the saved file does not match what is on screen.
+    var ready = (document.fonts && document.fonts.ready)
+      ? document.fonts.ready : Promise.resolve();
+
+    ready.then(function () {
+      var w = img.naturalWidth || 1024;
+      var h = img.naturalHeight || 1024;
+      var canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      var fontSize = state.size * h;
+      ctx.font = "600 " + fontSize + "px " + state.font;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = state.colour;
+
+      // Wrapped by measurement: canvas has no line breaking of its own, so a
+      // long headline would run off both edges.
+      var maxWidth = w * 0.84;
+      var words = String(state.text).split(/\s+/).filter(Boolean);
+      var lines = [];
+      var line = "";
+      words.forEach(function (word) {
+        var candidate = line ? line + " " + word : word;
+        if (ctx.measureText(candidate).width > maxWidth && line) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      });
+      if (line) lines.push(line);
+
+      var lineHeight = fontSize * 1.18;
+      var startY = (state.y * h) - ((lines.length - 1) * lineHeight) / 2;
+
+      if (state.shadow) {
+        ctx.shadowColor = "rgba(0,0,0,0.55)";
+        ctx.shadowBlur = fontSize * 0.35;
+        ctx.shadowOffsetY = fontSize * 0.04;
+      }
+      lines.forEach(function (text, index) {
+        ctx.fillText(text, state.x * w, startY + index * lineHeight);
+      });
+
+      var url;
+      try {
+        url = canvas.toDataURL("image/png");
+      } catch (error) {
+        // Only reachable if the plate came from another origin, which the
+        // server inlines specifically to prevent.
+        toast("Could not save — the image came from another site", true);
+        button.disabled = false;
+        button.textContent = label;
+        return;
+      }
+
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "tallgrass-graphic.png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      button.disabled = false;
+      button.textContent = label;
+      toast("Saved");
+    });
+  }
 
   function runGraphic(button, block) {
     var brief = block.querySelector(".graphic-brief");
@@ -982,13 +1245,26 @@
         dl.className = "graphic-dl";
         dl.textContent = "Download";
 
+        var caption = (function () {
+          var on = block.querySelector(".graphic-words-on");
+          var text = block.querySelector(".graphic-words-text");
+          return (on && on.checked && text) ? text.value.trim() : "";
+        })();
+
         // Held until the bytes decode. Swapping on the response alone leaves a
         // blank frame where the shimmer was.
         img.addEventListener("load", function () {
           wrap.className = "variant-graphic";
           wrap.textContent = "";
           wrap.appendChild(img);
-          wrap.appendChild(dl);
+          if (caption) {
+            // Real type over the picture, not pixels painted into it. The
+            // editor makes its own Download, because saving has to composite
+            // the words onto the plate — the plain link would save the plate.
+            buildCaptionEditor(wrap, img, caption);
+          } else {
+            wrap.appendChild(dl);
+          }
         });
         img.addEventListener("error", function () {
           wrap.remove();

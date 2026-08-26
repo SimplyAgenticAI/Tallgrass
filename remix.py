@@ -633,6 +633,27 @@ VISION_PROMPT = (
 )
 
 
+def _inline_image(url):
+    """Fetch a remote image and return it as a data: URL, or None.
+
+    Never raises: a failure here just means the caller keeps the original link,
+    which still displays — it only costs the download.
+    """
+    import base64
+    import urllib.request
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Tallgrass/1.0"})
+        with urllib.request.urlopen(request, timeout=VISION_TIMEOUT) as response:
+            media_type = (response.headers.get("Content-Type") or "image/png").split(";")[0]
+            raw = response.read(VISION_MAX_BYTES + 1)
+    except Exception:                         # noqa: BLE001 - optional upgrade
+        return None
+    if len(raw) > VISION_MAX_BYTES or not media_type.startswith("image/"):
+        return None
+    return "data:%s;base64,%s" % (
+        media_type, base64.standard_b64encode(raw).decode("ascii"))
+
+
 def describe_original_graphic(post):
     """Look at the post's actual image and say what it looks like.
 
@@ -811,25 +832,28 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
             f"{instructions}\n\n"
         )
 
-    # Words ON the picture, asked for explicitly.
+    # Words over the picture — but NOT painted by the image model.
     #
-    # The default is no text at all because image models render lettering as
-    # garbage more often than not. That default is worth keeping — but "put
-    # the caption on it" is a real thing people want, and asking them to
-    # discover it by typing the word "text" into a free-form brief is not an
-    # option, it is a trick.
+    # Asking it to set lettering was always the weak part. Models render text
+    # as confident nonsense often enough that this was capped at 120 characters
+    # and hedged in the UI, and pixels cannot be moved, resized or recoloured
+    # afterwards however good they come out.
+    #
+    # So the picture is made FOR the words instead of WITH them: a clean plate
+    # with deliberate negative space through the middle. The type is laid over
+    # it in the browser as real type — always spelled correctly, always crisp,
+    # and draggable.
     caption_text = " ".join((caption_text or "").split())[:MAX_CAPTION_ON_IMAGE]
     if caption_text:
         text_rule = (
-            "SET THIS EXACT TEXT INTO THE IMAGE, spelled exactly as written "
-            "here, with no other words anywhere in the picture:\n"
-            + '"' + caption_text + '"\n'
-            + "Treat it as the design, not a caption pasted on top: real "
-            "typographic craft, generous margins, clear hierarchy, high "
-            "contrast against whatever sits behind it, comfortably legible at "
-            "phone size. Leave deliberate space for it in the composition. No "
-            "watermarks, no logos, no UI furniture, and no text other than the "
-            "line above."
+            "ABSOLUTELY NO text, letters, words, numbers, captions, watermarks, "
+            "logos or UI anywhere in the image.\n"
+            "COMPOSE THIS AS A BACKGROUND PLATE FOR A HEADLINE. A headline will "
+            "be placed over the middle of this image, so leave a calm, "
+            "uncluttered band across the centre — even tone, no busy detail, no "
+            "faces and no focal point there — and keep the interest toward the "
+            "top and bottom edges. The centre must be quiet enough that text "
+            "over it stays readable."
         )
     # Asked for lettering in the brief instead, so the blanket ban would
     # contradict what they typed.
@@ -932,7 +956,15 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
                 return "data:image/png;base64," + b64, None
             url = getattr(item, "url", None)
             if url:
-                return url, None
+                # Inlined rather than handed over as a link.
+                #
+                # dall-e-3 returns a URL on another origin. Drawing a
+                # cross-origin image into a canvas taints it, and a tainted
+                # canvas refuses toDataURL — which would break the download
+                # for exactly the people whose account falls back to this
+                # model, and only for them. Inlining removes the origin.
+                inlined = _inline_image(url)
+                return (inlined or url), None
             last_err = "no image returned"
         except openai.AuthenticationError:
             return None, "That OpenAI key was rejected. Check it on the Settings page."
