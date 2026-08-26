@@ -2314,8 +2314,14 @@ def api_graphic():
     if not hook and not instructions and not copy and not like_original:
         return jsonify({"ok": False, "error": "Nothing to illustrate."}), 400
 
+    # The words to set into the picture, when the operator asked for that.
+    # Capped in generate_graphic, because lettering is what image models are
+    # worst at and a long line comes back as confident nonsense.
+    caption_text = (body.get("caption_text") or "").strip()
+
     image, error = remix.generate_graphic(
-        hook, instructions=instructions, body=copy, like_original=like_original)
+        hook, instructions=instructions, body=copy,
+        like_original=like_original, caption_text=caption_text)
     if error:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True, "image": image})

@@ -741,7 +741,14 @@ def original_graphic_brief(post):
     }
 
 
-def generate_graphic(hook, instructions="", body="", like_original=None):
+# Long enough for an opening line, short enough that an image model can set it
+# without turning it into soup. Lettering is the thing these models are worst
+# at, and the failure mode is a graphic full of confident nonsense.
+MAX_CAPTION_ON_IMAGE = 120
+
+
+def generate_graphic(hook, instructions="", body="", like_original=None,
+                     caption_text=""):
     """Turn a post's hook into a shareable illustration. Returns (image, error).
 
     `like_original` is the brief from a graphic that already worked — see
@@ -804,8 +811,29 @@ def generate_graphic(hook, instructions="", body="", like_original=None):
             f"{instructions}\n\n"
         )
 
-    # Asked for lettering, so the blanket ban would contradict the brief.
-    if _wants_text(instructions):
+    # Words ON the picture, asked for explicitly.
+    #
+    # The default is no text at all because image models render lettering as
+    # garbage more often than not. That default is worth keeping — but "put
+    # the caption on it" is a real thing people want, and asking them to
+    # discover it by typing the word "text" into a free-form brief is not an
+    # option, it is a trick.
+    caption_text = " ".join((caption_text or "").split())[:MAX_CAPTION_ON_IMAGE]
+    if caption_text:
+        text_rule = (
+            "SET THIS EXACT TEXT INTO THE IMAGE, spelled exactly as written "
+            "here, with no other words anywhere in the picture:\n"
+            + '"' + caption_text + '"\n'
+            + "Treat it as the design, not a caption pasted on top: real "
+            "typographic craft, generous margins, clear hierarchy, high "
+            "contrast against whatever sits behind it, comfortably legible at "
+            "phone size. Leave deliberate space for it in the composition. No "
+            "watermarks, no logos, no UI furniture, and no text other than the "
+            "line above."
+        )
+    # Asked for lettering in the brief instead, so the blanket ban would
+    # contradict what they typed.
+    elif _wants_text(instructions):
         text_rule = (
             "Any text in the image must be spelled exactly as specified, "
             "cleanly set and legible. No watermarks, no UI furniture."

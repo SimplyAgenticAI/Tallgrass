@@ -511,8 +511,8 @@
         var echo = document.createElement("button");
         echo.type = "button";
         echo.className = "graphic-btn is-echo";
-        echo.textContent = "Another like the original";
-        echo.title = "A sibling of the graphic on the post you are beating";
+        echo.textContent = "Same style";
+        echo.title = "Make a new graphic in the style of the post you are beating";
         echo.dataset.hook = item.hook || item.body || "";
         echo.dataset.body = item.body || "";
         echo.dataset.likePostId = writeEchoPostId;
@@ -853,8 +853,49 @@
       brief.className = "graphic-brief";
       brief.rows = 2;
       brief.placeholder =
-        "Optional: describe the image you want — subject, style, colours, " +
-        "mood. Say \"with the text …\" if you want words on it.";
+        "Optional: describe the image you want — subject, style, colours, mood.";
+
+      /* Put the words on the picture.
+       *
+       * The default is no text at all, because image models render lettering
+       * badly often enough that it has to be opt-in. But it is a thing people
+       * plainly want, and making them discover it by typing the word "text"
+       * into a free-form brief is a trick, not a feature.
+       *
+       * Prefilled with the variant's opening line rather than the whole post:
+       * a headline sets cleanly, a paragraph comes back as soup. Editable,
+       * because the best line for a graphic is often shorter than the hook.
+       */
+      var wordsRow = document.createElement("label");
+      wordsRow.className = "graphic-words";
+      var wordsOn = document.createElement("input");
+      wordsOn.type = "checkbox";
+      wordsOn.className = "graphic-words-on";
+      var wordsLabel = document.createElement("span");
+      wordsLabel.textContent = "Put the words on the image";
+      wordsRow.appendChild(wordsOn);
+      wordsRow.appendChild(wordsLabel);
+
+      var wordsText = document.createElement("input");
+      wordsText.type = "text";
+      wordsText.className = "graphic-words-text";
+      wordsText.maxLength = 120;
+      wordsText.hidden = true;
+      wordsText.placeholder = "The line to set into the picture";
+      wordsText.value = (button.dataset.hook || "").slice(0, 120);
+
+      var wordsNote = document.createElement("p");
+      wordsNote.className = "fine graphic-words-note";
+      wordsNote.hidden = true;
+      wordsNote.textContent =
+        "Keep it short — one line sets cleanly, a paragraph comes back as " +
+        "nonsense. 120 characters max.";
+
+      wordsOn.addEventListener("change", function () {
+        wordsText.hidden = !wordsOn.checked;
+        wordsNote.hidden = !wordsOn.checked;
+        if (wordsOn.checked) wordsText.focus();
+      });
 
       var go = document.createElement("button");
       go.type = "button";
@@ -862,6 +903,9 @@
       go.textContent = "Generate";
 
       direction.appendChild(brief);
+      direction.appendChild(wordsRow);
+      direction.appendChild(wordsText);
+      direction.appendChild(wordsNote);
       direction.appendChild(go);
       block.appendChild(direction);
 
@@ -915,6 +959,12 @@
       // graphic, and refuses if nothing was.
       like_post_id: button.dataset.likePostId
         ? parseInt(button.dataset.likePostId, 10) : null,
+      // Only when the box is ticked. Empty means the no-text default holds.
+      caption_text: (function () {
+        var on = block.querySelector(".graphic-words-on");
+        var text = block.querySelector(".graphic-words-text");
+        return (on && on.checked && text) ? text.value.trim() : "";
+      })(),
       // The body as well as the hook. A hook is a fragment written to intrigue
       // and describes no scene, which is why the pictures had nothing to do
       // with the post they illustrated.
@@ -1825,9 +1875,8 @@
         var echo = document.createElement("button");
         echo.type = "button";
         echo.className = "graphic-btn is-echo";
-        echo.textContent = "Another like the original";
-        echo.title = "A sibling of the graphic on the original post — " +
-                     "same kind of scene, different execution";
+        echo.textContent = "Same style";
+        echo.title = "Make a new graphic in the style of the one on this post";
         echo.dataset.hook = variant.hook || variant.body || "";
         echo.dataset.body = variant.body || "";
         echo.dataset.likePostId = echoable.dataset.postId || "";
