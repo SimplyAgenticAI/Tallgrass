@@ -296,6 +296,38 @@ def _columns(conn, table):
     return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
+# Columns added to `posts` after the original schema. One definition, used
+# twice in _migrate for the reason documented there.
+_POST_COLUMNS = (
+        ("image_url", "TEXT"),
+        ("image_count", "INTEGER DEFAULT 0"),
+        ("has_video", "INTEGER DEFAULT 0"),
+        # Set when the body was read out of the graphic's alt text rather than
+        # typed by the author, so the card can say so instead of implying the
+        # poster wrote it.
+        ("body_from_image", "INTEGER DEFAULT 0"),
+        # 1 = a count was actually found, 0 = none were. NULL for rows captured
+        # before the flag existed, whose provenance genuinely isn't known.
+        ("engagement_read", "INTEGER"),
+        # Words rendered INTO the graphic, from Facebook's own OCR. Kept even
+        # when the post also has a typed caption, which the body cannot do —
+        # body holds one or the other, and a meme with a caption used to lose
+        # its lettering entirely.
+        ("image_text", "TEXT"),
+        # What the graphic DEPICTS, from Facebook's generated alt description.
+        # A machine's words, never the author's, so this must never be shown
+        # or used as the body. It exists so remixing a wordless photo post has
+        # something true to work from instead of an empty string.
+        ("image_desc", "TEXT"),
+        # A real description of what the post's graphic LOOKS like, written by
+        # a vision model that actually saw it. Facebook's alt text yields
+        # "2 people, ocean" — six words, from which no image model could make
+        # a sibling. Cached because it costs a call and the picture never
+        # changes.
+        ("image_style", "TEXT"),
+)
+
+
 def _migrate(conn):
     """Bring an existing database up to the current schema.
 
@@ -328,32 +360,24 @@ def _migrate(conn):
         conn.execute("UPDATE posts SET item_type = 'post' WHERE item_type IS NULL")
     if "parent_fb_id" not in post_cols:
         conn.execute("ALTER TABLE posts ADD COLUMN parent_fb_id TEXT")
-    for column, ddl in (
-        ("image_url", "TEXT"),
-        ("image_count", "INTEGER DEFAULT 0"),
-        ("has_video", "INTEGER DEFAULT 0"),
-        # Set when the body was read out of the graphic's alt text rather than
-        # typed by the author, so the card can say so instead of implying the
-        # poster wrote it.
-        ("body_from_image", "INTEGER DEFAULT 0"),
-        # 1 = a count was actually found, 0 = none were. NULL for rows captured
-        # before the flag existed, whose provenance genuinely isn't known.
-        ("engagement_read", "INTEGER"),
-        # Words rendered INTO the graphic, from Facebook's own OCR. Kept even
-        # when the post also has a typed caption, which the body cannot do —
-        # body holds one or the other, and a meme with a caption used to lose
-        # its lettering entirely.
-        ("image_text", "TEXT"),
-        # What the graphic DEPICTS, from Facebook's generated alt description.
-        # A machine's words, never the author's, so this must never be shown
-        # or used as the body. It exists so remixing a wordless photo post has
-        # something true to work from instead of an empty string.
-        ("image_desc", "TEXT"),
-    ):
+    for column, ddl in _POST_COLUMNS:
         if column not in post_cols:
             conn.execute(f"ALTER TABLE posts ADD COLUMN {column} {ddl}")
 
     _migrate_multi_user(conn)
+
+    # Again, afterwards, and deliberately.
+    #
+    # _migrate_multi_user rebuilds `posts` from a column list of its own, so
+    # anything added by the loop above is dropped the moment that runs — which
+    # is exactly what happened to image_style, silently, on every fresh
+    # install. Re-checking against the rebuilt table means the loop is the
+    # authority on which columns exist, and the next column added there cannot
+    # fall into the same hole.
+    post_cols = _columns(conn, "posts")
+    for column, ddl in _POST_COLUMNS:
+        if column not in post_cols:
+            conn.execute(f"ALTER TABLE posts ADD COLUMN {column} {ddl}")
 
 
 # Tables that gained an owner when the app became multi-user.
@@ -473,6 +497,7 @@ def _rebuild_with_scoped_uniqueness(conn):
             engagement_read INTEGER,
             image_text    TEXT,
             image_desc    TEXT,
+            image_style   TEXT,
             UNIQUE(user_id, fb_post_id)
         );
         INSERT INTO posts_new (id, user_id, fb_post_id, source_id, author_id, body,

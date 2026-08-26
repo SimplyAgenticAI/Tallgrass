@@ -2286,10 +2286,30 @@ def api_graphic():
         if not like_original:
             return jsonify({
                 "ok": False,
-                "error": "Nothing was captured about that post's graphic — no "
-                         "words read from it and no description — so there is "
-                         "nothing to make another one like.",
+                "error": "That post has no graphic to make another one like.",
             }), 400
+
+        # Read the actual picture, once, the first time somebody asks.
+        #
+        # Facebook's alt text yields "2 people, ocean" — six words, which is
+        # why echoes used to look nothing like the post they came from. This
+        # looks at the image itself. Cached on the row: the picture does not
+        # change, and it costs a call.
+        if not like_original.get("image_style") and like_original.get("has_image"):
+            described, describe_error = remix.describe_original_graphic(original)
+            if described:
+                like_original["image_style"] = described
+                with db.get_db() as conn:
+                    conn.execute(
+                        "UPDATE posts SET image_style = ? WHERE id = ? AND user_id = ?",
+                        (described, original["id"], _uid()))
+            else:
+                log.warning("could not read the original graphic on post %s: %s",
+                            original["id"], describe_error)
+                # Only the thin alt-text brief is left. Saying so beats
+                # silently producing something that will not resemble it.
+                if not like_original.get("image_text") and not like_original.get("image_desc"):
+                    return jsonify({"ok": False, "error": describe_error}), 400
 
     if not hook and not instructions and not copy and not like_original:
         return jsonify({"ok": False, "error": "Nothing to illustrate."}), 400

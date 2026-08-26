@@ -615,6 +615,99 @@ def _wants_text(instructions):
     return bool(instructions and _WANTS_TEXT_RE.search(instructions))
 
 
+VISION_MAX_BYTES = 5 * 1024 * 1024
+VISION_TIMEOUT = 12
+
+VISION_PROMPT = (
+    "Describe this image so another image model could produce a SIBLING of it "
+    "— not a copy, but something a viewer would recognise as coming from the "
+    "same hand.\n\n"
+    "Cover, in one dense paragraph: the kind of image it is (photograph, "
+    "illustration, screenshot, quote card, meme, chart); the subject and what "
+    "is happening; the composition and crop; the lighting; the colour palette "
+    "in concrete terms; the mood; and if there is text, how it is SET — "
+    "placement, weight, case, whether it dominates or sits quietly.\n\n"
+    "Describe only what is actually there. Do not interpret what it means, do "
+    "not guess at context you cannot see, and do not transcribe long passages "
+    "of text — how the text looks matters here, not what it says."
+)
+
+
+def describe_original_graphic(post):
+    """Look at the post's actual image and say what it looks like.
+
+    Returns (description, error). Cached on the row by the caller, because the
+    picture never changes and this costs a call.
+
+    Why this exists: the brief used to come from Facebook's alt text, which
+    yields "2 people, ocean" — six words. Asked to make "another like the
+    original" from that, an image model has essentially nothing to go on, and
+    the results looked nothing like the post they were meant to echo. That was
+    not a prompt problem. There was no information.
+    """
+    url = (post or {}).get("image_url")
+    if not url:
+        return None, "That post has no image."
+
+    cfg = _config()
+    if not cfg["has_key"]:
+        return None, "Add an AI key on the Settings page to read the original graphic."
+
+    try:
+        import anthropic
+    except ImportError:
+        return None, "The anthropic package is not installed."
+
+    # Fetched with the stdlib rather than a new dependency. Facebook's CDN
+    # links are public but they expire, so a failure here is ordinary and is
+    # reported rather than raised.
+    import urllib.request
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Tallgrass/1.0"})
+        with urllib.request.urlopen(request, timeout=VISION_TIMEOUT) as response:
+            media_type = (response.headers.get("Content-Type") or "image/jpeg").split(";")[0]
+            raw = response.read(VISION_MAX_BYTES + 1)
+    except Exception as exc:                  # noqa: BLE001 - reported, not raised
+        return None, ("Could not fetch the original image — Facebook's image "
+                      "links expire, so this one may simply be too old. (%s)" % exc)
+
+    if len(raw) > VISION_MAX_BYTES:
+        return None, "That image is too large to read."
+    if not media_type.startswith("image/"):
+        return None, "That link did not return an image."
+    # The API accepts these four and nothing else.
+    if media_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+        media_type = "image/jpeg"
+
+    import base64
+    client = anthropic.Anthropic(api_key=cfg["key"])
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=700,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.standard_b64encode(raw).decode("ascii"),
+                    }},
+                    {"type": "text", "text": VISION_PROMPT},
+                ],
+            }],
+        )
+    except anthropic.AuthenticationError:
+        return None, "That Anthropic key was rejected."
+    except anthropic.APIStatusError as exc:
+        return None, f"Anthropic error ({exc.status_code}): {exc.message}"
+    except anthropic.APIConnectionError:
+        return None, "Could not reach Anthropic."
+
+    text = "".join(b.text for b in message.content if b.type == "text").strip()
+    return (text or None), (None if text else "Nothing came back.")
+
+
 def original_graphic_brief(post):
     """What is actually known about the graphic on a post, or None.
 
@@ -631,11 +724,19 @@ def original_graphic_brief(post):
         return None
     image_text = (post.get("image_text") or "").strip()
     image_desc = (post.get("image_desc") or "").strip()
-    if not image_text and not image_desc:
+    image_style = (post.get("image_style") or "").strip()
+    # An image at all is enough to offer this, because the picture itself can
+    # be read on demand. Previously the offer depended on Facebook having
+    # written some alt text, which is both rare and thin.
+    if not image_text and not image_desc and not post.get("image_url"):
         return None
     return {
         "image_text": image_text[:600],
         "image_desc": image_desc[:400],
+        # Written by a vision model that actually saw the picture. Absent
+        # until the first echo is asked for, then cached on the row.
+        "image_style": image_style[:2000],
+        "has_image": bool(post.get("image_url")),
         "multiple": post.get("outlier_multiple"),
     }
 
@@ -741,6 +842,10 @@ def generate_graphic(hook, instructions="", body="", like_original=None):
     echo = ""
     if like_original:
         parts = []
+        if like_original.get("image_style"):
+            parts.append(
+                "WHAT THAT IMAGE ACTUALLY LOOKED LIKE (written by a model that "
+                f"was shown it): {like_original['image_style']}")
         if like_original.get("image_text"):
             parts.append(
                 "Words the author set INTO that image: "

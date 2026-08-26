@@ -204,7 +204,7 @@ body {
   border-radius: var(--r-xl);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
-  box-shadow: 0 10px 34px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.035);
+  box-shadow: var(--shadow-raise);
 }
 
 h1 { font-size: 27px; margin: 0; letter-spacing: -0.5px; }
@@ -749,6 +749,12 @@ select.kind-select option { color: initial; }
 .settings-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px;
 }
+/* Every panel, wherever it sits.
+   This only ever matched .settings-grid .panel and .page > .panel, so a panel
+   nested one level deeper — every panel on Write, for instance — had NO
+   padding and its content sat flush against an 18px rounded corner. That is
+   the bunched-up, almost-cut-off look; it was not the corner radius. */
+.panel { padding: 22px 24px; }
 .settings-grid .panel, .page > .panel { padding: 24px 26px; }
 .page > section.panel { margin-top: 18px; }
 
@@ -2887,3 +2893,11 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 .post-picker:not(.is-picking) .pick-post.selected {
   border-color: var(--border); background: rgba(6,20,13,0.5);
 }
+
+/* Room around the things that sit hard against a corner. The step number and
+   the panel heading were the worst of it — a circle 21px across, 22px from a
+   curve of 18px, reads as clipped even when it is not. */
+.panel-head { margin-bottom: 14px; }
+.panel-head h2 { display: flex; align-items: center; margin: 0; }
+.write-form .panel { padding: 22px 24px 24px; }
+.hook-picker, .mode-picker, .group-picker, .post-picker { margin-top: 2px; }
