@@ -3717,7 +3717,7 @@
       hudBody.appendChild(doneBox);
 
       var ideas = document.createElement("button");
-      ideas.textContent = "Get post ideas from this scan →";
+      ideas.textContent = "Write from this scan →";
       styleEl(ideas, {
         width: "100%", marginTop: "0.5em", padding: "0.7em", borderRadius: "8px",
         border: "1px solid rgba(110,231,183,0.4)", cursor: "pointer",
@@ -3725,7 +3725,7 @@
         fontSize: "0.95em", fontWeight: "650"
       });
       ideas.addEventListener("click", function () {
-        openDashboard("/ideas?source=" + encodeURIComponent(currentSourceId));
+        openDashboard("/write?source=" + encodeURIComponent(currentSourceId));
       });
       hudBody.appendChild(ideas);
     }

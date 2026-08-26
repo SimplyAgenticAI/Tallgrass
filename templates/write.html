@@ -94,10 +94,15 @@
       </div>
 
       {% if top_posts %}
-      <div class="post-picker" id="post-picker" hidden>
-        <p class="fine">Which post are we beating?</p>
+      {# One list, two jobs. In pattern mode it is the evidence — what the
+         model is about to reason from, shown before it reasons, which is the
+         thing this app does everywhere else and which Write was quietly not
+         doing. In beat mode the same rows become the picker. #}
+      <div class="post-picker" id="post-picker">
+        <p class="fine" id="post-picker-label">What this is built from</p>
         {% for p in top_posts %}
-        <button class="pick-post {{ 'selected' if loop.first }}" data-post-id="{{ p.id }}">
+        <button class="pick-post {{ 'selected' if loop.first }}" data-post-id="{{ p.id }}"
+                data-graphic-brief="{{ '1' if p.id in graphic_briefs else '0' }}">
           <span class="pp-mult tier-{{ p.tier }}">{{ p.outlier_multiple }}×</span>
           <span class="pp-body">
             {{ (p.body or 'No caption — ' + (p.post_type or 'post'))[:96] }}{% if (p.body or '')|length > 96 %}…{% endif %}

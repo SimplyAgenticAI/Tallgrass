@@ -84,7 +84,7 @@
     <div class="source-actions">
       <a class="mini-btn" href="{{ url_for('group_detail', source_id=source.id) }}">Posts</a>
       {% if source.stats and source.stats.has_baseline %}
-      <a class="mini-btn" href="{{ url_for('ideas_page', source_id=source.id) }}">Ideas</a>
+      <a class="mini-btn" href="{{ url_for('write_page', source_id=source.id) }}">Write</a>
       {% endif %}
       {% if source.url and not source.is_demo %}
       {# Straight back to the group to run a fresh scan. #}

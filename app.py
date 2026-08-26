@@ -577,44 +577,21 @@ def sage_page():
 @app.route("/ideas")
 @auth.login_required
 def ideas_page():
-    """Post ideas modelled on what outperformed in one group.
+    """Kept as a redirect, because links to it exist in the wild.
 
-    Reached straight from the extension when a scan finishes, so `source` is
-    the Facebook id rather than our row id.
+    Post ideas was a strict subset of Write: the same engine, without the hook
+    picker, the steer or the streaming. It was not even in the nav — reachable
+    only from a button on Groups and from the extension. Two pages doing one
+    job means the features you get depend on which one you opened, so there is
+    one.
     """
-    fb_id = request.args.get("source")
     source_id = request.args.get("source_id", type=int)
-
-    with db.get_db() as conn:
-        if fb_id:
-            row = conn.execute("SELECT * FROM sources WHERE fb_id = ? AND user_id = ?",
-                               (fb_id, _uid())).fetchone()
-        elif source_id:
-            row = conn.execute("SELECT * FROM sources WHERE id = ? AND user_id = ?",
-            (source_id, _uid())).fetchone()
-        else:
-            row = None
-
-    sources = _sources_with_stats()
-    scoreable = [s for s in sources if s["stats"] and s["stats"]["has_baseline"]]
-
-    source = dict(row) if row else None
-    posts = []
-    if source:
-        posts = [
-            p for p in outliers.score_posts(_fetch_posts(source_id=source["id"]))
-            if p["has_baseline"]
-        ]
-
-    return render_template(
-        "ideas.html",
-        source=source,
-        posts=posts[:10],
-        sources=scoreable,
-        configured=sage.is_configured(),
-        version=APP_VERSION,
-        active="ideas",
-    )
+    fb_id = request.args.get("source")
+    if source_id:
+        return redirect(url_for("write_page", source_id=source_id))
+    if fb_id:
+        return redirect(url_for("write_page", source=fb_id))
+    return redirect(url_for("write_page"))
 
 
 @app.route("/write")
@@ -662,6 +639,10 @@ def write_page():
         sources=sources,
         scored_count=len(scored),
         top_posts=scored[:6],
+        # Which of those posts left something to echo, so the graphic button
+        # follows the selection rather than the page.
+        graphic_briefs={p["id"] for p in scored[:6]
+                        if remix.original_graphic_brief(p)},
         hook_set=hooks.for_source(scored),
         shape_labels=hooks.SHAPE_LABELS,
         has_brand=sage.has_brand(),
@@ -749,38 +730,6 @@ def api_write_stream():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@app.route("/api/ideas/<int:source_id>", methods=["POST"])
-@auth.login_required
-def api_ideas(source_id):
-    with db.get_db() as conn:
-        row = conn.execute("SELECT * FROM sources WHERE id = ? AND user_id = ?",
-                               (source_id, _uid())).fetchone()
-    if not row:
-        return jsonify({"ok": False, "error": "Group not found"}), 404
-
-    scored = [
-        p for p in outliers.score_posts(_fetch_posts(source_id=source_id))
-        if p["has_baseline"]
-    ]
-    if not scored:
-        return jsonify({
-            "ok": False,
-            "error": "This group has no scored posts yet — it needs 8+ posts "
-                     "with engagement before there's a pattern to work from.",
-        }), 400
-
-    body = request.get_json(silent=True) or {}
-    result, error = sage.generate_ideas(
-        row["name"], scored,
-        hook=(body.get("hook") or "").strip()[:200],
-        instructions=(body.get("instructions") or "").strip()[:600],
-    )
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
-
-    return jsonify({"ok": True, "result": result})
 
 
 @app.route("/api/sage", methods=["POST"])
@@ -1074,6 +1023,12 @@ def post_detail(post_id):
         # words were read from the image and no description was captured, so
         # there is nothing to be "like" and the option is not offered.
         graphic_brief=remix.original_graphic_brief(post) is not None,
+        # The same hook picker Write offers, from this post's own source — so
+        # the two doorways to remixing carry the same features.
+        hook_set=hooks.for_source(
+            [s for s in scored
+             if s["source_id"] == post["source_id"] and s["has_baseline"]]),
+        shape_labels=hooks.SHAPE_LABELS,
         tier_labels=outliers.TIER_LABELS,
         version=APP_VERSION,
         active="feed",

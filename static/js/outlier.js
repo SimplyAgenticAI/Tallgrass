@@ -268,12 +268,25 @@
         if (card.hasAttribute("disabled")) return;
         mode = card.dataset.mode;
         selectOne(document.querySelectorAll(".mode-card"), card);
-        if (postPicker) postPicker.hidden = (mode !== "beat");
+        // The list stays visible in both modes. In pattern mode it is the
+        // evidence the model is working from; in beat mode the rows become
+        // selectable. Hiding it in pattern mode meant Write asked to be
+        // trusted with nothing on screen to trust.
+        if (postPicker) {
+          postPicker.classList.toggle("is-picking", mode === "beat");
+          var label = document.getElementById("post-picker-label");
+          if (label) {
+            label.textContent = mode === "beat"
+              ? "Which post are we beating?"
+              : "What this is built from";
+          }
+        }
       });
     });
 
     document.querySelectorAll(".pick-post").forEach(function (row) {
       row.addEventListener("click", function () {
+        if (!postPicker || !postPicker.classList.contains("is-picking")) return;
         selectOne(document.querySelectorAll(".pick-post"), row);
       });
     });
@@ -303,6 +316,9 @@
     }
 
     var writeAbort = null;
+    // The post being beaten, when it has a graphic worth echoing. Read off the
+    // chosen row, so it follows the selection rather than the page.
+    var writeEchoPostId = null;
 
     writeGo.addEventListener("click", function () {
       var steer = document.getElementById("write-steer");
@@ -321,8 +337,12 @@
         }
         body.post_id = parseInt(postId, 10);
         body.angles = ["same_hook", "personal", "question"];
+        var row = document.querySelector(".pick-post.selected");
+        writeEchoPostId = (row && row.dataset.graphicBrief === "1")
+          ? row.dataset.postId : null;
       } else {
         body.source_id = parseInt(writeGo.dataset.sourceId, 10);
+        writeEchoPostId = null;
       }
 
       writeGo.disabled = true;
@@ -466,6 +486,39 @@
         });
       });
       head.appendChild(copyBtn);
+
+      /* The same graphic buttons the post page offers.
+       *
+       * Two doorways reached one engine and each was missing what the other
+       * had: post detail had the graphic buttons and no hook picker, Write had
+       * the hook picker and no graphic buttons. Which feature you got depended
+       * on how you arrived, which is worse than having two pages.
+       *
+       * The delegated .graphic-btn handler already works on any .variant, so
+       * this needs the markup and nothing else.
+       */
+      var graphic = document.createElement("button");
+      graphic.type = "button";
+      graphic.className = "graphic-btn";
+      graphic.textContent = "Generate graphic";
+      graphic.dataset.hook = item.hook || item.body || "";
+      graphic.dataset.body = item.body || "";
+      head.appendChild(graphic);
+
+      // Only for a specific post we are beating, and only when that post left
+      // something to echo.
+      if (writeEchoPostId) {
+        var echo = document.createElement("button");
+        echo.type = "button";
+        echo.className = "graphic-btn is-echo";
+        echo.textContent = "Another like the original";
+        echo.title = "A sibling of the graphic on the post you are beating";
+        echo.dataset.hook = item.hook || item.body || "";
+        echo.dataset.body = item.body || "";
+        echo.dataset.likePostId = writeEchoPostId;
+        head.appendChild(echo);
+      }
+
       block.appendChild(head);
 
       if (item.hook) {
@@ -1211,114 +1264,6 @@
     });
   }
 
-  /* ------------------------------------------------------------ ideas */
-
-  var genIdeas = document.getElementById("gen-ideas");
-  if (genIdeas) {
-    var ideasStatus = document.getElementById("ideas-status");
-    var ideasOutput = document.getElementById("ideas-output");
-
-    document.querySelectorAll(".group-chip").forEach(function (chip) {
-      chip.addEventListener("click", function () {
-        document.querySelectorAll(".group-chip").forEach(function (c) {
-          c.classList.remove("selected");
-        });
-        chip.classList.add("selected");
-        genIdeas.dataset.sourceId = chip.dataset.sourceId;
-        genIdeas.disabled = false;
-        genIdeas.textContent = "Write ideas for " + chip.dataset.sourceName;
-      });
-    });
-
-    genIdeas.addEventListener("click", function () {
-      var id = genIdeas.dataset.sourceId;
-      if (!id) return;
-
-      genIdeas.disabled = true;
-      var label = genIdeas.textContent;
-      genIdeas.textContent = "Writing…";
-      ideasStatus.className = "msg-line";
-      ideasStatus.textContent = "Reading the group's outliers and drafting posts.";
-
-      post("/api/ideas/" + id)
-        .then(function (data) {
-          if (!data.ok) throw new Error(data.error || "Could not generate ideas");
-          renderIdeas(data.result);
-          ideasStatus.textContent = "";
-        })
-        .catch(function (error) {
-          ideasStatus.className = "msg-line error";
-          ideasStatus.textContent = error.message;
-        })
-        .finally(function () {
-          genIdeas.disabled = false;
-          genIdeas.textContent = label;
-        });
-    });
-
-    function renderIdeas(result) {
-      ideasOutput.textContent = "";
-
-      var panel = document.createElement("div");
-      panel.className = "glass panel reveal in";
-
-      var head = document.createElement("h2");
-      head.textContent = "What's working here";
-      panel.appendChild(head);
-
-      var read = document.createElement("p");
-      read.className = "why";
-      // textContent throughout — model output is never injected as markup.
-      read.textContent = result.read || "";
-      panel.appendChild(read);
-
-      (result.ideas || []).forEach(function (idea, index) {
-        var id = "idea-" + index;
-
-        var block = document.createElement("div");
-        block.className = "variant";
-        block.style.animationDelay = (index * 90) + "ms";
-
-        var top = document.createElement("div");
-        top.className = "variant-head";
-
-        var fmt = document.createElement("span");
-        fmt.className = "variant-angle";
-        fmt.textContent = idea.format || "text";
-
-        var copy = document.createElement("button");
-        copy.className = "copy-btn";
-        copy.dataset.copyTarget = id;
-        copy.textContent = "Copy post";
-
-        top.appendChild(fmt);
-        top.appendChild(copy);
-
-        var hook = document.createElement("div");
-        hook.className = "idea-hook";
-        hook.textContent = idea.hook || "";
-
-        var body = document.createElement("p");
-        body.className = "variant-body";
-        body.id = id;
-        body.textContent = idea.body || "";
-
-        var why = document.createElement("p");
-        why.className = "idea-why";
-        why.textContent = idea.why || "";
-
-        block.appendChild(top);
-        block.appendChild(hook);
-        block.appendChild(body);
-        block.appendChild(why);
-        panel.appendChild(block);
-      });
-
-      ideasOutput.appendChild(panel);
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
-
   /* ------------------------------------------------------------ Sage */
 
   var chatForm = document.getElementById("chat-form");
@@ -1772,6 +1717,16 @@
 
   var remixBtn = document.getElementById("remix-btn");
   if (remixBtn) {
+    document.querySelectorAll(".remix-hooks .hook-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        var already = card.classList.contains("selected");
+        document.querySelectorAll(".remix-hooks .hook-card").forEach(function (c) {
+          c.classList.remove("selected");
+        });
+        if (!already) card.classList.add("selected");
+      });
+    });
+
     remixBtn.addEventListener("click", function () {
       var angles = Array.from(
         document.querySelectorAll('input[name="angle"]:checked')
@@ -1789,8 +1744,12 @@
       status.textContent = "Writing variants — this takes a few seconds.";
 
       var steer = document.getElementById("remix-instructions");
+      // The chosen opening, same as Write sends. Clicking a selected card
+      // again clears it, so "let the model decide" stays reachable.
+      var chosen = document.querySelector(".remix-hooks .hook-card.selected");
       post("/api/remix/" + remixBtn.dataset.postId, {
         angles: angles,
+        hook: chosen ? (chosen.dataset.hook || "") : "",
         instructions: steer ? steer.value.trim() : ""
       })
         .then(function (data) {

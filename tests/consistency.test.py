@@ -124,7 +124,7 @@ def main():
               "not the top ones" in with_replies[0])
 
     print("every page still renders")
-    for path in ["/", "/groups", "/library", "/ideas", "/settings",
+    for path in ["/", "/groups", "/library", "/write", "/settings",
                  "/capture", "/account", "/sage", "/playbook", "/?kind=comment",
                  "/?tier=breakout", "/?page=2", "/groups/1?kind=comment"]:
         check("GET %s" % path, c.get(path).status_code, 200)

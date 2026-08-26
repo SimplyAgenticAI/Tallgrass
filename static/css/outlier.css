@@ -2879,3 +2879,11 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   background: rgba(52, 211, 153, 0.08);
 }
 .graphic-btn.is-echo:hover { background: rgba(52, 211, 153, 0.16); }
+
+/* The evidence list is only interactive when it is a picker. As evidence it
+   still has to be readable, so it dims rather than disappears. */
+.post-picker:not(.is-picking) .pick-post { cursor: default; opacity: 0.82; }
+.post-picker:not(.is-picking) .pick-post:hover { border-color: var(--border); }
+.post-picker:not(.is-picking) .pick-post.selected {
+  border-color: var(--border); background: rgba(6,20,13,0.5);
+}
