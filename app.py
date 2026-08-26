@@ -524,6 +524,25 @@ def _sources_with_stats():
 @app.route("/groups")
 @auth.login_required
 def groups():
+    """The list, or one source by its Facebook id.
+
+    The extension knows a source by its Facebook id and nothing else — it has
+    no idea what row it became here. `?source=` lets it point at the page for
+    the thing somebody just scanned without having to learn our ids.
+
+    A miss falls through to the list rather than 404ing: the likeliest reason
+    is that the batch is still in flight, and the list is where they were
+    going anyway.
+    """
+    fb_id = request.args.get("source")
+    if fb_id:
+        with db.get_db() as conn:
+            row = conn.execute(
+                "SELECT id FROM sources WHERE fb_id = ? AND user_id = ?",
+                (fb_id, _uid())).fetchone()
+        if row:
+            return redirect(url_for("group_detail", source_id=row["id"]))
+
     return render_template(
         "groups.html",
         sources=_sources_with_stats(),

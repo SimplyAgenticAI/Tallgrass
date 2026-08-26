@@ -3245,7 +3245,22 @@
     });
 
     manual.addEventListener("click", function () { scanPosts(); flush(); });
-    dash.addEventListener("click", function () { openDashboard("/"); });
+
+    // Open the thing you just scanned, not the feed.
+    //
+    // This went to "/" always, so finishing a scan of one group dropped you
+    // on a list of everything — the one view that does not answer the
+    // question you just spent five minutes asking. The dashboard resolves the
+    // Facebook id, so the extension does not need to know our row ids, and
+    // falls back to the list if the batch has not landed yet.
+    //
+    // A feed scan touches several sources at once and has no single page to
+    // open, so that case still goes to "/".
+    dash.addEventListener("click", function () {
+      openDashboard(currentSourceId
+        ? "/groups?source=" + encodeURIComponent(currentSourceId)
+        : "/");
+    });
 
     rowBtns.appendChild(manual);
     rowBtns.appendChild(dash);
