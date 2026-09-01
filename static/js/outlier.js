@@ -73,6 +73,42 @@
     return pump();
   }
 
+  /* ------------------------------------------------- expired thumbnails */
+
+  /* A post's picture is Facebook's own CDN link, stored as captured and never
+   * re-hosted. Those links are SIGNED AND EXPIRE — the query carries an `oe`
+   * timestamp — so a post scanned more than a day or two ago points at
+   * something that no longer resolves, and the browser renders its broken
+   * image icon: a black box with a torn-page glyph in the corner.
+   *
+   * Nothing handled that, so a normal and expected end-of-life looked exactly
+   * like the app being broken. It says what happened instead.
+   *
+   * Capture phase, because `error` does not bubble — a delegated listener on
+   * document only ever sees it on the way down.
+   */
+  document.addEventListener("error", function (event) {
+    var img = event.target;
+    if (!img || img.tagName !== "IMG") return;
+
+    var holder = img.closest(".post-thumb, .detail-media");
+    if (!holder || holder.classList.contains("is-expired")) return;
+
+    holder.classList.add("is-expired");
+    img.remove();
+
+    var note = document.createElement("span");
+    note.className = "thumb-gone";
+    // The detail page has room for the reason; a 92px card thumbnail does not.
+    note.textContent = holder.classList.contains("detail-media")
+      ? "This image is no longer available from Facebook — its link expired. "
+        + "The post and its numbers are unaffected."
+      : "image expired";
+    note.title = "Facebook's image links are signed and expire after a day or "
+               + "two. The post itself is unaffected.";
+    holder.appendChild(note);
+  }, true);
+
   /* ------------------------------------------------------------ toast */
 
   var toastEl = document.getElementById("toast");
