@@ -46,6 +46,19 @@ MAX_CACHE_BYTES = 400 * 1024 * 1024
 # Refuse anything implausible before decoding it.
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 
+# And a cap on PIXELS, which is the one that matters.
+#
+# Bytes are not the constraint — decoded pixels are. A compressed JPEG of a
+# few megabytes can expand to hundreds of megabytes as a bitmap (width x
+# height x 3), and this instance has 512MB for everything. Capping only the
+# download size therefore guards the wrong quantity: it is the classic
+# decompression bomb, and a single crafted image could take the whole app
+# down for every user.
+#
+# 12 megapixels is roughly 4000x3000 — comfortably above any real Facebook
+# photo, which tops out nearer 2048 on the long edge.
+MAX_PIXELS = 12_000_000
+
 
 def _name(post_id):
     # Hashed so the filename says nothing about the account it belongs to.
@@ -74,9 +87,32 @@ def store(post_id, raw):
     except ImportError:
         return None, "Pillow is not installed."
 
+    # Pillow warns above ~89MP and raises above twice that. Both defaults are
+    # far past what this box can hold, so it is told our number — belt and
+    # braces behind the explicit check below, not instead of it.
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+
     try:
+        # open() is lazy: it reads the header and gives us the dimensions
+        # without decoding a single pixel. That is what makes it possible to
+        # refuse a bomb before paying for it.
         image = Image.open(io.BytesIO(raw))
+
+        width, height = image.size
+        if width * height > MAX_PIXELS:
+            return None, ("That image is %d x %d, past the %d megapixel limit."
+                          % (width, height, MAX_PIXELS // 1_000_000))
+
+        # Decode straight to something near the size we want.
+        #
+        # JPEG can be decoded at 1/2, 1/4 or 1/8 scale by the DCT itself, so
+        # a 4000x3000 photo destined for a 640px thumbnail never exists as a
+        # 36MB bitmap at all — it is decoded at about 2MB and finished by the
+        # resize below. A no-op for PNG, which has no such trick.
+        image.draft("RGB", (MAX_EDGE, MAX_EDGE))
         image.load()
+    except Image.DecompressionBombError as exc:
+        return None, "That image is too large to open safely (%s)." % exc
     except Exception as exc:                  # noqa: BLE001
         return None, "That was not a readable image (%s)." % exc
 

@@ -31,11 +31,11 @@ def check(name, got, want=True):
 
 
 def a_photo(width=1600, height=1200, mode="RGB"):
-    """Bytes of a plausible Facebook-sized photo."""
+    """Bytes of a plausible photo. Flat colour, so a huge one is still quick."""
     from PIL import Image
     image = Image.new(mode, (width, height), (90, 140, 110))
     buffer = io.BytesIO()
-    image.save(buffer, "PNG" if mode == "RGBA" else "JPEG")
+    image.save(buffer, "PNG" if mode == "RGBA" else "JPEG", quality=70)
     return buffer.getvalue()
 
 
@@ -92,6 +92,46 @@ def main():
     with I.open(path2) as saved:
         check("flattened onto white", saved.convert("RGB").getpixel((5, 5)),
               (255, 255, 255))
+
+    print()
+    print("a decompression bomb is refused before it is decoded")
+    # Bytes are not the constraint; decoded pixels are. This file is about 2MB
+    # on the wire and 412MB as a bitmap — more than the whole instance has.
+    # Capping only the download size guards the wrong quantity.
+    import tracemalloc
+    bomb = a_photo(12000, 12000)
+    tracemalloc.start()
+    path_bomb, error = images.store(90, bomb)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    check("nothing stored", path_bomb, None)
+    check("an error is returned", bool(error), True)
+    # If it had decoded, this would be hundreds of megabytes. The point of the
+    # guard is that the decode never happens.
+    check("refused without decoding it", peak < 20 * 1024 * 1024, True)
+
+    print()
+    print("both guards are wired, and each catches its own range")
+    over_ours, error = images.store(91, a_photo(4500, 3500))     # 15.8MP
+    check("over our limit is refused", over_ours, None)
+    check("  by our check, by name", "megapixel limit" in (error or ""), True)
+    at_limit, error = images.store(92, a_photo(4000, 3000))      # 12.0MP
+    check("at the limit still stores", bool(at_limit), True)
+    check("  with no error", error, None)
+
+    print()
+    print("a real photo is decoded cheaply, not decoded then shrunk")
+    # JPEG can be decoded at 1/2, 1/4 or 1/8 scale by the DCT itself, so a
+    # 4000x3000 photo bound for a 640px thumbnail never exists as a 36MB
+    # bitmap. Without draft() this peaks an order of magnitude higher.
+    tracemalloc.start()
+    path_big, error = images.store(93, a_photo(4000, 3000))
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    check("stored", error, None)
+    check("cheaply", peak < 12 * 1024 * 1024, True)
+    with Image.open(path_big) as saved:
+        check("and still the right size", max(saved.size), images.MAX_EDGE)
 
     print()
     print("junk is refused rather than served as a picture")
