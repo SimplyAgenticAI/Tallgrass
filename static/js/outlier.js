@@ -694,9 +694,9 @@
 
   /* ------------------------------------------------------------ hover FX */
 
-  // Cursor-tracking spotlight. One delegated
-  // listener, coalesced into a single rAF per frame — 60 cards each with their
-  // own mousemove handler would drop frames on scroll.
+  // Cursor-tracking spotlight. One delegated listener, coalesced into a single
+  // rAF per frame — a page of cards each with its own mousemove handler would
+  // drop frames on scroll.
   if (!reduceMotion) {
     var fxTarget = null, fxX = 0, fxY = 0, fxQueued = false;
 

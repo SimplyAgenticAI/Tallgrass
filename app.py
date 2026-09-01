@@ -424,9 +424,20 @@ def _global_stats(scored):
     }
 
 
-# How many cards one page of the feed holds. Rendering everything is fine for
-# a few hundred posts and painful at ten thousand.
-PAGE_SIZE = 60
+# How many cards one page of the feed holds.
+#
+# Sixty, and dropped to twenty-five for the images rather than for the memory.
+# Ranking is computed from light rows and only the page carries its text, so
+# the page size barely moves memory at all — measured at 0.55MB for sixty
+# against 0.23MB for twenty-five, out of a ~15MB request on an 8,000-post
+# account. A page of zero would still cost 15MB.
+#
+# What it does move is the first paint. Every card with a picture is a request
+# to /img/<id>, and a miss there fetches from Facebook and downscales before
+# it can answer — so sixty cards can mean sixty fetches occupying threads on a
+# box that has twelve. Twenty-five is a screenful and a half, which is as much
+# as anybody reads before paging anyway.
+PAGE_SIZE = 25
 
 
 # ---------------------------------------------------------------- pages
