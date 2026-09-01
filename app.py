@@ -248,6 +248,96 @@ def _uid():
     return user["id"] if user else -1
 
 
+# The columns scoring actually needs.
+#
+# Scoring reads counts, timestamps, source and item type — never `body` and
+# never `image_text`, which are the two fields capped at 5,000 characters and
+# therefore almost all of a post's weight in memory. Loading a whole account
+# to work out a median meant carrying every word of every post to add up three
+# integers: measured at 363MB for one request on a 20,000-post account.
+#
+# So the ranking is computed from these, and the words are fetched only for
+# the handful of posts actually being shown.
+SCORING_COLUMNS = ("p.id, p.source_id, p.item_type, p.likes, p.comments, "
+                   "p.shares, p.engagement_read, p.posted_at, p.captured_at, "
+                   "p.is_demo, p.fb_post_id, p.parent_fb_id")
+
+
+def _scoring_rows(source_id=None, user_id=None):
+    """Everything needed to rank, and nothing else.
+
+    Same rows as _fetch_posts and the same order, minus the text. Feed these
+    to score_posts and the multiples are identical — scoring never looks at a
+    post's words.
+    """
+    if user_id is None:
+        user = auth.current_user()
+        user_id = user["id"] if user else -1
+
+    sql = "SELECT %s FROM posts p WHERE p.user_id IS ?" % SCORING_COLUMNS
+    params = [user_id]
+    if source_id is not None:
+        sql += " AND p.source_id = ?"
+        params.append(source_id)
+    sql += " ORDER BY p.posted_at DESC"
+
+    with db.get_db() as conn:
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+def _hydrate(scored_rows):
+    """Put the words back on the handful of posts being displayed.
+
+    Takes scored light rows and returns them with every field the templates
+    need, in the same order. One query for the page rather than one per post.
+    """
+    if not scored_rows:
+        return []
+
+    ids = [row["id"] for row in scored_rows]
+    marks = ",".join("?" * len(ids))
+    user = auth.current_user()
+    user_id = user["id"] if user else -1
+
+    with db.get_db() as conn:
+        full = {r["id"]: dict(r) for r in conn.execute(
+            """
+            SELECT p.*, s.name AS source_name, s.kind AS source_kind,
+                   s.fb_id AS source_fb_id, s.url AS source_url,
+                   a.name AS author_name,
+                   (SELECT COUNT(*) FROM saved
+                     WHERE saved.post_id = p.id AND saved.user_id = p.user_id) AS is_saved
+            FROM posts p
+            LEFT JOIN sources s ON s.id = p.source_id
+            LEFT JOIN authors a ON a.id = p.author_id
+            WHERE p.user_id IS ? AND p.id IN (%s)
+            """ % marks, [user_id] + ids).fetchall()}
+
+    out = []
+    for row in scored_rows:
+        merged = dict(full.get(row["id"], {}))
+        # The scored values win: they are what the ranking was computed from,
+        # and the row carries fields the raw post has no idea about.
+        merged.update(row)
+        out.append(merged)
+    return out
+
+
+def _scored_post(post_id, scored=None):
+    """One post, ranked against the whole account, with its text.
+
+    The ranking has to consider every post — a multiple is meaningless without
+    its group's median — but only this one needs its words. Four routes had
+    the same three lines with the heavy query in them; this is the one place
+    they can share.
+    """
+    scored = scored if scored is not None else outliers.score_posts(_scoring_rows())
+    row = next((s for s in scored if s["id"] == post_id), None)
+    if not row:
+        return None, scored
+    return _hydrate([row])[0], scored
+
+
 def _fetch_posts(source_id=None, limit=None, user_id=None):
     """Pull posts joined to their source and author, ready for scoring.
 
@@ -448,8 +538,10 @@ def feed():
     # are — a partial preview — rather than ranked.
     kind = "post"
 
-    all_posts = _fetch_posts()
-    scored = outliers.score_posts(all_posts)
+    # Ranked from the light rows: every count, filter and sort below reads
+    # only scoring output, so the words are not needed to work out what goes
+    # on the page or in what order. They are fetched for the page itself.
+    scored = outliers.score_posts(_scoring_rows())
 
     real_count = sum(1 for s in scored if not s["is_demo"])
 
@@ -477,7 +569,8 @@ def feed():
     page_count = max(1, -(-total_visible // PAGE_SIZE))
     page = min(page, page_count)
     start = (page - 1) * PAGE_SIZE
-    page_items = visible[start:start + PAGE_SIZE]
+    # The only rows that need their text.
+    page_items = _hydrate(visible[start:start + PAGE_SIZE])
 
     # Counted over what is actually on this page, so the divider's number and
     # the cards under it agree.
@@ -720,8 +813,7 @@ def api_write_stream():
 
     if mode == "beat":
         post_id = body.get("post_id")
-        scored = outliers.score_posts(_fetch_posts())
-        post = next((s for s in scored if s["id"] == post_id), None)
+        post, scored = _scored_post(post_id)
         if not post:
             return jsonify({"ok": False, "error": "Post not found"}), 404
 
@@ -1031,8 +1123,7 @@ def _meadow(scored):
 @auth.login_required
 def post_detail(post_id):
     # Score against the full set so the multiple matches what the feed showed.
-    scored = outliers.score_posts(_fetch_posts())
-    post = next((s for s in scored if s["id"] == post_id), None)
+    post, scored = _scored_post(post_id)
     if not post:
         return render_template("404.html", version=APP_VERSION), 404
 
@@ -1101,9 +1192,11 @@ def library():
             "SELECT COUNT(*) AS n FROM remixes WHERE user_id = ?", (_uid(),)
         ).fetchone()["n"]
 
-    scored = outliers.score_posts(_fetch_posts())
+    scored = outliers.score_posts(_scoring_rows())
     by_id = {s["id"]: s for s in scored}
-    saved_posts = [by_id[i] for i in saved_ids if i in by_id]
+    # Only what is actually saved gets its text — the rest was needed for the
+    # medians and nothing else.
+    saved_posts = _hydrate([by_id[i] for i in saved_ids if i in by_id])
 
     return render_template(
         "library.html",
@@ -2383,8 +2476,7 @@ def api_remix(post_id):
             'Open with this exact line, or something very close to it: "%s"\n%s'
             % (hook, instructions)).strip()
 
-    scored = outliers.score_posts(_fetch_posts())
-    post = next((s for s in scored if s["id"] == post_id), None)
+    post, scored = _scored_post(post_id)
     if not post:
         return jsonify({"ok": False, "error": "Post not found"}), 404
 
@@ -2424,9 +2516,7 @@ def api_graphic():
     # sends this is not offered in the first place.
     like_original = None
     if body.get("like_post_id"):
-        scored = outliers.score_posts(_fetch_posts())
-        original = next(
-            (s for s in scored if s["id"] == body["like_post_id"]), None)
+        original, scored = _scored_post(body["like_post_id"])
         if not original:
             return jsonify({"ok": False, "error": "Post not found"}), 404
         like_original = remix.original_graphic_brief(original)
