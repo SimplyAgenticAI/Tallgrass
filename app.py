@@ -18,6 +18,7 @@ import backup
 import billing
 import db
 import hooks
+import images
 import mailer
 import outliers
 import remix
@@ -1629,6 +1630,53 @@ def reset_password(token):
     ), (400 if error else 200)
 
 
+@app.route("/img/<int:post_id>")
+@auth.login_required
+def post_image(post_id):
+    """A post's picture, served from here rather than from Facebook.
+
+    Copied on first view and kept afterwards. Facebook's links are signed and
+    expire within a day or two, so a card was showing a broken box for every
+    post older than that — the post survived and what it looked like did not,
+    which is half of why it worked.
+
+    Scoped to the owner: a post id is a small integer, and without this any
+    account could walk the range and read another account's pictures.
+    """
+    # Ownership FIRST, before the cache is even consulted.
+    #
+    # This checked the cache first and only verified the owner on a miss — so
+    # the moment a picture was cached, any signed-in account could read it by
+    # asking for that id. Post ids are small integers, so that is a walk of
+    # the range away from every picture in the database. A cache hit is not a
+    # reason to skip the question of whose it is.
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT image_url FROM posts WHERE id = ? AND user_id = ?",
+            (post_id, _uid())).fetchone()
+    if not row:
+        return "", 404
+
+    path = images.cached(post_id)
+    if not path:
+        if not row["image_url"]:
+            return "", 404
+
+        path, error = images.fetch_and_store(post_id, row["image_url"])
+        if not path:
+            # Expected, not exceptional: the link has almost certainly expired.
+            # The page turns a 404 here into "image expired", which is the
+            # truth, so this is logged quietly rather than raised.
+            log.info("image unavailable for post %s: %s", post_id, error)
+            return "", 404
+
+    # Long-lived: the file is content for one post and never changes, and the
+    # id is already scoped to the owner.
+    response = send_file(path, mimetype="image/jpeg", conditional=True)
+    response.headers["Cache-Control"] = "private, max-age=604800"
+    return response
+
+
 @app.route("/api/admin/backup", methods=["POST"])
 @auth.login_required
 def api_admin_backup():
@@ -2565,6 +2613,8 @@ def admin():
         # send them a link on its own.
         pending_resets=db.pending_reset_requests(),
         backups=backup.listing(),
+        image_cache=images.usage(),
+        image_cache_max=images.MAX_CACHE_BYTES,
         # Who is spending the owner's key, so abuse is visible before it is
         # a bill rather than after.
         ai_usage=db.ai_usage_summary(),

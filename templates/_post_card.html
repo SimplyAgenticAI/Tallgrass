@@ -67,10 +67,11 @@
 
     <div class="post-content">
       {% if post.image_url %}
-      {# What a post looked like is half of why it worked. Loaded lazily and
-         from Facebook's CDN — nothing is re-hosted. #}
+      {# What a post looked like is half of why it worked — which is why it is
+         copied here on first view and kept, rather than hotlinked to a
+         Facebook link that expires within a day or two. #}
       <a class="post-thumb" href="{{ url_for('post_detail', post_id=post.id) }}">
-        <img src="{{ post.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <img src="{{ url_for('post_image', post_id=post.id) }}" alt="" loading="lazy">
         {% if post.image_count > 1 %}
         <span class="thumb-count">{{ post.image_count }}</span>
         {% endif %}

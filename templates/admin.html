@@ -58,6 +58,16 @@
     <button class="btn btn-primary" id="backup-now">Back up now</button>
   </div>
   <div class="msg-line" id="backup-msg" role="status" aria-live="polite"></div>
+  <p class="fine" style="margin:0 0 12px">
+    {# The disk is 1GB and now holds three things. Saying so beats finding out
+       when a write fails. #}
+    Post pictures are copied here on first view and kept, so they survive
+    Facebook's links expiring. Cache holds
+    <b>{{ '{:,}'.format(image_cache[1]) }}</b> images using
+    <b>{{ '{:,}'.format(image_cache[0] // 1048576) }} MB</b> of a
+    {{ image_cache_max // 1048576 }} MB ceiling; past that the
+    least-recently-viewed are dropped.
+  </p>
   {% if backups %}
   <table class="admin-table" style="margin-top:12px">
     <thead><tr><th>Snapshot</th><th>Size</th><th>Taken</th><th></th></tr></thead>

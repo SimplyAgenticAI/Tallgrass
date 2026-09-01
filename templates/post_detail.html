@@ -34,7 +34,7 @@
     {% if post.image_url %}
     <a class="detail-media" href="{{ post.permalink or post.source_url or '#' }}"
        target="_blank" rel="noopener noreferrer">
-      <img src="{{ post.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      <img src="{{ url_for('post_image', post_id=post.id) }}" alt="" loading="lazy">
     </a>
     {% endif %}
     {% if post.item_type == 'comment' %}

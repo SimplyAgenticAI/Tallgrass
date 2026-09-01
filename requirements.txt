@@ -3,3 +3,7 @@ gunicorn==23.0.0
 anthropic>=0.69.0
 openai>=1.54.0
 stripe>=11.0.0
+# Downscales captured post images before they are stored. Facebook photos
+# run 100-300KB; at 640px they are nearer 30KB, which is the difference
+# between keeping a few thousand pictures on a 1GB disk and tens of thousands.
+Pillow>=11.0.0
