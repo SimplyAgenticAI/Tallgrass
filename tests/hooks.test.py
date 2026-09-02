@@ -2,9 +2,9 @@
 
 The whole point of extracting hooks from the operator's own winning posts is
 that the number behind them is real. That only holds if a hook without a
-number can never look like one with a number — so these tests care most about
-the boundary: what gets in, what stays out, and what happens when a group has
-taught us nothing.
+number can never appear at all — so these tests care most about the boundary:
+what gets in, what stays out, and that a source with nothing measured offers
+nothing rather than a canned list wearing a label.
 
 Run: python tests/hooks.test.py
 """
@@ -116,32 +116,35 @@ def main():
           shape("We finished the roof on the north barn today."), "opening")
 
     print()
-    print("a group that has taught us nothing says so")
-    fallback = hooks.for_source([])
-    check("it is marked generic", fallback["generic"], True)
-    check("hooks are still offered", len(fallback["hooks"]) > 0, True)
-    check("every one is flagged",
-          all(h["generic"] for h in fallback["hooks"]), True)
-    check("and none of them claims a multiple",
-          all(h["multiple"] is None for h in fallback["hooks"]), True)
+    print("a source that has taught us nothing offers NOTHING")
+    # There used to be five archetypes here, labelled "generic". They were the
+    # thing this module exists to replace, printed on the page that replaces
+    # it — and a label does not turn a stranger's guess into evidence.
+    empty = hooks.for_source([])
+    check("no hooks at all", empty["hooks"], [])
+    check("and nothing claiming to be generic", empty["generic"], False)
 
     print()
-    print("evidence and archetypes are never mixed")
-    # A list that is half real and half invented invites the reader to treat
-    # the invented half as measured too.
+    print("every hook that IS shown carries a real number")
     real = hooks.for_source([scored("A genuinely strong opening line here.",
                                     multiple=8.0)])
-    check("real hooks are not marked generic", real["generic"], False)
-    check("no archetype is appended",
-          any(h["generic"] for h in real["hooks"]), False)
-    check("and every hook carries its number",
+    check("the measured one is offered", len(real["hooks"]), 1)
+    check("no archetype is appended", len(real["hooks"]), 1)
+    check("and it carries its number",
           all(h["multiple"] is not None for h in real["hooks"]), True)
+    check("nothing is flagged generic",
+          any(h.get("generic") for h in real["hooks"]), False)
+
+    print()
+    print("the archetypes are gone from the module entirely")
+    check("no GENERIC_HOOKS to fall back to",
+          hasattr(hooks, "GENERIC_HOOKS"), False)
 
     print()
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1
-    print("every hook shown is either measured or marked")
+    print("every hook shown is measured, or there are none")
     return 0
 
 

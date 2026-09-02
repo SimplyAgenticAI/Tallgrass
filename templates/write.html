@@ -113,39 +113,37 @@
       {% endif %}
     </section>
 
-    {# 3 — the differentiator. Real openings with real numbers, or clearly
-       marked archetypes. Never both. #}
+    {# 3 — the differentiator. Real openings with real numbers, or nothing.
+       There is no archetype fallback: printing a canned list when there is no
+       evidence puts back the exact thing this page replaces. #}
     <section class="glass panel reveal spotlight">
       <div class="panel-head">
         <h2><span class="step-n">3</span> Opening line</h2>
         <span class="sub">Optional — leave it and the model chooses.</span>
       </div>
 
-      {% if hook_set.generic %}
-      <p class="hook-note is-generic">
-        <b>These are generic.</b> Nothing in {{ source.name }} is scored yet,
-        so none of these openings is backed by your data — they're the standard
-        archetypes, shown so the page still works. Capture more of this {{ source.kind }}
-        and they'll be replaced by lines that actually won here.
+      {% if not hook_set.hooks %}
+      {# Nothing measured here yet. Saying so beats filling the gap with
+         archetypes, which is what this page exists to replace. #}
+      <p class="hook-note">
+        No post in {{ source.name }} has cleared its median by enough to be
+        worth copying an opening from yet. Capture more of this
+        {{ source.kind }} and real openings will appear here, each with the
+        number it earned. Until then the model chooses its own.
       </p>
       {% else %}
       <p class="hook-note">
-        Each of these opened a post that beat this {{ source.kind }}'s median. The number
-        is what that post actually did.
+        Each of these opened a post that beat this {{ source.kind }}'s median.
+        The number is what that post actually did.
       </p>
       {% endif %}
 
       <div class="hook-picker">
         {% for h in hook_set.hooks %}
-        <button class="hook-card{{ ' is-generic' if h.generic }}"
-                data-hook="{{ h.text }}">
+        <button class="hook-card" data-hook="{{ h.text }}">
           <span class="hook-top">
             <span class="hook-shape">{{ shape_labels.get(h.shape, h.shape) }}</span>
-            {% if h.multiple is not none %}
             <span class="hook-mult">{{ h.multiple }}×</span>
-            {% else %}
-            <span class="hook-mult is-none">generic</span>
-            {% endif %}
           </span>
           <span class="hook-text">{{ h.text }}</span>
         </button>

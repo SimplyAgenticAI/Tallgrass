@@ -2732,10 +2732,6 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 /* The hook picker. A measured hook and a generic one must never look alike —
    the number is the whole difference between evidence and a guess. */
 .hook-note { font-size: 12px; color: var(--text-faint); margin: 0 0 12px; line-height: 1.6; }
-.hook-note.is-generic {
-  padding: 10px 12px; border-radius: var(--r-md); color: var(--text-muted);
-  background: rgba(217,180,95,0.09); border: 1px solid rgba(217,180,95,0.34);
-}
 
 .hook-picker { display: flex; flex-direction: column; gap: 8px; }
 .hook-card {
@@ -2758,13 +2754,6 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   margin-left: auto; font-size: 12px; font-weight: 750;
   color: var(--emerald-bright); font-variant-numeric: tabular-nums;
 }
-/* Generic hooks carry no number, and say so in the colour used for sample
-   data elsewhere in the app rather than the one used for real scores. */
-.hook-mult.is-none {
-  font-size: 9px; font-weight: 600; letter-spacing: 0.6px;
-  text-transform: uppercase; color: rgba(217,180,95,0.9);
-}
-.hook-card.is-generic { border-style: dashed; }
 .hook-text { font-size: 13px; color: var(--text); line-height: 1.5; }
 .hook-own { border-style: dashed; }
 .hook-own-input {

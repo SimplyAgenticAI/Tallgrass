@@ -10,9 +10,12 @@ outperform, in the reader's own groups, with a measured multiple attached. So
 a hook here is not an archetype. It is the first line of a post that beat its
 group's median by 12.4x, shown with the 12.4x.
 
-Where a group has no scored posts there is nothing to learn from, and the
-archetypes below are offered instead — labelled as generic, because a
-suggestion nobody's data supports must not look like one it does.
+Where a source has taught us nothing yet, this offers NOTHING. There was once
+a fallback list of archetypes here, shown with a "generic" label — and it was
+the very thing this module exists to replace, put back on the page with an
+apology attached. A label does not make a stranger's guess into evidence. The
+page says there is nothing measured yet, and the model picks its own opening,
+which is what it already did whenever nobody chose one.
 """
 
 import re
@@ -60,20 +63,6 @@ SHAPE_LABELS = {
     "number": "Number",
     "opening": "Opening",
 }
-
-
-# Offered only when a group has nothing to learn from, and always labelled as
-# generic. These are the industry's standard archetypes and they are included
-# so the page still works on day one — not because anything here says they
-# work for this reader.
-GENERIC_HOOKS = (
-    {"shape": "curiosity", "text": "Nobody talks about this, but…"},
-    {"shape": "contrarian", "text": "The advice everyone repeats is backwards."},
-    {"shape": "story", "text": "A year ago I was doing this completely wrong."},
-    {"shape": "question", "text": "Why does nobody mention this part?"},
-    {"shape": "warning", "text": "Before you try this, read the next line."},
-    {"shape": "list", "text": "Three things that changed how I work."},
-)
 
 
 def _shape_of(text):
@@ -164,18 +153,21 @@ def from_posts(scored, limit=8):
 
 
 def for_source(scored, limit=8):
-    """What the picker should show: real hooks, or clearly-marked generics.
+    """What the picker should show. Measured openings, or nothing at all.
 
-    Never mixed. A list that is half evidence and half archetype invites the
-    reader to treat the archetypes as evidence too, which is the exact
-    confusion the labelling exists to prevent.
+    There used to be a fallback: five standard archetypes — "Nobody talks
+    about this, but…" and friends — shown with a "generic" label when a source
+    had taught us nothing yet.
+
+    They are gone, and the reason is the whole product. Every tool in this
+    category ships a canned list of hooks to every customer; this one exists
+    because it can show you the openings that actually beat a median in your
+    own rooms. Printing archetypes when there is no evidence puts the thing
+    being replaced back on the page, and a label does not undo that — it still
+    trains a reader to treat a stranger's guess as part of the product.
+
+    So when there is nothing measured, the picker does not appear and the page
+    says why. The model chooses its own opening in that case, which is what it
+    already did whenever nobody picked one.
     """
-    real = from_posts(scored, limit=limit)
-    if real:
-        return {"hooks": real, "generic": False}
-
-    return {
-        "hooks": [dict(h, multiple=None, post_id=None, generic=True)
-                  for h in GENERIC_HOOKS],
-        "generic": True,
-    }
+    return {"hooks": from_posts(scored, limit=limit), "generic": False}

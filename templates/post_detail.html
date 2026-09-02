@@ -180,35 +180,23 @@
       </label>
       {% endfor %}
     </div>
-    {# The same evidence-backed openings the Write page offers.
-       Two doorways reached one engine and each was missing what the other had:
-       this one had the graphic buttons and no hook picker, Write had the hook
-       picker and no graphic buttons. Which feature you got depended on how you
-       arrived. #}
+    {# Openings that actually beat this source's median. Shown only when
+       there are some: a fallback list of archetypes used to appear here, and
+       it was the thing this product replaces, printed on the product's own
+       page. With nothing measured the model picks its own opening, which is
+       what it does whenever nobody chooses one. #}
     {% if hook_set and hook_set.hooks %}
     <div class="remix-hooks">
       <span class="remix-steer-label">Opening line (optional)</span>
-      {% if hook_set.generic %}
-      <p class="hook-note is-generic">
-        <b>These are generic.</b> Nothing in this source is scored yet, so none
-        of these is backed by your data.
-      </p>
-      {% else %}
       <p class="hook-note">
         Each opened a post that beat this source's median.
       </p>
-      {% endif %}
       <div class="hook-picker">
         {% for h in hook_set.hooks[:5] %}
-        <button type="button" class="hook-card{{ ' is-generic' if h.generic }}"
-                data-hook="{{ h.text }}">
+        <button type="button" class="hook-card" data-hook="{{ h.text }}">
           <span class="hook-top">
             <span class="hook-shape">{{ shape_labels.get(h.shape, h.shape) }}</span>
-            {% if h.multiple is not none %}
             <span class="hook-mult">{{ h.multiple }}×</span>
-            {% else %}
-            <span class="hook-mult is-none">generic</span>
-            {% endif %}
           </span>
           <span class="hook-text">{{ h.text }}</span>
         </button>
