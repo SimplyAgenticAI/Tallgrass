@@ -158,13 +158,33 @@ def build(source_ids, user_id, note="", limit=DEFAULT_POSTS_PER_SOURCE):
 
             posts = []
             undated = 0
+            from_capture = 0
+            unparsed = []
             for row in rows:
                 hours = _hours_since(row["posted_at"])
+
                 if hours is None:
-                    # Without a time there is no age to reconstruct, and a post
-                    # dated to the moment of signup is a lie of a different
-                    # kind. Skipped rather than guessed.
+                    # posted_at is nullable — the extension stores null when it
+                    # cannot read a timestamp off the page, which happens on
+                    # some profile layouts. Falling back to when WE saw the
+                    # post is not the same fact, but it is a real one and it is
+                    # an upper bound on the post's age.
+                    #
+                    # This whole source used to be refused over it: a profile
+                    # whose timestamps did not extract exported nothing and
+                    # reported "no readable post dates", which is true and
+                    # useless when the posts themselves are perfectly good.
+                    hours = _hours_since(row["captured_at"])
+                    if hours is not None:
+                        from_capture += 1
+
+                if hours is None:
                     undated += 1
+                    if len(unparsed) < 3:
+                        # The raw values, so the reason can be diagnosed rather
+                        # than guessed at from a count.
+                        unparsed.append("posted_at=%r captured_at=%r"
+                                        % (row["posted_at"], row["captured_at"]))
                     continue
 
                 post = {
@@ -216,8 +236,12 @@ def build(source_ids, user_id, note="", limit=DEFAULT_POSTS_PER_SOURCE):
                     "usable": len(posts),
                     "undated": undated,
                     "reason": ("nothing captured yet" if not rows else
-                               "no readable post dates" if undated and not posts
-                               else "too few posts to find a median"),
+                               "no usable dates on any post" if undated and not posts
+                               else "only %d scoreable posts, needs %d"
+                                    % (len(posts), outliers_min_sample())),
+                    # Empty unless something genuinely would not parse. A count
+                    # says a thing failed; these say what it was.
+                    "samples": unparsed,
                 })
                 continue
 
@@ -227,6 +251,11 @@ def build(source_ids, user_id, note="", limit=DEFAULT_POSTS_PER_SOURCE):
                 "name": source["name"] or "",
                 "url": source["url"] or "",
                 "member_count": source["member_count"] or 0,
+                # How many of these are aged from when we saw them rather than
+                # when they were posted. Surfaced rather than buried: it is the
+                # difference between "posted 3 days ago" meaning the post's own
+                # age and meaning the age of your scan.
+                "from_capture": from_capture,
                 "posts": posts,
             })
 
@@ -339,7 +368,10 @@ def summary(snapshot=None):
         "note": snapshot.get("note", ""),
         "sources": len(sources),
         "posts": len(posts),
-        "images": sum(1 for p in posts if p.get("image")),
+        # A published snapshot carries markers; a committed one still carries
+        # the bytes. Either counts as having a picture.
+        "images": sum(1 for p in posts if p.get("image") or p.get("image_ref")),
+        "from_capture": sum(s.get("from_capture", 0) for s in sources),
         "names": sorted({s.get("name", "") for s in sources if s.get("name")}),
     }
 

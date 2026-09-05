@@ -246,6 +246,58 @@ def main():
     check("  with a reason", mixed["skipped"][0]["reason"], "nothing captured yet")
 
     print()
+    print("a source whose posts have NO dates still works")
+    # posted_at is nullable: the extension stores null when it cannot read a
+    # timestamp off the page, which happens on some profile layouts. A whole
+    # profile used to be refused over it — "no readable post dates", true and
+    # useless when the posts themselves are perfectly good. Their age now
+    # comes from when the scan ran, which is a different fact but a real one.
+    with db.get_db() as conn:
+        undated_id = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) "
+            "VALUES (?, 'profile:undated', 'profile', 'No Timestamps')",
+            (boss["id"],)).lastrowid
+        for index in range(10):
+            conn.execute(
+                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
+                "post_type, posted_at, captured_at, likes, engagement_read, "
+                "is_demo) VALUES (?, ?, ?, 'A dateless but real post.', "
+                "'text', NULL, datetime('now', ?), ?, 1, 0)",
+                (boss["id"], "undated-%d" % index, undated_id,
+                 "-%d hours" % (index + 1), 60 + index * 7))
+
+    rescued = demo_snapshot.build([undated_id], boss["id"])
+    check("the source is kept, not refused", len(rescued["sources"]), 1)
+    check("  with all its posts", len(rescued["sources"][0]["posts"]), 10)
+    check("  every one carrying an age",
+          all(p["hours_ago"] is not None
+              for p in rescued["sources"][0]["posts"]), True)
+    check("  and it says where the ages came from",
+          rescued["sources"][0]["from_capture"], 10)
+    check("nothing was skipped", rescued["skipped"], [])
+
+    print()
+    print("but a post with no date at ALL is reported with the raw values")
+    # Belt and braces: if captured_at were somehow unusable too, the report has
+    # to say what it actually saw rather than just that something failed.
+    with db.get_db() as conn:
+        broken_id = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) "
+            "VALUES (?, 'group:nodates', 'group', 'No Dates At All')",
+            (boss["id"],)).lastrowid
+        conn.execute(
+            "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
+            "post_type, posted_at, captured_at, likes, engagement_read) "
+            "VALUES (?, 'broken-1', ?, 'b', 'text', 'not a date', "
+            "'also not a date', 50, 1)", (boss["id"], broken_id))
+    broken = demo_snapshot.build([broken_id], boss["id"])
+    check("it is skipped", len(broken["skipped"]), 1)
+    check("  saying no usable dates",
+          broken["skipped"][0]["reason"], "no usable dates on any post")
+    check("  and showing what it saw",
+          "not a date" in (broken["skipped"][0]["samples"] or [""])[0], True)
+
+    print()
     print("saving publishes it — no download, no commit, no deploy")
     demo_snapshot.LIVE_PATH = os.path.join(tmp, "live.json")
     published, skipped = demo_snapshot.publish([1, empty_id], boss["id"], limit=8)

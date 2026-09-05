@@ -658,9 +658,26 @@
       if (data.skipped && data.skipped.length) {
         for (var i = 0; i < data.skipped.length; i++) {
           var s = data.skipped[i];
-          lines.push("Skipped " + s.name + " — " + s.reason +
-                     " (" + s.usable + " usable).");
+          var line = "Skipped " + s.name + " — " + s.reason +
+                     " (" + s.usable + " usable";
+          if (s.undated) line += ", " + s.undated + " with no date";
+          line += ").";
+          /* The raw values, when something would not parse. A count says a
+             thing failed; this says what it was, which is the difference
+             between reporting a problem and being able to fix it. */
+          if (s.samples && s.samples.length) {
+            line += " Values seen: " + s.samples.join("; ") + ".";
+          }
+          lines.push(line);
         }
+      }
+      /* Ages taken from when the scan ran rather than when the post went up.
+         Worth saying: it is the difference between "posted 3 days ago"
+         meaning the post's own age and meaning the age of your scan. */
+      if (data.snapshot && data.snapshot.from_capture) {
+        lines.push(data.snapshot.from_capture +
+                   " of those had no post date, so their age comes from when " +
+                   "you scanned them.");
       }
       return lines.join(" ");
     }
