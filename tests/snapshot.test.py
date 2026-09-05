@@ -78,13 +78,13 @@ def main():
         author = db.upsert_author(conn, name="The Page Itself")
         # A believable spread: mostly ordinary, one clear breakout. The exact
         # numbers matter because the whole point is that they survive the trip.
-        counts = [40, 55, 38, 61, 44, 50, 47, 58, 42, 900]
+        counts = [900, 55, 38, 61, 44, 50, 47, 58, 42, 40]
         for index, likes in enumerate(counts):
             posted = now - timedelta(days=index + 1, hours=3)
             db.upsert_post(conn, 1, author, {
                 "fb_post_id": "real-%d" % index,
                 "body": "A real post, number %d, with real words in it." % index,
-                "post_type": "photo" if index == 9 else "text",
+                "post_type": "photo" if index == 0 else "text",
                 "posted_at": posted.strftime("%Y-%m-%dT%H:%M:%S"),
                 "likes": likes, "comments": likes // 8, "shares": likes // 20,
                 "engagement_read": 1,
@@ -95,7 +95,7 @@ def main():
     # real one would be by the time anybody exported it.
     with db.get_db() as conn:
         breakout_id = conn.execute(
-            "SELECT id FROM posts WHERE fb_post_id = 'real-9'").fetchone()["id"]
+            "SELECT id FROM posts WHERE fb_post_id = 'real-0'").fetchone()["id"]
     images.store(breakout_id, a_photo())
     check("its picture is cached", bool(images.cached(breakout_id)), True)
 
@@ -121,7 +121,7 @@ def main():
 
     print()
     print("a snapshot on disk replaces the written set")
-    path = os.path.join(tmp, "demo_snapshot.json")
+    path = os.path.join(tmp, "committed_snapshot.json")
     demo_snapshot.save(snapshot, path)
     demo_snapshot.SNAPSHOT_PATH = path
     check("it loads back", bool(demo_snapshot.load()), True)
@@ -227,7 +227,72 @@ def main():
     check("so is a format from the future", demo_snapshot.load(), None)
 
     print()
+    print("a source with nothing in it is REPORTED, not silently dropped")
+    # This is the bug the first real export had: five sources were chosen, four
+    # were empty, three posts came out, and it looked like it had worked. A
+    # snapshot under MIN_SAMPLE seeds a feed that ranks nothing.
+    demo_snapshot.SNAPSHOT_PATH = path
+    with db.get_db() as conn:
+        # Not a fixed id — the accounts seeded above already hold sources, so
+        # whichever number this lands on is the one to use.
+        empty_id = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) "
+            "VALUES (?, 'group:empty', 'group', 'Never Scanned')",
+            (boss["id"],)).lastrowid
+    mixed = demo_snapshot.build([1, empty_id], boss["id"])
+    check("the usable source is kept", len(mixed["sources"]), 1)
+    check("the empty one is reported", len(mixed["skipped"]), 1)
+    check("  by name", mixed["skipped"][0]["name"], "Never Scanned")
+    check("  with a reason", mixed["skipped"][0]["reason"], "nothing captured yet")
+
+    print()
+    print("saving publishes it — no download, no commit, no deploy")
+    demo_snapshot.LIVE_PATH = os.path.join(tmp, "live.json")
+    published, skipped = demo_snapshot.publish([1, empty_id], boss["id"], limit=8)
+    check("it reports what it saved", published["sources"], 1)
+    check("  honouring the per-source cap", published["posts"], 8)
+    check("  and still names what it skipped", len(skipped), 1)
+    check("the file is on the disk", os.path.isfile(demo_snapshot.LIVE_PATH), True)
+
+    # The pictures were written at save time, not left as base64 for the first
+    # signup to pay for.
+    saved = json.load(io.open(demo_snapshot.LIVE_PATH, encoding="utf-8"))
+    carried = [p for s in saved["sources"] for p in s["posts"]]
+    check("no image bytes are left in the file",
+          any("image" in p for p in carried), False)
+    check("but a picture is still referenced",
+          any(p.get("image_ref") for p in carried), True)
+
+    fifth, _ = auth.create_user("fifth@example.com", "a-long-enough-pass",
+                                "alderway")
+    check("and a new account is seeded from it",
+          demo_data.seed_demo_data(fifth["id"]), 8)
+    with db.get_db() as conn:
+        has_picture = conn.execute(
+            "SELECT COUNT(*) AS n FROM posts WHERE user_id = ? "
+            "AND image_url LIKE 'demo:%'", (fifth["id"],)).fetchone()["n"]
+    check("  pictures and all", has_picture > 0, True)
+
+    print()
+    print("publishing nothing usable refuses rather than emptying the demo")
+    # Saving an empty snapshot would replace a working sample set with one that
+    # ranks nothing, which is worse than changing nothing at all.
+    empty, why = demo_snapshot.publish([empty_id], boss["id"])
+    check("it declines", empty, None)
+    check("  and says which source and why", why[0]["name"], "Never Scanned")
+    check("the previous snapshot is untouched",
+          demo_snapshot.summary()["posts"], 8)
+
+    print()
+    print("and it can be put back")
+    check("clearing removes it", demo_snapshot.clear(), True)
+    demo_snapshot.SNAPSHOT_PATH = os.path.join(tmp, "nothing-here.json")
+    check("  falling back to the written set",
+          demo_snapshot.load(), None)
+
+    print()
     print("the export is the operator's own captures and nobody else's")
+    demo_snapshot.SNAPSHOT_PATH = path
     demo_snapshot.SNAPSHOT_PATH = path
     check("another account's source exports nothing",
           demo_snapshot.build([1], reader["id"])["sources"], [])

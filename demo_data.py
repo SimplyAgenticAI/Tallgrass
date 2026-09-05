@@ -169,9 +169,15 @@ def _seed_from_snapshot(snapshot, user_id):
                 # Written once to a shared directory and referenced by hash.
                 # Copying ninety pictures into every account's image cache is
                 # the whole disk by a few hundred users.
-                row["image_url"] = (snap._store_image(post["image"])
-                                    if post.get("image") else None)
+                #
+                # A published snapshot already wrote its pictures and carries
+                # the marker; a committed one still carries the bytes and gets
+                # them written on first use.
+                row["image_url"] = post.get("image_ref") or (
+                    snap._store_image(post["image"]) if post.get("image")
+                    else None)
                 row.pop("image", None)
+                row.pop("image_ref", None)
                 row.pop("hours_ago", None)
 
                 if db.upsert_post(conn, source_id, author_id, row,

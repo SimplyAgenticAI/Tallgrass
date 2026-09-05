@@ -1867,6 +1867,48 @@ def post_image(post_id):
     return response
 
 
+@app.route("/api/admin/demo-sample", methods=["POST"])
+@auth.login_required
+def api_admin_demo_sample():
+    """Make the ticked sources the sample set for new accounts, immediately.
+
+    No download, no commit, no deploy. The snapshot goes onto the persistent
+    disk, which survives all three — needing a git push to change which posts
+    a new user sees was three steps too many for something you want to try,
+    look at and adjust.
+    """
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+
+    payload = request.get_json(silent=True) or {}
+
+    if payload.get("clear"):
+        demo_snapshot.clear()
+        return jsonify({"ok": True, "cleared": True,
+                        "snapshot": demo_snapshot.summary()})
+
+    ids = [int(i) for i in payload.get("source_ids", []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({"ok": False,
+                        "error": "Tick at least one group or page first."}), 400
+
+    summary, skipped = demo_snapshot.publish(
+        ids, _uid(),
+        note=(payload.get("note") or "").strip(),
+        limit=payload.get("limit") or demo_snapshot.DEFAULT_POSTS_PER_SOURCE)
+
+    if not summary:
+        # Every chosen source was unusable. Saying which, and why, beats
+        # writing an empty snapshot and letting new accounts discover it.
+        return jsonify({"ok": False, "skipped": skipped,
+                        "error": "None of those has enough captured posts to "
+                                 "score. Scan them first."}), 400
+
+    log.info("demo sample published: %d sources, %d posts",
+             summary["sources"], summary["posts"])
+    return jsonify({"ok": True, "snapshot": summary, "skipped": skipped})
+
+
 @app.route("/admin/demo-snapshot", methods=["POST"])
 @auth.login_required
 def admin_demo_snapshot():
@@ -2852,6 +2894,9 @@ def admin():
         # exported into the sample set new accounts are seeded with.
         my_sources=[s for s in _sources_with_stats() if not s["is_demo"]],
         snapshot=demo_snapshot.summary(),
+        min_sample=outliers.MIN_SAMPLE,
+        default_per_source=demo_snapshot.DEFAULT_POSTS_PER_SOURCE,
+        max_per_source=demo_snapshot.MAX_POSTS_PER_SOURCE,
         # The provider's own words about the last failed send, if any.
         mail_error=db.get_setting(MAIL_ERROR_KEY, ""),
         # And the last thing that crashed, which the extension can only ever

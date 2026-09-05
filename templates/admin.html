@@ -171,55 +171,99 @@
   {% endif %}
 
   {% if my_sources %}
-  <form method="post" action="{{ url_for('admin_demo_snapshot') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="fine" style="margin-bottom:10px">
+    Tick what new accounts should see, then Save. It takes effect on the next
+    signup — nothing to download, commit or deploy.
+  </div>
 
-    <div class="fine" style="margin-bottom:10px">
-      Pick the sources to freeze. <b>Every post of a chosen source is
-      exported, not just the good ones</b> — a multiple is measured against
-      its source's median, so a snapshot of only the winners has no baseline
-      left to beat.
-    </div>
-
-    <div style="display:grid;gap:7px;margin-bottom:12px">
-      {% for s in my_sources %}
-      <label style="display:flex;gap:9px;align-items:baseline">
-        <input type="checkbox" name="source_id" value="{{ s.id }}">
-        <span>
-          {{ s.name }}
-          <span class="fine">
-            · <span class="kind-chip">{{ s.kind }}</span>
-            {{ s.post_count }} posts
-            {% if s.stats and s.stats.top_multiple is not none %}
-              · best {{ s.stats.top_multiple }}×
-            {% endif %}
-          </span>
+  <div style="display:grid;gap:7px;margin-bottom:12px">
+    {% for s in my_sources %}
+    {# Whether a source can carry a demo at all is knowable here, so it is
+       said here. A source under the sample floor has no median, and seeding
+       it produces a feed that ranks nothing. #}
+    <label style="display:flex;gap:9px;align-items:baseline">
+      <input type="checkbox" class="sample-source" value="{{ s.id }}"
+             {{ 'disabled' if s.post_count < min_sample }}>
+      <span>
+        {{ s.name }}
+        <span class="fine">
+          · <span class="kind-chip">{{ s.kind }}</span>
+          {{ s.post_count }} posts
+          {% if s.stats and s.stats.top_multiple is not none %}
+            · best {{ s.stats.top_multiple }}×
+          {% endif %}
+          {% if s.post_count < min_sample %}
+            · <b>too few to score — needs {{ min_sample }}+, scan it first</b>
+          {% endif %}
         </span>
-      </label>
-      {% endfor %}
-    </div>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
 
-    <label class="fine" style="display:block;margin-bottom:10px">
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+    <label class="fine">
+      Posts from each
+      <input type="number" id="sample-limit" min="8" max="{{ max_per_source }}"
+             value="{{ default_per_source }}"
+             style="width:80px;display:block;margin-top:4px">
+    </label>
+    <label class="fine" style="flex:1;min-width:200px">
       Note (optional, shown here only)
-      <input type="text" name="note" maxlength="200"
+      <input type="text" id="sample-note" maxlength="200"
              placeholder="e.g. three public pages, captured September"
              style="width:100%;margin-top:4px">
     </label>
+  </div>
 
-    <button class="btn btn-ghost" type="submit">Export snapshot</button>
-    <p class="fine" style="margin:10px 0 0">
-      Downloads <code>demo_snapshot.json</code>. Put it in the project root,
-      commit it, and deploy — new accounts are seeded from it from then on.
-      Pictures ride along in the file and are written once, shared by every
-      account rather than copied per user.
-    </p>
-    <p class="fine" style="margin:8px 0 0">
-      <b>Prefer public Pages to private groups.</b> A Page post was published
-      to the world by a business. A private group post was written by a named
-      person to a closed audience, and seeding it hands that audience to every
-      stranger who signs up.
-    </p>
-  </form>
+  {# The cost of the choice, before it is made rather than after. Every seeded
+     post is a row in EVERY new account, so a generous per-source number is
+     multiplied by every person who ever signs up. #}
+  <p class="fine" id="sample-estimate" style="margin:0 0 12px"></p>
+
+  <div style="display:flex;gap:9px;flex-wrap:wrap">
+    <button class="btn btn-primary" id="sample-save" type="button">Save</button>
+    {% if snapshot %}
+    <button class="btn btn-ghost" id="sample-clear" type="button">
+      Back to the written set
+    </button>
+    {% endif %}
+  </div>
+  <div class="msg-line" id="sample-msg"></div>
+
+  <p class="fine" style="margin:12px 0 0">
+    Posts are taken by <b>recency, not by score</b>. Taking only the best ones
+    would leave no baseline for them to beat and rank every one of them as
+    unremarkable.
+  </p>
+  <p class="fine" style="margin:8px 0 0">
+    <b>Prefer public Pages to private groups.</b> A Page post was published
+    to the world by a business. A private group post was written by a named
+    person to a closed audience, and seeding it hands that audience to every
+    stranger who signs up.
+  </p>
+
+  <details style="margin-top:12px">
+    <summary class="fine">Also export a copy to commit</summary>
+    <form method="post" action="{{ url_for('admin_demo_snapshot') }}"
+          style="margin-top:9px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% for s in my_sources %}
+      <label class="fine" style="display:block">
+        <input type="checkbox" name="source_id" value="{{ s.id }}">
+        {{ s.name }}
+      </label>
+      {% endfor %}
+      <button class="btn btn-ghost" type="submit" style="margin-top:8px">
+        Download snapshot
+      </button>
+      <p class="fine" style="margin:8px 0 0">
+        Saving above is enough for this instance. This is only for keeping a
+        copy in the repository, which is the version that survives losing the
+        disk.
+      </p>
+    </form>
+  </details>
   {% else %}
   <p class="fine" style="margin:0">
     You haven't captured anything yet, so there is nothing to freeze. Scan a

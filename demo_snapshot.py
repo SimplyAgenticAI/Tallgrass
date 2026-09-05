@@ -45,9 +45,18 @@ import db
 
 log = logging.getLogger("tallgrass.demo")
 
-# Beside the code, not on the data disk: this is content that ships with a
-# deploy, the same as a template. A file on the persistent disk would exist on
-# whichever instance happened to write it and nowhere else.
+# Written by the Save button on the admin page, onto the persistent disk.
+#
+# This is the one that gets used in practice. The original design made the
+# operator download a file, commit it and deploy — three steps and a git push
+# to change which posts new users see, which is three steps too many for
+# something you want to try, look at, and adjust. The disk survives deploys, so
+# there is no reason it had to go through the repository at all.
+LIVE_PATH = os.path.join(db.DATA_DIR, "demo_snapshot.json")
+
+# Beside the code: a snapshot committed to the repository, which every deploy
+# carries. Still supported and still exportable, because it is the only version
+# that survives losing the disk — but it is now the fallback, not the path.
 SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "demo_snapshot.json")
 
@@ -62,10 +71,29 @@ MARKER = "demo:"
 
 FORMAT_VERSION = 1
 
-# A snapshot is committed to the repository, so it has to stay a sane size. At
-# roughly 30KB a picture this is a few megabytes, which is fine; ten times that
-# is not something to put in git.
-MAX_POSTS_PER_SOURCE = 120
+# How many posts to take from each chosen source.
+#
+# Not a curation limit — a disk one, and the arithmetic is worth writing down
+# because it is easy to pick a number that quietly costs a hundred megabytes.
+# Every seeded post is a ROW IN EACH NEW ACCOUNT, at roughly 1.5KB with its
+# body. Four sources at 100 posts is 600KB per signup, which is 150MB by the
+# time there are 250 accounts — on a 1GB disk already holding a 400MB image
+# cache and seven backups.
+#
+# 40 from each of three or four sources is comfortably past MIN_SAMPLE, gives
+# a median with real spread behind it, and costs a quarter of that.
+#
+# What it must NOT become is a selection on engagement. Posts are taken by
+# RECENCY, so the distribution is whatever that source actually looks like.
+# Taking the best 40 would leave no baseline for them to beat and score every
+# one of them as unremarkable.
+DEFAULT_POSTS_PER_SOURCE = 40
+MAX_POSTS_PER_SOURCE = 200
+
+# Roughly the per-post cost of a seeded row, for the estimate on the admin
+# page. Measured against real captures rather than guessed: bodies dominate.
+BYTES_PER_POST = 1500
+
 MAX_IMAGE_BYTES = 200 * 1024
 
 
@@ -86,18 +114,26 @@ def _hours_since(stamp):
 
 # --------------------------------------------------------------------- export
 
-def build(source_ids, user_id, note=""):
+def build(source_ids, user_id, note="", limit=DEFAULT_POSTS_PER_SOURCE):
     """Freeze these sources into a snapshot dict. Operator-only.
 
     Reads the operator's OWN captures — the caller is responsible for the
     sources belonging to them, and app.py scopes the query it passes here.
+
+    `limit` is per source and applied by RECENCY, never by engagement. Taking
+    the best N would be selecting on the very thing the score measures against
+    the median, leaving no baseline for them to beat.
     """
     import images
+
+    limit = max(1, min(int(limit or DEFAULT_POSTS_PER_SOURCE),
+                       MAX_POSTS_PER_SOURCE))
 
     snapshot = {
         "format": FORMAT_VERSION,
         "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "note": note or "",
+        "skipped": [],
         "sources": [],
     }
 
@@ -118,15 +154,17 @@ def build(source_ids, user_id, note=""):
                 ORDER BY p.posted_at DESC
                 LIMIT ?
                 """,
-                (source_id, user_id, MAX_POSTS_PER_SOURCE)).fetchall()
+                (source_id, user_id, limit)).fetchall()
 
             posts = []
+            undated = 0
             for row in rows:
                 hours = _hours_since(row["posted_at"])
                 if hours is None:
                     # Without a time there is no age to reconstruct, and a post
                     # dated to the moment of signup is a lie of a different
                     # kind. Skipped rather than guessed.
+                    undated += 1
                     continue
 
                 post = {
@@ -163,6 +201,26 @@ def build(source_ids, user_id, note=""):
 
                 posts.append(post)
 
+            # A source that contributes nothing is not quietly dropped.
+            #
+            # It was, and the first export produced three posts across five
+            # chosen sources — four of them empty — which would have seeded
+            # every new account with less than MIN_SAMPLE and a feed that
+            # ranked nothing. Silence made that look like success. The reason
+            # travels with the result now, so the admin page can say which
+            # source needs scanning and why.
+            if len(posts) < outliers_min_sample():
+                snapshot["skipped"].append({
+                    "name": source["name"] or "",
+                    "kind": source["kind"] or "group",
+                    "usable": len(posts),
+                    "undated": undated,
+                    "reason": ("nothing captured yet" if not rows else
+                               "no readable post dates" if undated and not posts
+                               else "too few posts to find a median"),
+                })
+                continue
+
             snapshot["sources"].append({
                 "fb_id": source["fb_id"],
                 "kind": source["kind"] or "group",
@@ -175,10 +233,67 @@ def build(source_ids, user_id, note=""):
     return snapshot
 
 
+def outliers_min_sample():
+    """The floor a source has to clear to be worth seeding at all.
+
+    Imported lazily: outliers imports db, and this module is imported by
+    db-adjacent code at start-up.
+    """
+    import outliers
+    return outliers.MIN_SAMPLE
+
+
 def save(snapshot, path=None):
-    with io.open(path or SNAPSHOT_PATH, "w", encoding="utf-8", newline="\n") as fh:
+    target = path or SNAPSHOT_PATH
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    # Written beside and moved into place. A half-written snapshot that the
+    # next signup tries to read is a broken account, not a broken file.
+    temporary = target + ".part"
+    with io.open(temporary, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(snapshot, fh, ensure_ascii=False, indent=1)
-    return path or SNAPSHOT_PATH
+    os.replace(temporary, target)
+    return target
+
+
+def publish(source_ids, user_id, note="", limit=DEFAULT_POSTS_PER_SOURCE):
+    """Make these sources the sample set, now. Returns (summary, problems).
+
+    The whole round trip in one call: read the operator's captures, write the
+    pictures once into the shared directory, and put the snapshot on the disk
+    where signup reads it. No download, no commit, no deploy — the disk
+    survives those, and needing a git push to change which posts a new user
+    sees is three steps too many for something you want to adjust and look at.
+
+    Pictures are decoded and written HERE rather than at signup, so the first
+    person to sign up after a change does not pay for it.
+    """
+    snapshot = build(source_ids, user_id, note=note, limit=limit)
+
+    for source in snapshot["sources"]:
+        for post in source["posts"]:
+            if post.get("image"):
+                # Written now, and the base64 dropped: the file on disk is the
+                # copy that matters, and carrying both doubles the snapshot for
+                # nothing. What is kept is the marker pointing at it.
+                marker = _store_image(post["image"])
+                post.pop("image", None)
+                if marker:
+                    post["image_ref"] = marker
+
+    if not snapshot["sources"]:
+        return None, snapshot["skipped"]
+
+    save(snapshot, LIVE_PATH)
+    return summary(snapshot), snapshot["skipped"]
+
+
+def clear():
+    """Go back to the written sample set."""
+    try:
+        os.remove(LIVE_PATH)
+        return True
+    except OSError:
+        return False
 
 
 # --------------------------------------------------------------------- import
@@ -189,11 +304,18 @@ def load(path=None):
     None is a supported state, not an error: without a snapshot the built-in
     written set is used, which is what every install had before this existed.
     """
-    target = path or SNAPSHOT_PATH
-    try:
-        with io.open(target, encoding="utf-8") as fh:
-            snapshot = json.load(fh)
-    except (OSError, ValueError):
+    # The saved one wins. The committed one is the fallback that survives
+    # losing the disk, and the written set is the fallback behind that.
+    candidates = [path] if path else [LIVE_PATH, SNAPSHOT_PATH]
+    snapshot = None
+    for target in candidates:
+        try:
+            with io.open(target, encoding="utf-8") as fh:
+                snapshot = json.load(fh)
+            break
+        except (OSError, ValueError):
+            continue
+    if snapshot is None:
         return None
 
     if not isinstance(snapshot, dict) or not snapshot.get("sources"):

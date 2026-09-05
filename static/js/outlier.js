@@ -604,6 +604,114 @@
     });
   }
 
+  /* ------------------------------------- admin: sample data for new users */
+
+  var sampleSave = document.getElementById("sample-save");
+  if (sampleSave) {
+    var sampleMsg = document.getElementById("sample-msg");
+    var sampleLimit = document.getElementById("sample-limit");
+    var sampleNote = document.getElementById("sample-note");
+    var sampleClear = document.getElementById("sample-clear");
+    var sampleEstimate = document.getElementById("sample-estimate");
+
+    function ticked() {
+      var out = [];
+      var boxes = document.querySelectorAll(".sample-source:checked");
+      for (var i = 0; i < boxes.length; i++) out.push(boxes[i].value);
+      return out;
+    }
+
+    /* What this selection costs, before it is saved rather than after. Every seeded
+       post is a row in EVERY new account, so the number that matters is not
+       the snapshot's size but the per-signup one multiplied out. */
+    function estimate() {
+      if (!sampleEstimate) return;
+      var sources = ticked().length;
+      var per = parseInt(sampleLimit && sampleLimit.value, 10) || 40;
+      var posts = sources * per;
+      var perUser = Math.round((posts * 1500) / 1024);
+      var at250 = Math.round((posts * 1500 * 250) / (1024 * 1024));
+      sampleEstimate.textContent = sources
+        ? posts + " posts per new account — about " + perUser +
+          "KB each, roughly " + at250 + "MB once there are 250 accounts."
+        : "Tick a group or page to see what it costs.";
+    }
+
+    var boxes = document.querySelectorAll(".sample-source");
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].addEventListener("change", estimate);
+    }
+    if (sampleLimit) sampleLimit.addEventListener("input", estimate);
+    estimate();
+
+    function report(data) {
+      var lines = [];
+      if (data.snapshot) {
+        lines.push("Saved: " + data.snapshot.sources + " source" +
+                   (data.snapshot.sources === 1 ? "" : "s") + ", " +
+                   data.snapshot.posts + " posts, " +
+                   data.snapshot.images + " with pictures.");
+      }
+      /* Which sources contributed nothing, and why. Reporting only the
+         success is how an export of three posts across five chosen sources
+         looked like it had worked. */
+      if (data.skipped && data.skipped.length) {
+        for (var i = 0; i < data.skipped.length; i++) {
+          var s = data.skipped[i];
+          lines.push("Skipped " + s.name + " — " + s.reason +
+                     " (" + s.usable + " usable).");
+        }
+      }
+      return lines.join(" ");
+    }
+
+    sampleSave.addEventListener("click", function () {
+      var ids = ticked();
+      if (!ids.length) {
+        sampleMsg.className = "msg-line error";
+        sampleMsg.textContent = "Tick at least one group or page first.";
+        return;
+      }
+      sampleSave.disabled = true;
+      sampleMsg.className = "msg-line";
+      sampleMsg.textContent = "Reading those posts…";
+      post("/api/admin/demo-sample", {
+        source_ids: ids,
+        limit: parseInt(sampleLimit && sampleLimit.value, 10) || 40,
+        note: (sampleNote && sampleNote.value) || ""
+      })
+        .then(function (data) {
+          if (!data.ok) {
+            var why = data.error || "Could not save that";
+            var detail = report(data);
+            throw new Error(detail ? why + " " + detail : why);
+          }
+          sampleMsg.textContent = report(data) + " Reloading…";
+          toast("Sample data updated");
+          window.setTimeout(function () { window.location.reload(); }, 1200);
+        })
+        .catch(function (error) {
+          sampleMsg.className = "msg-line error";
+          sampleMsg.textContent = error.message;
+        })
+        .finally(function () { sampleSave.disabled = false; });
+    });
+
+    if (sampleClear) {
+      sampleClear.addEventListener("click", function () {
+        sampleClear.disabled = true;
+        sampleMsg.className = "msg-line";
+        sampleMsg.textContent = "Going back to the written set…";
+        post("/api/admin/demo-sample", { clear: true })
+          .then(function () {
+            toast("Back to the written sample set");
+            window.setTimeout(function () { window.location.reload(); }, 700);
+          })
+          .finally(function () { sampleClear.disabled = false; });
+      });
+    }
+  }
+
   /* ------------------------------------------------ admin: reset links */
 
   var resetIssue = document.getElementById("reset-issue");
