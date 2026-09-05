@@ -123,12 +123,17 @@ def config_summary():
     }
 
 
-def send(to, subject, body):
+def send(to, subject, body, headers=None):
     """Send one plain-text message. Returns (sent, error).
 
     Never raises. A failure here must not take down the page that triggered it
     — the caller has an operator-assisted fallback and needs to be told to use
     it, not handed a traceback.
+
+    `headers` exists for List-Unsubscribe, which is not decoration: onboarding
+    mail that carries it gets an unsubscribe control in Gmail's own interface,
+    and mail that does not gets reported as spam by people who cannot find one.
+    A sender reputation is much easier to keep than to repair.
     """
     if not is_configured():
         return False, "Email is not configured on this instance."
@@ -142,6 +147,9 @@ def send(to, subject, body):
     message["From"] = from_address()
     message["To"] = to
     message["Subject"] = subject
+    for name, value in (headers or {}).items():
+        if value:
+            message[name] = value
     message.set_content(body)
 
     try:

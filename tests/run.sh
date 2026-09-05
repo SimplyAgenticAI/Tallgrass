@@ -48,6 +48,8 @@ echo "--- frontend survives a bare page ---"
 node tests/frontend.test.js
 echo "--- what a new account sees ---"
 python tests/onboarding.test.py
+echo "--- onboarding email ---"
+python tests/outreach.test.py
 echo "--- streamed json ---"
 python tests/jsonstream.test.py
 echo "--- hooks from real posts ---"

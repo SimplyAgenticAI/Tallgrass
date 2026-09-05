@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email preferences — {{ app_name }}</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400..800&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/outlier.css') }}">
+</head>
+<body class="auth-body">
+
+<div class="ambient"></div>
+<canvas id="field" class="field" aria-hidden="true"></canvas>
+
+<main class="auth-shell">
+  <div class="glass auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="5" cy="18" r="1.8"/><circle cx="9" cy="16" r="1.8"/>
+          <circle cx="13" cy="17" r="1.8"/><circle cx="17" cy="15" r="1.8"/>
+          <circle class="mark-outlier" cx="19" cy="5" r="2.6"/>
+        </svg>
+      </span>
+      <span class="brand-text"><span class="brand-name">{{ app_name }}</span><span class="brand-parent">{{ app_parent }}</span></span>
+    </div>
+
+    {% if not ok %}
+    <h1>That link didn't work</h1>
+    <p class="auth-sub">
+      It may have been cut in half by an email client — they sometimes wrap
+      long links. You can turn these emails off from
+      <a href="{{ url_for('settings') }}">Settings</a> once you're signed in,
+      or just reply to any email from us and we'll do it.
+    </p>
+
+    {% elif resubscribed %}
+    <h1>Back on</h1>
+    <p class="auth-sub">
+      You'll get the occasional email about getting set up again. There are
+      only ever two, and never a newsletter.
+    </p>
+    <p class="auth-alt">
+      <a href="{{ url_for('unsubscribe', token=token) }}">Turn them off again</a>
+    </p>
+
+    {% else %}
+    <h1>Done — no more emails</h1>
+    <p class="auth-sub">
+      We won't email you about getting started again. Your account is
+      untouched and everything in it still works.
+    </p>
+    <p class="auth-sub">
+      Password resets still arrive, because those are ones you ask for at the
+      moment you need them.
+    </p>
+    {# A link in an email can be followed by a scanner rather than a person, so
+       the way back has to be right here rather than somewhere they have to
+       sign in to find. #}
+    <p class="auth-alt">
+      Didn't mean to?
+      <a href="{{ url_for('unsubscribe', token=token, resubscribe=1) }}">Undo this</a>
+    </p>
+    {% endif %}
+
+    <p class="auth-alt">
+      <a href="{{ url_for('feed') }}">Go to {{ app_name }}</a>
+    </p>
+
+    <p class="auth-legal">
+      <a href="{{ url_for('privacy') }}">Privacy</a> ·
+      <a href="{{ url_for('terms') }}">Terms</a>
+    </p>
+  </div>
+</main>
+
+<script src="{{ url_for('static', filename='js/field.js') }}"></script>
+</body>
+</html>

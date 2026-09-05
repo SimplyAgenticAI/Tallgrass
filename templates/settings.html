@@ -147,6 +147,29 @@
   </div>
 
   <div class="glass panel reveal">
+    <h2>Email</h2>
+    {% if email_optout %}
+    <p class="fine">
+      You've turned off emails about getting set up. Password resets still
+      arrive — those are ones you ask for.
+    </p>
+    <a class="btn btn-ghost"
+       href="{{ url_for('unsubscribe', token=unsubscribe_token, resubscribe=1) }}">
+      Turn them back on
+    </a>
+    {% else %}
+    <p class="fine">
+      There are only ever two: a welcome when you sign up, and one message if
+      you get stuck on the install. No newsletter, and nothing after that.
+    </p>
+    <a class="btn btn-ghost"
+       href="{{ url_for('unsubscribe', token=unsubscribe_token) }}">
+      Turn these off
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="glass panel reveal">
     <h2>Danger zone</h2>
     <p class="fine">
       Deletes every post, source, saved item and remix. Use this when captures

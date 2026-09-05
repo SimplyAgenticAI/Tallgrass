@@ -146,6 +146,59 @@
 </section>
 {% endif %}
 
+{# The onboarding email, and whether it is actually switched on.
+
+   Off by default and shown here because the state is invisible otherwise: an
+   operator who assumed it was running would conclude, correctly and uselessly,
+   that nobody replies to their emails. #}
+<section class="glass panel reveal" style="margin-bottom:20px">
+  <h2 style="margin:0 0 4px;font-size:16px">Onboarding email</h2>
+
+  {% if not outreach.configured %}
+  <p class="fine" style="margin:0">
+    <b>Nothing can be sent</b> — see the SMTP settings below. The welcome email
+    and the nudge both need it.
+  </p>
+  {% elif not outreach.enabled %}
+  <div class="auth-error" style="background:rgba(217,180,95,0.1);border-color:rgba(217,180,95,0.4);margin:0">
+    <b>The nudge sweep is OFF.</b>
+    Welcome emails still go out to new signups — those go to somebody who just
+    signed up and is expecting one. The sweep is what reaches backwards over
+    accounts that stalled, so it stays off until you turn it on.
+    <div class="fine" style="margin-top:8px">
+      Set <code>OUTREACH</code> = <code>on</code> in this service's environment.
+      {% if outreach.waiting %}
+      <b>{{ outreach.waiting }}</b>
+      dormant account{{ '' if outreach.waiting == 1 else 's' }}
+      would be emailed once, within about fifteen minutes of the next page load.
+      {% else %}
+      No account is currently waiting for one.
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="fine" style="margin:0">
+    <b>On.</b> Stalled accounts get one nudge, once, between day 2 and day 45
+    after signing up.
+    {% if outreach.waiting %}
+      <b>{{ outreach.waiting }}</b> waiting to be sent.
+    {% else %}
+      Nothing waiting.
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <p class="fine" style="margin:12px 0 0">
+    Sent so far: <b>{{ outreach.welcome_sent }}</b> welcome,
+    <b>{{ outreach.nudge_sent }}</b> nudge.
+    {% if outreach.optouts %}
+      <b>{{ outreach.optouts }}</b> {{ 'person has' if outreach.optouts == 1 else 'people have' }}
+      opted out.
+    {% endif %}
+    Nobody is ever sent either twice.
+  </p>
+</section>
+
 {# Getting somebody back into their account. Reset tokens are stored hashed, so
    a link that has already been sent cannot be read back here — the only
    possible action is to issue a fresh one, which is what this does. #}

@@ -21,6 +21,7 @@ import hooks
 import images
 import mailer
 import outliers
+import outreach
 import remix
 import sage
 from demo_data import seed_demo_data
@@ -166,6 +167,10 @@ def _maybe_backup():
     # posts do not each pay for a stat call.
     if request.method == "GET" and not request.path.startswith(("/static", "/api")):
         _daily_backup()
+        # Same idea, same reason: no scheduler on this plan, so the check
+        # happens on the way past. It does nothing unless OUTREACH is on, and
+        # the sending itself is on a thread — nobody's page waits for SMTP.
+        outreach.maybe_sweep(request.url_root)
 
 
 @app.errorhandler(Exception)
@@ -1042,6 +1047,12 @@ def settings():
         anthropic_model=sage.ANTHROPIC_MODEL,
         openai_model=sage.OPENAI_MODEL,
         brand=sage.get_brand(),
+        # The same link the emails carry. A plain link rather than a toggle
+        # calling an endpoint: it reuses the one page that already does this
+        # job, including the undo, and adds no JavaScript to a page whose
+        # every other control has some.
+        email_optout=bool((auth.current_user() or {}).get("email_optout")),
+        unsubscribe_token=outreach.unsubscribe_token(_uid()),
         version=APP_VERSION,
         active="settings",
     )
@@ -1606,6 +1617,13 @@ def register():
                         log.warning("could not seed sample data for new user %s",
                                     user["id"], exc_info=True)
 
+                # Say hello. Not gated on OUTREACH: this one goes to somebody
+                # who signed up seconds ago and is expecting to hear from the
+                # thing they just signed up for. It is the sweep — which
+                # reaches backwards over every dormant account at once — that
+                # has to be switched on deliberately.
+                outreach.welcome_async(user, request.url_root)
+
                 return redirect(url_for("feed"))
 
     return render_template(
@@ -1614,6 +1632,32 @@ def register():
         form_username=(request.form.get("username") or "").strip(),
         version=APP_VERSION,
     ), (400 if error else 200)
+
+
+@app.route("/unsubscribe/<token>")
+def unsubscribe(token):
+    """Stop sending this account onboarding email.
+
+    A GET that changes something, which is normally the wrong shape — but the
+    only thing a mail client offers is a link, and an unsubscribe that first
+    demands you find a button is the reason people press "spam" instead. It is
+    also the least harmful write in the app: nothing is lost, and the same page
+    puts it back.
+
+    No session needed. Somebody reading their email is not necessarily signed
+    in here, and making them sign in to stop email is an unsubscribe in name
+    only. The token is an HMAC, so it proves ownership on its own.
+    """
+    user_id = outreach.user_id_for_token(token)
+    if not user_id:
+        return render_template("unsubscribe.html", ok=False, resubscribed=False,
+                               version=APP_VERSION), 404
+
+    resubscribe = request.args.get("resubscribe") == "1"
+    db.set_email_optout(user_id, not resubscribe)
+    return render_template("unsubscribe.html", ok=True,
+                           resubscribed=resubscribe, token=token,
+                           version=APP_VERSION)
 
 
 @app.route("/forgot", methods=["GET", "POST"])
@@ -2748,6 +2792,9 @@ def admin():
         shared_key=bool(os.environ.get("ANTHROPIC_API_KEY")
                         or os.environ.get("OPENAI_API_KEY")),
         email=mailer.config_summary(),
+        # Whether the onboarding email is switched on, how much has gone out,
+        # and how many dormant accounts are queued behind the switch.
+        outreach=outreach.status(),
         # The provider's own words about the last failed send, if any.
         mail_error=db.get_setting(MAIL_ERROR_KEY, ""),
         # And the last thing that crashed, which the extension can only ever

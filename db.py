@@ -66,6 +66,25 @@ CREATE TABLE IF NOT EXISTS password_resets (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- One row per lifecycle email actually sent to somebody.
+--
+-- The primary key is the whole point. Sending is decided by a sweep that any
+-- page load can trigger, so without a uniqueness constraint two overlapping
+-- requests would each read "not sent yet" and each send one — and the failure
+-- mode of onboarding email is not a missing message, it is the same message
+-- twice. INSERT OR IGNORE against this key is the claim: exactly one caller
+-- gets the row, and it is the one that sends.
+--
+-- Deleted again if the send fails, so a temporary SMTP outage does not burn
+-- somebody's only welcome.
+CREATE TABLE IF NOT EXISTS outreach (
+    user_id     INTEGER NOT NULL,
+    kind        TEXT NOT NULL,          -- welcome | nudge
+    sent_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, kind),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Generation calls, one row each.
 --
 -- Recorded ONLY when the call was billed to the instance owner's key. A user
@@ -363,6 +382,15 @@ def _migrate(conn):
     # number, which is nobody's anything.
     if "username" not in _columns(conn, "users"):
         conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
+
+    # Whether this person has asked not to be emailed about the product.
+    #
+    # Password resets ignore it, and must: a reset is something they asked for
+    # in that moment, not something the app decided to tell them. Everything
+    # in outreach.py checks it.
+    if "email_optout" not in _columns(conn, "users"):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN email_optout INTEGER DEFAULT 0")
     # Case-insensitive uniqueness, in the index rather than in a check that
     # has to be remembered at every call site.
     conn.execute(
@@ -860,6 +888,65 @@ def ai_usage_summary(limit=20):
                 """, (limit,)).fetchall()]
     except Exception:                         # noqa: BLE001
         return []
+
+
+# ------------------------------------------------------------------- outreach
+
+def claim_outreach(user_id, kind):
+    """Reserve the right to send this person this email. True if it is yours.
+
+    The claim happens BEFORE the send, not after, because the sweep can be
+    started by any page load and two of them can overlap. Writing the row
+    afterwards would let both read "not sent" and both send.
+
+    False means somebody already has it — either a concurrent request or a
+    previous day. Either way, do not send.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO outreach (user_id, kind) VALUES (?, ?)",
+                (user_id, kind))
+            return cursor.rowcount == 1
+    except Exception:                         # noqa: BLE001
+        # Unable to claim it means unable to guarantee it is sent once, and
+        # sending twice is the worse outcome.
+        return False
+
+
+def release_outreach(user_id, kind):
+    """Give the claim back after a failed send, so it can be retried."""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM outreach WHERE user_id = ? AND kind = ?",
+                (user_id, kind))
+    except Exception:                         # noqa: BLE001
+        pass
+
+
+def outreach_summary():
+    """How many of each kind have gone out, plus opt-outs. For the admin page."""
+    try:
+        with get_db() as conn:
+            sent = {r["kind"]: r["n"] for r in conn.execute(
+                "SELECT kind, COUNT(*) AS n FROM outreach GROUP BY kind")}
+            optouts = conn.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE email_optout = 1"
+            ).fetchone()["n"]
+        return {"sent": sent, "optouts": optouts}
+    except Exception:                         # noqa: BLE001
+        return {"sent": {}, "optouts": 0}
+
+
+def set_email_optout(user_id, optout):
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE users SET email_optout = ? WHERE id = ?",
+                         (1 if optout else 0, user_id))
+        return True
+    except Exception:                         # noqa: BLE001
+        return False
 
 
 def get_viewer_names(conn, user_id):
