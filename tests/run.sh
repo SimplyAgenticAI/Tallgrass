@@ -12,7 +12,18 @@ env = jinja2.Environment(loader=jinja2.FileSystemLoader('templates'))
 for p in pathlib.Path('templates').glob('*.html'):
     env.parse(p.read_text(encoding='utf-8'), filename=p.name)
 print('templates ok')"
-python -c "import json;json.load(open('extension/manifest.json',encoding='utf-8'));print('manifest ok')"
+python -c "
+import json, io
+# Bytes, not text: a UTF-8 BOM here once made json.load fail on every start,
+# and it is invisible in an editor.
+raw = io.open('extension/manifest.json','rb').read()
+assert not raw.startswith(b'\xef\xbb\xbf'), 'manifest.json has a UTF-8 BOM'
+m = json.loads(raw.decode('utf-8'))
+# The Chrome Web Store's own limits, checked here rather than discovered at
+# upload. It rejects the package outright and the only clue is a number.
+assert len(m['description']) <= 132, 'manifest description is %d chars, max 132' % len(m['description'])
+assert len(m['name']) <= 75, 'manifest name is %d chars, max 75' % len(m['name'])
+print('manifest ok — v%s, description %d chars' % (m['version'], len(m['description'])))"
 
 echo "--- no duplicate definitions ---"
 # A duplicated block once meant edits landed in code the browser never ran.

@@ -14,6 +14,12 @@ Package to upload: **`tallgrass-extension-vX.Y.zip`** (built from `extension/`, 
 Tallgrass — by MacRandle Acres
 ```
 
+> **The manifest's own `description` is also capped at 132 characters**, and
+> the store rejects the whole upload if it is longer — "There was a problem
+> uploading your file" plus a character count, before any listing field is
+> even reached. `tests/run.sh` now checks this on every run. Keep it identical
+> to the summary below.
+
 **Summary** (short description, max 132 chars)
 ```
 Ranks the Facebook group and profile posts you browse against each group's own median, so the real outliers stand out.
