@@ -7,6 +7,19 @@ visible — it is not a substitute for real captures.
 Engagement follows a power-law-ish shape on purpose: most posts sit near the
 median with a couple of genuine breakouts, which is what the outlier scoring
 is designed to separate.
+
+The multipliers below are multiples OF THE MEDIAN, so the shape is readable
+from the column itself: the median post is 1.0 and the set has to contain
+something that clears 5x or the scoring has nothing to find.
+
+That last part was not true for a long time. The values were spread evenly
+enough that the median landed at 3.55 and the best post scored 4.3x against
+it — so the sample set demonstrated a breakout-finder finding no breakouts,
+and the feed's headline stat read "0 breakout posts, nothing cleared 5x
+median". It went unnoticed while this was an empty-install convenience. It
+stopped being harmless the moment a new account was given this set as its
+first impression of the product, which is what tests/onboarding.test.py now
+pins.
 """
 
 import random
@@ -47,61 +60,61 @@ DEMO_AUTHORS = [
 DEMO_POSTS = [
     ("Spent 4 months building a feature nobody asked for. Killed it last week. "
      "Revenue went up 8%. Turns out the thing was confusing people at checkout.\n\n"
-     "Ask before you build. I clearly didn't.", "text", 9.2),
+     "Ask before you build. I clearly didn't.", "text", 7.1),
     ("Anyone else getting absolutely destroyed by shipping costs this quarter? "
-     "Our margins are down 6 points and it's entirely postage.", "text", 1.1),
+     "Our margins are down 6 points and it's entirely postage.", "text", 0.5),
     ("Quick one — what's everyone using for inventory sync these days? "
-     "Currently on spreadsheets and it's held together with hope.", "text", 0.7),
+     "Currently on spreadsheets and it's held together with hope.", "text", 0.4),
     ("I fired our biggest client on Tuesday.\n\nThey were 40% of revenue and about "
      "110% of our stress. Two people on my team were ready to quit over them.\n\n"
      "Scariest thing I've done. Zero regrets so far. Ask me in six months.", "text", 12.4),
     ("Reminder that a 2% conversion rate means 98 out of 100 people looked at your "
-     "thing and left. Most of your growth is hiding in that 98.", "text", 3.8),
+     "thing and left. Most of your growth is hiding in that 98.", "text", 1.2),
     ("Case study: took a client from 3k to 22k monthly revenue in 7 months. "
-     "Full breakdown of what actually moved the needle in the comments.", "photo", 4.1),
-    ("Does anyone have a decent VA agency they'd recommend? Been burned twice now.", "text", 0.5),
+     "Full breakdown of what actually moved the needle in the comments.", "photo", 1.4),
+    ("Does anyone have a decent VA agency they'd recommend? Been burned twice now.", "text", 0.3),
     ("Hot take: most 'brand strategy' work sold to small businesses is expensive "
-     "procrastination. Ship the thing. Fix it in public.", "text", 5.6),
+     "procrastination. Ship the thing. Fix it in public.", "text", 2.3),
     ("Our best performing ad this month was filmed on a phone in a car park. "
-     "The £4k studio production did a third of the numbers.", "video", 6.8),
-    ("Genuinely curious how many people here are profitable vs just busy.", "text", 2.2),
+     "The £4k studio production did a third of the numbers.", "video", 3.1),
+    ("Genuinely curious how many people here are profitable vs just busy.", "text", 0.85),
     ("Three years in, first month over six figures. Not posting numbers to brag — "
      "posting because in year one I read posts like this and assumed they were fake. "
-     "They weren't. It just takes much longer than anyone admits.", "text", 8.1),
+     "They weren't. It just takes much longer than anyone admits.", "text", 5.4),
     ("What's your actual close rate on discovery calls? Mine's 22% and I can't tell "
-     "if that's good or terrible.", "text", 1.9),
-    ("Stop offering unlimited revisions. That's it, that's the post.", "text", 4.4),
+     "if that's good or terrible.", "text", 0.75),
+    ("Stop offering unlimited revisions. That's it, that's the post.", "text", 1.6),
     ("Built our whole onboarding in Notion and clients keep saying it's the most "
-     "organised agency they've worked with. It took a weekend.", "text", 2.7),
-    ("Looking for a copywriter who understands B2B SaaS. Budget is real. DM me.", "text", 0.4),
+     "organised agency they've worked with. It took a weekend.", "text", 0.9),
+    ("Looking for a copywriter who understands B2B SaaS. Budget is real. DM me.", "text", 0.25),
     ("The uncomfortable truth about referrals: they dry up the moment you stop "
-     "delivering something remarkable. They're a lagging indicator, not a strategy.", "text", 3.3),
-    ("Anyone tried the new ad format? Results seem inconsistent across accounts.", "text", 0.9),
+     "delivering something remarkable. They're a lagging indicator, not a strategy.", "text", 1.1),
+    ("Anyone tried the new ad format? Results seem inconsistent across accounts.", "text", 0.45),
     ("Raised prices 40% in January. Lost 2 clients out of 14. Revenue up 26%. "
-     "I should have done it two years earlier.", "text", 7.2),
+     "I should have done it two years earlier.", "text", 3.6),
     ("Small win: automated our reporting and got 6 hours a week back. "
-     "Happy to share the setup if useful.", "text", 2.1),
+     "Happy to share the setup if useful.", "text", 0.8),
     ("Every single time I've hired fast I've regretted it. Every single time. "
-     "And I keep doing it.", "text", 3.9),
-    ("What does everyone charge for a one-off audit? Trying to benchmark.", "text", 1.4),
+     "And I keep doing it.", "text", 1.3),
+    ("What does everyone charge for a one-off audit? Trying to benchmark.", "text", 0.55),
     ("Client asked for a discount because 'it's just a few hours of work'. "
-     "Sent them a breakdown of the 11 years it took to make it a few hours.", "text", 6.1),
+     "Sent them a breakdown of the 11 years it took to make it a few hours.", "text", 2.6),
     ("Local SEO is still absurdly underpriced relative to what it returns. "
-     "Most of my competitors have completely abandoned it for social.", "text", 2.9),
+     "Most of my competitors have completely abandoned it for social.", "text", 0.95),
     ("Posting this because I wish someone had told me: your first 20 clients "
      "will come from people who already know you. Not ads. Not content. "
-     "Go talk to people you've already met.", "text", 5.2),
-    ("Anyone going to the trade show next month? Would be good to meet up.", "text", 0.6),
+     "Go talk to people you've already met.", "text", 2.0),
+    ("Anyone going to the trade show next month? Would be good to meet up.", "text", 0.35),
     ("Cut our ad spend by 60% and revenue stayed flat. Six months of budget "
-     "was buying us nothing and I only found out by accident.", "text", 7.9),
+     "was buying us nothing and I only found out by accident.", "text", 4.2),
     ("Free template: the proposal doc that's closed about £400k for us. "
-     "No opt-in, link's in the comments.", "link", 4.8),
+     "No opt-in, link's in the comments.", "link", 1.8),
     ("How are people handling late payers? Currently chasing 3 invoices "
-     "over 60 days and losing patience.", "text", 1.6),
+     "over 60 days and losing patience.", "text", 0.6),
     ("Unpopular: you don't need a niche in year one. You need to talk to enough "
-     "people to find out what you're actually good at. The niche finds you.", "text", 4.6),
+     "people to find out what you're actually good at. The niche finds you.", "text", 1.7),
     ("Rebuilt our site in a weekend after 8 months of a designer 'nearly being done'. "
-     "It converts better than the mockups did.", "text", 3.1),
+     "It converts better than the mockups did.", "text", 1.0),
 ]
 
 

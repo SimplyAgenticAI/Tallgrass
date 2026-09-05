@@ -32,6 +32,29 @@
 
 {% else %}
 
+  {% if not real_count and sample_count %}
+  {# Everything below is the sample set, which a new account is given so the
+     product can be seen working before anybody is asked to install anything.
+
+     Said plainly and up front. Sample data that is not obviously sample data
+     is a lie the first real capture exposes, and this app does not spend its
+     credibility that way. It removes itself: the feed hides samples the
+     moment a real post arrives, so this banner is only ever seen once. #}
+  <div class="glass notice reveal sample-banner">
+    <b>This is sample data, so you can see how {{ app_name }} works.</b>
+    Three made-up groups, {{ sample_count }} posts, scored exactly the way your
+    own will be — ranked against the median of the group they came from, not
+    against each other.
+    <p class="fine" style="margin:9px 0 0">
+      Open any post to see why it beat its group, or try
+      <a href="{{ url_for('write_page') }}">Write</a> — it works on this data now.
+      Your first real scan hides all of it automatically, and
+      <a href="{{ url_for('settings') }}">Settings</a> wipes it whenever you
+      like.
+    </p>
+  </div>
+  {% endif %}
+
   {% if next_step %}
     {% with step = next_step %}{% include "_next_step.html" %}{% endwith %}
   {% endif %}

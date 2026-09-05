@@ -1581,7 +1581,32 @@ def register():
                 auth.login_session(user)
                 session["fresh_api_key"] = user["api_key"]
                 session["claimed_rows"] = claimed
-                return redirect(url_for("capture"))
+
+                # A new account used to be completely empty, and signup landed
+                # on the install page — so the first thing anybody saw was six
+                # manual steps ending in Chrome's Developer mode, with no idea
+                # what was on the other side of them. Almost nobody finished.
+                #
+                # Seeding the sample set means the product is working before
+                # any of that: a ranked feed, real multiples, hooks with
+                # numbers, and a Write page that generates. It costs one
+                # transaction and it is the difference between asking somebody
+                # to install an extension on faith and showing them what for.
+                #
+                # It never lingers. Every row carries is_demo=1, the feed hides
+                # samples the moment a real capture lands, and Settings wipes
+                # them in one call — so this cannot end up mistaken for their
+                # own data.
+                if not claimed:
+                    try:
+                        seed_demo_data(user["id"])
+                    except Exception:         # noqa: BLE001
+                        # Sample data is a courtesy. Failing to write it must
+                        # never cost somebody the account they just made.
+                        log.warning("could not seed sample data for new user %s",
+                                    user["id"], exc_info=True)
+
+                return redirect(url_for("feed"))
 
     return render_template(
         "register.html", error=error, min_length=auth.MIN_PASSWORD_LENGTH,

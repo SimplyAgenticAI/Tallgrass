@@ -77,6 +77,20 @@ def main():
            "posted_at": iso(280), "parent_fb_id": "g0"} for i in range(5)])
 
     groups = c.get("/groups").get_data(as_text=True)
+
+    # Which id "Good Group" landed on, rather than assuming it is 2.
+    #
+    # It was 2 for as long as a new account started empty. Signup now seeds the
+    # sample set first, so the three sample groups take the low ids and the two
+    # captured here follow — and every hardcoded /groups/2 below was quietly
+    # asserting about a sample group instead. Looked up by name, this test
+    # stops caring how many sources exist before its own.
+    good_id = re.search(
+        r'data-source-id="(\d+)"[^>]*>(?:(?!data-source-id).)*?Good Group',
+        groups, re.S)
+    assert good_id, "Good Group is not on the groups page"
+    good = good_id.group(1)
+
     listed = re.findall(
         r'data-countup="(\d+)">\d+</span><span class="s-unit">%</span>', groups)
 
@@ -110,13 +124,13 @@ def main():
     check("?kind=comment does not open a ranked comment feed",
           "Top comments" not in c.get("/?kind=comment").get_data(as_text=True))
     check("no Comments tab on a group page",
-          "kind=comment" not in c.get("/groups/2").get_data(as_text=True))
+          "kind=comment" not in c.get("/groups/" + good).get_data(as_text=True))
 
     # Rows captured by older versions still render on their post's page, and
     # must say what they are.
     detail_pages = [c.get("/post/" + p).get_data(as_text=True)
                     for p in re.findall(r'data-post-id="(\d+)"',
-                                        c.get("/groups/2").get_data(as_text=True))]
+                                        c.get("/groups/" + good).get_data(as_text=True))]
     with_replies = [d for d in detail_pages if "preview comment" in d]
     check("legacy replies still show on their post", len(with_replies) > 0)
     if with_replies:
