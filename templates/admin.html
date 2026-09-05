@@ -146,6 +146,88 @@
 </section>
 {% endif %}
 
+{# Turning real captures into the sample set every new account is seeded with.
+
+   A plain form, deliberately: it downloads a file, which is what a form does
+   natively and what fetch() has to be talked into. #}
+<section class="glass panel reveal" style="margin-bottom:20px">
+  <h2 style="margin:0 0 4px;font-size:16px">Sample data for new accounts</h2>
+
+  {% if snapshot %}
+  <p class="fine" style="margin:0 0 14px">
+    <b>Using a real snapshot</b> — {{ snapshot.sources }}
+    source{{ '' if snapshot.sources == 1 else 's' }},
+    {{ snapshot.posts }} posts, {{ snapshot.images }} with pictures, captured
+    {{ snapshot.captured_at }}.{% if snapshot.note %} {{ snapshot.note }}{% endif %}
+    <br>{{ snapshot.names|join(' · ') }}
+    <br>Post ages are stored as offsets, so the demo never reads as stale.
+  </p>
+  {% else %}
+  <p class="fine" style="margin:0 0 14px">
+    <b>Using the written sample set</b>, whose engagement numbers are invented.
+    Export real captures below and commit the file to replace it — every
+    number the demo shows then becomes one that actually happened.
+  </p>
+  {% endif %}
+
+  {% if my_sources %}
+  <form method="post" action="{{ url_for('admin_demo_snapshot') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="fine" style="margin-bottom:10px">
+      Pick the sources to freeze. <b>Every post of a chosen source is
+      exported, not just the good ones</b> — a multiple is measured against
+      its source's median, so a snapshot of only the winners has no baseline
+      left to beat.
+    </div>
+
+    <div style="display:grid;gap:7px;margin-bottom:12px">
+      {% for s in my_sources %}
+      <label style="display:flex;gap:9px;align-items:baseline">
+        <input type="checkbox" name="source_id" value="{{ s.id }}">
+        <span>
+          {{ s.name }}
+          <span class="fine">
+            · <span class="kind-chip">{{ s.kind }}</span>
+            {{ s.post_count }} posts
+            {% if s.stats and s.stats.top_multiple is not none %}
+              · best {{ s.stats.top_multiple }}×
+            {% endif %}
+          </span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <label class="fine" style="display:block;margin-bottom:10px">
+      Note (optional, shown here only)
+      <input type="text" name="note" maxlength="200"
+             placeholder="e.g. three public pages, captured September"
+             style="width:100%;margin-top:4px">
+    </label>
+
+    <button class="btn btn-ghost" type="submit">Export snapshot</button>
+    <p class="fine" style="margin:10px 0 0">
+      Downloads <code>demo_snapshot.json</code>. Put it in the project root,
+      commit it, and deploy — new accounts are seeded from it from then on.
+      Pictures ride along in the file and are written once, shared by every
+      account rather than copied per user.
+    </p>
+    <p class="fine" style="margin:8px 0 0">
+      <b>Prefer public Pages to private groups.</b> A Page post was published
+      to the world by a business. A private group post was written by a named
+      person to a closed audience, and seeding it hands that audience to every
+      stranger who signs up.
+    </p>
+  </form>
+  {% else %}
+  <p class="fine" style="margin:0">
+    You haven't captured anything yet, so there is nothing to freeze. Scan a
+    public Page or two first.
+  </p>
+  {% endif %}
+</section>
+
 {# The onboarding email, and whether it is actually switched on.
 
    Off by default and shown here because the state is invisible otherwise: an

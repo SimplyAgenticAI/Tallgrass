@@ -119,7 +119,70 @@ DEMO_POSTS = [
 
 
 def seed_demo_data(user_id=None):
-    """Insert the demo set for one account. Returns posts written."""
+    """Insert the demo set for one account. Returns posts written.
+
+    A committed snapshot of real captures wins if this install has one. The
+    written set below is the fallback, and stays for the case it was built
+    for: an install with no snapshot, which is every fresh clone.
+    """
+    import demo_snapshot
+    snapshot = demo_snapshot.load()
+    if snapshot:
+        return _seed_from_snapshot(snapshot, user_id)
+    return _seed_written(user_id)
+
+
+def _seed_from_snapshot(snapshot, user_id):
+    """Real posts, real engagement, ages reconstructed against right now.
+
+    The offset is what keeps this usable. Absolute timestamps would make a
+    snapshot taken today read as eight months stale by spring, and a feed of
+    old posts is the exact impression this is meant to avoid.
+    """
+    import demo_snapshot as snap
+
+    now = datetime.now(timezone.utc)
+    written = 0
+
+    with db.get_db() as conn:
+        for source in snapshot.get("sources", []):
+            source_id = db.upsert_source(
+                conn,
+                fb_id=source["fb_id"],
+                kind=source.get("kind") or "group",
+                name=source.get("name") or "",
+                url=source.get("url") or "",
+                member_count=source.get("member_count") or 0,
+                user_id=user_id,
+            )
+
+            for post in source.get("posts", []):
+                author_id = None
+                if post.get("author"):
+                    author_id = db.upsert_author(conn, name=post["author"])
+
+                posted = now - timedelta(hours=float(post.get("hours_ago") or 0))
+
+                row = dict(post)
+                row["posted_at"] = posted.strftime("%Y-%m-%dT%H:%M:%S")
+                row["is_demo"] = 1
+                # Written once to a shared directory and referenced by hash.
+                # Copying ninety pictures into every account's image cache is
+                # the whole disk by a few hundred users.
+                row["image_url"] = (snap._store_image(post["image"])
+                                    if post.get("image") else None)
+                row.pop("image", None)
+                row.pop("hours_ago", None)
+
+                if db.upsert_post(conn, source_id, author_id, row,
+                                  user_id=user_id):
+                    written += 1
+
+    return written
+
+
+def _seed_written(user_id=None):
+    """The hand-written set. Used when no snapshot has been committed."""
     rng = random.Random(SEED)
     now = datetime.now(timezone.utc)
     written = 0

@@ -17,6 +17,7 @@ import auth
 import backup
 import billing
 import db
+import demo_snapshot
 import hooks
 import images
 import mailer
@@ -1830,6 +1831,22 @@ def post_image(post_id):
     if not row:
         return "", 404
 
+    # A sample post's picture ships with the snapshot and is shared by every
+    # account, so it is served straight from that directory. Fetching and
+    # caching it per user would put ninety copies of the same image on the
+    # disk for each person who signs up.
+    #
+    # Still behind the ownership query above: the marker decides WHERE the
+    # bytes come from, never WHETHER this caller may have them.
+    digest = demo_snapshot.marker_digest(row["image_url"])
+    if digest:
+        shared = demo_snapshot.image_path(digest)
+        if not shared or not os.path.isfile(shared):
+            return "", 404
+        response = send_file(shared, mimetype="image/jpeg", conditional=True)
+        response.headers["Cache-Control"] = "private, max-age=604800"
+        return response
+
     path = images.cached(post_id)
     if not path:
         if not row["image_url"]:
@@ -1848,6 +1865,42 @@ def post_image(post_id):
     response = send_file(path, mimetype="image/jpeg", conditional=True)
     response.headers["Cache-Control"] = "private, max-age=604800"
     return response
+
+
+@app.route("/admin/demo-snapshot", methods=["POST"])
+@auth.login_required
+def admin_demo_snapshot():
+    """Freeze chosen sources into the sample set new accounts are seeded with.
+
+    Downloads the file rather than writing it into place. The snapshot ships
+    with the code — it has to be committed to the repository to reach a deploy
+    — and a file written onto this instance's disk would exist here and
+    nowhere else, which is the kind of thing that works until the next deploy
+    and then quietly stops.
+
+    Reads only the caller's own sources.
+    """
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+
+    ids = request.form.getlist("source_id", type=int)
+    if not ids:
+        return jsonify({"ok": False, "error": "Choose at least one source."}), 400
+
+    snapshot = demo_snapshot.build(ids, _uid(),
+                                   note=(request.form.get("note") or "").strip())
+    posts = sum(len(s["posts"]) for s in snapshot["sources"])
+    if not posts:
+        return jsonify({"ok": False,
+                        "error": "Those sources have no dated posts to export."}), 400
+
+    body = json.dumps(snapshot, ensure_ascii=False, indent=1)
+    log.info("demo snapshot built: %d sources, %d posts",
+             len(snapshot["sources"]), posts)
+    return Response(
+        body, mimetype="application/json",
+        headers={"Content-Disposition":
+                 "attachment; filename=demo_snapshot.json"})
 
 
 @app.route("/api/admin/backup", methods=["POST"])
@@ -2795,6 +2848,10 @@ def admin():
         # Whether the onboarding email is switched on, how much has gone out,
         # and how many dormant accounts are queued behind the switch.
         outreach=outreach.status(),
+        # The operator's own sources, so a snapshot of real captures can be
+        # exported into the sample set new accounts are seeded with.
+        my_sources=[s for s in _sources_with_stats() if not s["is_demo"]],
+        snapshot=demo_snapshot.summary(),
         # The provider's own words about the last failed send, if any.
         mail_error=db.get_setting(MAIL_ERROR_KEY, ""),
         # And the last thing that crashed, which the extension can only ever
