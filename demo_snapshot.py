@@ -373,6 +373,17 @@ def summary(snapshot=None):
         "images": sum(1 for p in posts if p.get("image") or p.get("image_ref")),
         "from_capture": sum(s.get("from_capture", 0) for s in sources),
         "names": sorted({s.get("name", "") for s in sources if s.get("name")}),
+        # Which sources these actually are, so the admin page can re-tick them
+        # after the save reloads it. Saving used to clear every box, leaving no
+        # way to read back what new accounts are being seeded with short of
+        # counting names in the paragraph above.
+        #
+        # fb_id, not the local row id: it is the identifier Facebook gives the
+        # group or page, so it still matches after the row is rebuilt, and a
+        # snapshot committed on one instance still lights up the right boxes on
+        # another. Nothing about the stored format changes — build() has always
+        # written fb_id and this only reads it.
+        "fb_ids": [s.get("fb_id") for s in sources if s.get("fb_id")],
     }
 
 

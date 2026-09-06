@@ -186,14 +186,27 @@
     signup — nothing to download, commit or deploy.
   </div>
 
+  {# The boxes show what is LIVE, not a blank slate. Saving reloads the page,
+     and a form that comes back empty after a successful save reads as though
+     nothing was saved — there was no way to look at this panel and answer
+     "what do new accounts see?" without counting names in the paragraph
+     above. Matched on fb_id, which is what the snapshot stores. #}
+  {% set chosen = (snapshot.fb_ids if snapshot else []) or [] %}
+
   <div style="display:grid;gap:7px;margin-bottom:12px">
     {% for s in my_sources %}
+    {% set in_snapshot = s.fb_id in chosen %}
     {# Whether a source can carry a demo at all is knowable here, so it is
        said here. A source under the sample floor has no median, and seeding
-       it produces a feed that ranks nothing. #}
+       it produces a feed that ranks nothing.
+
+       Never disabled while it is in the snapshot, however few posts it has:
+       a disabled box cannot be UNticked, and a source that has since dropped
+       under the floor is exactly the one you need to be able to remove. #}
     <label style="display:flex;gap:9px;align-items:baseline">
       <input type="checkbox" class="sample-source" value="{{ s.id }}"
-             {{ 'disabled' if s.post_count < min_sample }}>
+             {{ 'checked' if in_snapshot }}
+             {{ 'disabled' if s.post_count < min_sample and not in_snapshot }}>
       <span>
         {{ s.name }}
         <span class="fine">
@@ -201,6 +214,9 @@
           {{ s.post_count }} posts
           {% if s.stats and s.stats.top_multiple is not none %}
             · best {{ s.stats.top_multiple }}×
+          {% endif %}
+          {% if in_snapshot %}
+            · <b>live in the sample set</b>
           {% endif %}
           {% if s.post_count < min_sample %}
             · <b>too few to score — needs {{ min_sample }}+, scan it first</b>
@@ -258,9 +274,13 @@
     <form method="post" action="{{ url_for('admin_demo_snapshot') }}"
           style="margin-top:9px">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Pre-ticked to match what is live, so the copy you commit is a copy of
+         the sample set actually running rather than whatever you re-tick from
+         memory. #}
       {% for s in my_sources %}
       <label class="fine" style="display:block">
-        <input type="checkbox" name="source_id" value="{{ s.id }}">
+        <input type="checkbox" name="source_id" value="{{ s.id }}"
+               {{ 'checked' if s.fb_id in chosen }}>
         {{ s.name }}
       </label>
       {% endfor %}
