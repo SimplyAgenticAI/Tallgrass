@@ -121,6 +121,29 @@
     if (STATS.log.length > 40) STATS.log.pop();
   }
 
+  /* Truncate without cutting a character in half.
+   *
+   * A capture died with:
+   *   UnicodeEncodeError: 'utf-8' codec can't encode character '\ud835'
+   *
+   * U+D835 is half of a character. These groups write in "𝗯𝗼𝗹𝗱" text, which
+   * lives outside the Basic Multilingual Plane, and a JavaScript string is
+   * UTF-16 — so each of those is TWO code units and slice() can land between
+   * them. The result is a string ending in an unpaired surrogate, which
+   * cannot be encoded as UTF-8 at all, and the dashboard rejected the whole
+   * batch rather than the one post.
+   *
+   * Dropping the trailing half keeps the other 4,999 characters.
+   */
+  function cut(text, limit) {
+    var out = String(text == null ? "" : text).slice(0, limit);
+    var last = out.charCodeAt(out.length - 1);
+    // A high surrogate (D800-DBFF) in final position lost its partner to the
+    // slice above; there is nothing to pair it with, so it goes.
+    if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+    return out;
+  }
+
   /* ------------------------------------------------------ number parsing */
 
   // No Facebook group post realistically clears this. A number above it came
@@ -167,7 +190,7 @@
     // an in-app navigation, so a landing-page name here is stale, not real.
     var junk = ["", "Facebook", "Notifications", "Home", "Watch", "Marketplace",
                 "Groups", "Feed", "Your Groups", "Groups Feed"];
-    if (title && junk.indexOf(title) === -1) return title.slice(0, 120);
+    if (title && junk.indexOf(title) === -1) return cut(title, 120);
     return fallback;
   }
 
@@ -1357,7 +1380,7 @@
 
       best = text;
     }
-    return best.slice(0, 5000);
+    return cut(best, 5000);
   }
 
   /* Is this token a count rather than a timestamp or a year?
@@ -1697,7 +1720,7 @@
     var says = raw.match(/text that says[:\s]*([\s\S]+)/i);
     if (says) {
       var transcribed = says[1].trim().replace(/^["'‘’“”]+|["'‘’“”.]+$/g, "").trim();
-      return transcribed.length >= 12 ? transcribed.slice(0, 5000) : "";
+      return transcribed.length >= 12 ? cut(transcribed, 5000) : "";
     }
 
     var quoted = raw.match(/["'‘’“”]([^"'‘’“”]{4,})["'‘’“”]/g);
@@ -1705,13 +1728,13 @@
       var joined = quoted.map(function (chunk) {
         return chunk.replace(/^["'‘’“”]|["'‘’“”]$/g, "").trim();
       }).join(" ");
-      if (joined.length >= 12) return joined.slice(0, 5000);
+      if (joined.length >= 12) return cut(joined, 5000);
     }
 
     // What remains is either a generated scene description or one a person
     // wrote. Length is the only signal separating them.
     if (ALT_PREAMBLE_RE.test(raw)) return "";
-    return raw.length >= 40 ? raw.slice(0, 5000) : "";
+    return raw.length >= 40 ? cut(raw, 5000) : "";
   }
 
   /* What the graphic DEPICTS, as opposed to what is written on it.
@@ -1750,7 +1773,7 @@
     scene = scene.replace(/[\s,]*(?:and\s+)?text$/i, "").trim();
     scene = scene.replace(/^[\s,]+|[\s,.]+$/g, "").trim();
 
-    return scene.length >= 3 ? scene.slice(0, 500) : "";
+    return scene.length >= 3 ? cut(scene, 500) : "";
   }
 
   /* Is this transcription a screenshot of ANOTHER post, not a caption?
@@ -2683,8 +2706,8 @@
         // Both were being computed and thrown away. They are what lets the
         // dashboard say something true about a photo post that carries no
         // typed words, instead of remixing off an empty body.
-        image_text: (media.image_text || "").slice(0, 5000),
-        image_desc: (media.image_desc || "").slice(0, 500),
+        image_text: cut(media.image_text || "", 5000),
+        image_desc: cut(media.image_desc || "", 500),
         body_from_image: bodyFromImage ? 1 : 0,
         engagement_read: engagementRead ? 1 : 0
       };

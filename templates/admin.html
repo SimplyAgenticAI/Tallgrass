@@ -320,33 +320,38 @@
   {# The copy itself. Editable here because an email you cannot change without
      a deploy is an email nobody improves — and these are written in first
      person, so they should sound like the person sending them. #}
+  {# Always open, never behind a disclosure triangle.
+
+     These were <details>, which on this dark theme rendered as a line of
+     small muted text with a marker you had to know was there — so the
+     editors were present and invisible, which is worse than absent. #}
   {% for email in outreach.emails %}
-  <details class="outreach-email" style="margin-bottom:10px">
-    <summary class="fine">
+  <div class="outreach-email" data-kind="{{ email.kind }}">
+    <div class="outreach-head">
       <b>{{ email.label }}</b>
-      · {{ email.sent }} sent
-      {% if email.edited %}· <span style="color:var(--emerald)">edited</span>{% endif %}
-    </summary>
-    <div style="margin-top:10px" data-kind="{{ email.kind }}">
-      <label class="fine" style="display:block;margin-bottom:8px">
-        Subject
-        <input type="text" class="outreach-subject" maxlength="200"
-               value="{{ email.subject }}"
-               style="width:100%;margin-top:4px">
-      </label>
-      <label class="fine" style="display:block">
-        Body
-        <textarea class="outreach-body" rows="14"
-                  style="width:100%;margin-top:4px;font-family:var(--font-mono);font-size:12.5px">{{ email.body }}</textarea>
-      </label>
-      <div style="display:flex;gap:9px;margin-top:9px;flex-wrap:wrap">
-        <button class="btn btn-primary outreach-save" type="button">Save</button>
-        <button class="btn btn-ghost outreach-reset" type="button">
-          Reset to original
-        </button>
-      </div>
+      <span class="fine">
+        {{ email.sent }} sent{% if email.edited %} ·
+        <span style="color:var(--emerald-bright)">edited</span>{% endif %}
+      </span>
     </div>
-  </details>
+
+    <label class="fine">
+      Subject
+      <input type="text" class="outreach-subject" maxlength="200"
+             value="{{ email.subject }}">
+    </label>
+    <label class="fine">
+      Body
+      <textarea class="outreach-body" rows="12">{{ email.body }}</textarea>
+    </label>
+
+    <div class="outreach-actions">
+      <button class="btn btn-primary outreach-save" type="button">Save</button>
+      <button class="btn btn-ghost outreach-reset" type="button">
+        Reset to original
+      </button>
+    </div>
+  </div>
   {% endfor %}
 
   <p class="fine" style="margin:12px 0 0">

@@ -621,6 +621,10 @@ def upsert_source(conn, fb_id, kind, name, url=None, member_count=None, user_id=
     Keyed on (user_id, fb_id): two accounts may track the same public group
     without either one overwriting the other.
     """
+    # Same exposure as a post body, and more likely than it sounds: a group
+    # called "𝗖𝗘𝗢 𝗠𝗶𝗻𝗱𝘀𝗲𝘁" is scraped, truncated in the extension, and
+    # arrives holding half a character.
+    name = clean_text(name, 300)
     conn.execute(
         """
         INSERT INTO sources (user_id, fb_id, kind, name, url, member_count, last_capture)
@@ -652,6 +656,9 @@ def upsert_author(conn, name, fb_id=None, profile_url=None):
     A missing author is now genuinely missing, and the UI says so.
     """
     if not name or not str(name).strip():
+        return None
+    name = clean_text(name, 300)
+    if not name.strip():
         return None
     # Authors inside groups often have no stable id exposed in the DOM, so fall
     # back to name-keyed identity rather than creating a row per capture.
@@ -689,6 +696,46 @@ def _count(value):
     return n if n < 1_000_000_000 else 999_999_999
 
 
+def clean_text(value, limit=None):
+    """Text that can actually be stored. Truncates, and drops half-characters.
+
+    A capture died on this, and it will keep happening because of what these
+    groups write like:
+
+        UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud835'
+        ... surrogates not allowed
+
+    U+D835 is half of a character. Facebook marketing posts are full of
+    "𝗯𝗼𝗹𝗱" text, which lives outside the Basic Multilingual Plane, and a
+    JavaScript string is UTF-16 — so each of those characters is TWO code
+    units and `.slice(0, 5000)` can cut between them. What arrives is a string
+    ending in an unpaired surrogate, which is not encodable as UTF-8 at all,
+    and the insert takes the whole batch down with it.
+
+    The extension is fixed too, but that fix only reaches people who reinstall
+    it — and nobody reinstalls an extension. This is the layer that holds for
+    the build already on somebody's machine.
+
+    Any surrogate in a Python string is unpaired by definition: a real astral
+    character is a single code point by the time json has decoded it. So they
+    can be dropped without losing anything except the character that was
+    already truncated in half.
+    """
+    if not isinstance(value, str):
+        return ""
+    if limit is not None:
+        value = value[:limit]
+    if not value:
+        return value
+    try:
+        value.encode("utf-8")
+        return value
+    except UnicodeEncodeError:
+        # 'ignore' skips exactly the unencodable code points, which here are
+        # the lone surrogates and nothing else.
+        return value.encode("utf-8", "ignore").decode("utf-8")
+
+
 def upsert_post(conn, source_id, author_id, post, user_id=None):
     """Insert a post, or update its engagement counts if we've seen it before.
 
@@ -699,16 +746,16 @@ def upsert_post(conn, source_id, author_id, post, user_id=None):
     for _field in ("likes", "comments", "shares", "video_plays", "image_count"):
         post[_field] = _count(post.get(_field, 0))
     _body = post.get("body")
-    if isinstance(_body, str) and len(_body) > 10000:
-        post["body"] = _body[:10000]
-    elif _body is not None and not isinstance(_body, str):
+    if isinstance(_body, str):
+        post["body"] = clean_text(_body, 10000)
+    elif _body is not None:
         post["body"] = ""
     # Both arrive from scraped alt attributes, so they are attacker-reachable
     # in exactly the way the body is and get the same treatment.
     for _field, _cap in (("image_text", 5000), ("image_desc", 500)):
         _value = post.get(_field)
         if isinstance(_value, str):
-            post[_field] = _value[:_cap]
+            post[_field] = clean_text(_value, _cap)
         elif _value is not None:
             post[_field] = ""
 

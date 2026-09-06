@@ -271,6 +271,54 @@ def main():
     check("an unknown URL is still 404",
           client.get("/no-such-page-at-all").status_code, 404)
 
+    print()
+    print("a post written in bold Unicode does not kill the batch")
+    # Reported from a live capture:
+    #   UnicodeEncodeError: 'utf-8' codec can't encode character '\ud835'
+    #
+    # U+D835 is HALF of a character. These groups write in mathematical
+    # "bold" text, which lives outside the BMP, and a JavaScript string is
+    # UTF-16 — so each of those is two code units and slice() can cut between
+    # them. What arrives ends in an unpaired surrogate, which cannot be
+    # encoded as UTF-8 at all, and it took the whole insert down rather than
+    # the one post.
+    #
+    # Built with chr() rather than written literally: a source file cannot
+    # contain a lone surrogate, which is the same reason this crashed.
+    half = chr(0xD835)
+    bold_a = chr(0x1D5D4)          # a whole one, which must survive
+    broken = "Bold post " + bold_a + ("x" * 20) + half
+
+    check("the half-character is really there",
+          any(0xD800 <= ord(c) <= 0xDFFF for c in broken), True)
+    cleaned = db.clean_text(broken)
+    check("cleaning drops it",
+          any(0xD800 <= ord(c) <= 0xDFFF for c in cleaned), False)
+    check("  keeping the whole character beside it", bold_a in cleaned, True)
+    check("  and the words", cleaned.startswith("Bold post "), True)
+    check("  so it encodes at all", bool(cleaned.encode("utf-8")), True)
+
+    # The path that actually broke. The source and author names carry one too,
+    # because they are scraped from the same page and truncated the same way.
+    response = client.post("/api/capture", json={
+        "source": {"fb_id": "group:bold", "kind": "group",
+                   "name": "Bold Group " + half},
+        "posts": [{"fb_post_id": "bold-1", "body": broken,
+                   "author_name": "Author " + half,
+                   "likes": 10, "comments": 1, "shares": 0,
+                   "posted_at": "2026-09-01T00:00:00", "engagement_read": 1}],
+    }, headers={"X-Outlier-Key": key})
+    check("the capture is accepted", response.status_code, 200)
+
+    with db.get_db() as conn:
+        stored = conn.execute(
+            "SELECT body FROM posts WHERE fb_post_id = 'bold-1'").fetchone()
+    check("the post is stored", bool(stored), True)
+    if stored:
+        check("  and can be read back out", bool(stored["body"].encode("utf-8")),
+              True)
+        check("  with its real characters intact", bold_a in stored["body"], True)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()

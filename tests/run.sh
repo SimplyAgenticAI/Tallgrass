@@ -45,6 +45,8 @@ echo "--- scan captures posts ---"
 node tests/scan.test.js
 echo "--- extraction ---"
 node tests/extract.test.js
+echo "--- truncation keeps characters whole ---"
+node tests/surrogate.test.js
 echo "--- captions ---"
 node tests/caption.test.js
 echo "--- timestamps ---"

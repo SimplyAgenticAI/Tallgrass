@@ -613,6 +613,36 @@ select.kind-select option { color: initial; }
 .notice.inline { margin: 14px 0; border-radius: var(--r-md); background: rgba(217,180,95,0.06); }
 .notice code { color: var(--gold); font-size: 12.5px; }
 
+/* ------------------------------------------------- admin: onboarding email
+
+   Each message is its own card with its fields on show. They used to be
+   <details>, and a disclosure triangle on a dark ground next to muted text is
+   not a control anybody finds — the editors were rendering perfectly and
+   nobody could see them. */
+.outreach-email {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  background: rgba(16, 40, 27, 0.3);
+}
+.outreach-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.outreach-head b { color: var(--text); font-size: 13.5px; }
+.outreach-email label { display: block; margin-bottom: 10px; }
+.outreach-email input[type="text"],
+.outreach-email textarea {
+  width: 100%; margin-top: 5px; display: block;
+}
+.outreach-email textarea {
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+  resize: vertical;
+}
+.outreach-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 4px; }
+
 /* The sample-data banner is the first thing a new account reads, and it is
    not a warning — gold here would put it in the same visual bracket as "your
    captures have no engagement". Emerald is the app saying hello. */
