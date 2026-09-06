@@ -454,6 +454,18 @@ def main():
     check("  and still one source",
           source_count(stale["id"]), sources_before)
 
+    # A seed that writes nothing must never empty an account.
+    #
+    # The obvious implementation clears first and seeds second. It is wrong:
+    # those are separate transactions, so anything failing in between leaves
+    # somebody looking at an empty product with their sample data already
+    # gone. Writing first and pruning what was not written means the worst
+    # case is the old set surviving — the bug being fixed, not a worse one.
+    intact = sample_bodies(stale["id"])
+    db.prune_demo_posts(stale["id"], set())
+    check("pruning against an empty seed removes nothing",
+          sample_bodies(stale["id"]), intact)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()

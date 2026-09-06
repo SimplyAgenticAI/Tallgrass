@@ -371,7 +371,46 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 const UPDATE_ALARM = "outlier-update-check";
 
 
+/* Is `offered` actually newer than `running`? See popup.js — same function,
+ * same reasons, duplicated because these are separate contexts with no shared
+ * module and this extension deliberately has no build step.
+ *
+ * Tuples, never floats: 23.10 is a smaller NUMBER than 23.6. And strictly
+ * newer, never merely different: a hand-loaded copy running ahead of the
+ * dashboard it points at was being offered an older build as an update.
+ */
+function isNewer(offered, running) {
+  const parts = (value) => String(value || "").split(".").map((chunk) => {
+    const n = parseInt(chunk, 10);
+    return isNaN(n) ? 0 : n;
+  });
+  const a = parts(offered);
+  const b = parts(running);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+
+/* A store copy updates itself and must never be told to do anything about a
+ * version. update_url is in an installed store extension's manifest and
+ * absent from an unpacked one, and reading it costs no permission — which is
+ * the point, since a new permission is what makes a review take weeks. */
+function installedFromStore() {
+  return Boolean(chrome.runtime.getManifest().update_url);
+}
+
+
 async function checkForUpdate() {
+  // Chrome keeps a store copy current on its own. Comparing versions here
+  // could only ever produce a notice the user can do nothing with, and the
+  // notice told them to sideload — the one thing the store listing exists to
+  // make unnecessary.
+  if (installedFromStore()) return;
+
   const stored = await chrome.storage.local.get([
     "autoUpdate", "capturing", "updateAttemptedFor"
   ]);
@@ -392,8 +431,11 @@ async function checkForUpdate() {
 
   const latest = data.extension_version;
   const running = chrome.runtime.getManifest().version;
-  if (!latest || latest === running) {
-    // Back in sync — clear any stale "update pending" state.
+  // Strictly newer, not merely different. A hand-loaded copy running AHEAD of
+  // the dashboard it points at — which is the normal state during a review
+  // wait — was being offered the older build as an update.
+  if (!latest || !isNewer(latest, running)) {
+    // Nothing to install — clear any stale "update pending" state.
     if (stored.updateAttemptedFor) {
       await chrome.storage.local.remove(["updateAttemptedFor", "updateStuck"]);
     }

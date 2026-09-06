@@ -990,6 +990,55 @@ def users_holding_only_samples(limit=500):
             """, (int(limit),)).fetchall()]
 
 
+def prune_demo_posts(user_id, keep_fb_post_ids):
+    """Drop this account's demo posts that are not in the current sample set.
+
+    The second half of a re-seed. Called only after the seed has written, so a
+    seed that failed cannot take an account's sample data with it — the worst
+    case is the old set surviving, not an empty product.
+
+    Real captures are never in scope: is_demo = 1 is the whole filter, and a
+    post stops being demo the moment the account captures it for real.
+    """
+    keep = set(keep_fb_post_ids or ())
+    if not keep:
+        return 0
+
+    with get_db() as conn:
+        # The difference is computed here rather than in SQL, deliberately.
+        # "NOT IN (…)" over the kept ids has to see ALL of them in one
+        # statement, so it cannot be chunked to stay under SQLite's parameter
+        # limit — chunking a NOT IN deletes everything the other chunks were
+        # keeping. Reading the account's own demo ids and deleting the
+        # difference is chunkable, because deleting an explicit list of rows
+        # is the same answer however it is split up.
+        stale = [r["id"] for r in conn.execute(
+            "SELECT id, fb_post_id FROM posts WHERE is_demo = 1 AND user_id IS ?",
+            (user_id,)).fetchall() if r["fb_post_id"] not in keep]
+
+        removed = 0
+        for start in range(0, len(stale), 400):
+            chunk = stale[start:start + 400]
+            cursor = conn.execute(
+                "DELETE FROM posts WHERE id IN (%s)" % ",".join("?" * len(chunk)),
+                chunk)
+            removed += cursor.rowcount
+
+        # A source the old set used and the new one does not is left behind
+        # holding nothing, and would show on /groups as an empty group the
+        # user never captured.
+        orphans = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM sources WHERE user_id IS ? AND id NOT IN "
+                "(SELECT DISTINCT source_id FROM posts WHERE source_id IS NOT NULL)",
+                (user_id,)).fetchall()
+        ]
+        for source_id in orphans:
+            conn.execute("DELETE FROM captures WHERE source_id = ?", (source_id,))
+            conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+        return removed
+
+
 def clear_demo_data(user_id=None):
     """Remove demo posts and any source left with nothing behind it.
 

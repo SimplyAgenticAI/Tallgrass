@@ -135,19 +135,27 @@ def seed_demo_data(user_id=None):
     and a median computed across a pile of posts from groups that have nothing
     to do with each other. Pressing "Load sample data" three times built three.
 
-    At signup there is nothing to clear and this is a no-op, so the cost is
-    one DELETE against rows that do not exist.
+    Writes first, then removes what it did not write — never the other way
+    round. Clearing first is the obvious version and it is wrong: the delete
+    and the seed are separate transactions, so anything that failed in between
+    would leave somebody looking at an empty product with their sample data
+    already gone. Seeding into place and pruning afterwards means the worst
+    case is the old set surviving next to the new one, which is the bug this
+    is fixing rather than a new and worse one.
     """
     import demo_snapshot
 
-    # Before, not after: seeding writes into the same tables, and clearing
-    # afterwards would take the new rows out with the old ones.
-    db.clear_demo_data(user_id)
-
     snapshot = demo_snapshot.load()
     if snapshot:
-        return _seed_from_snapshot(snapshot, user_id)
-    return _seed_written(user_id)
+        written, seeded = _seed_from_snapshot(snapshot, user_id)
+    else:
+        written, seeded = _seed_written(user_id)
+
+    # Only reached if the seed above completed. A seed that wrote nothing
+    # prunes nothing: an account is never emptied on the strength of a failure.
+    if seeded:
+        db.prune_demo_posts(user_id, seeded)
+    return written
 
 
 def refresh_sample_accounts(limit=500):
@@ -188,6 +196,7 @@ def _seed_from_snapshot(snapshot, user_id):
 
     now = datetime.now(timezone.utc)
     written = 0
+    seeded = set()
 
     with db.get_db() as conn:
         for source in snapshot.get("sources", []):
@@ -228,8 +237,9 @@ def _seed_from_snapshot(snapshot, user_id):
                 if db.upsert_post(conn, source_id, author_id, row,
                                   user_id=user_id):
                     written += 1
+                seeded.add(row["fb_post_id"])
 
-    return written
+    return written, seeded
 
 
 def _seed_written(user_id=None):
@@ -237,6 +247,7 @@ def _seed_written(user_id=None):
     rng = random.Random(SEED)
     now = datetime.now(timezone.utc)
     written = 0
+    seeded = set()
 
     with db.get_db() as conn:
         for source_index, source in enumerate(DEMO_SOURCES):
@@ -287,5 +298,6 @@ def _seed_written(user_id=None):
                 )
                 if created:
                     written += 1
+                seeded.add(f"{source['fb_id']}-p{post_index}")
 
-    return written
+    return written, seeded

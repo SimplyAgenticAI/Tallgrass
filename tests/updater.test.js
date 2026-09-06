@@ -41,7 +41,15 @@ function load(opts) {
     runtime: {
       onMessage: { addListener: function () {} },
       onInstalled: { addListener: function () {} },
-      getManifest: function () { return { version: opts.running || "1.0.0" }; },
+      getManifest: function () {
+        var manifest = { version: opts.running || "1.0.0" };
+        // Chrome adds update_url to an INSTALLED store extension's manifest
+        // and leaves it off an unpacked one. It is the only way to tell the
+        // two apart without asking for the management permission, and a new
+        // permission is what turns a routine store review into a long one.
+        if (opts.store) manifest.update_url = "https://clients2.google.com/service/update2/crx";
+        return manifest;
+      },
       reload: function () { world.reloads++; },
       lastError: null
     },
@@ -126,6 +134,44 @@ Promise.resolve()
     return settle().then(function () {
       check("no reload", world.reloads, 0);
       check("nothing flagged as pending", world.store.updateStuck, undefined);
+    });
+  })
+  .then(function () {
+    console.log();
+    console.log("a store copy is never told about a version at all");
+
+    /* Chrome keeps a store install current by itself, so any notice here is
+     * one the user cannot act on. It nagged all of them permanently: the
+     * dashboard advertised the version in the repo, the store was however
+     * many review cycles behind, the two could never agree — and the message
+     * told them to sideload, which is the one thing the store listing exists
+     * to make unnecessary. */
+    var world = load({ running: "22.9", latest: "23.6", store: true });
+    return settle().then(function () {
+      check("nothing flagged as pending", world.store.updateStuck, undefined);
+      check("  and still no reload", world.reloads, 0);
+    });
+  })
+  .then(function () {
+    console.log();
+    console.log("an OLDER version offered is not an update");
+
+    /* The normal state of a hand-loaded copy during a review wait: it is
+     * running ahead of what the store has. Comparing with !== offered it the
+     * older build as an update, which is how somebody gets talked into
+     * reinstalling backwards. */
+    var world = load({ running: "23.6", latest: "22.9" });
+    return settle().then(function () {
+      check("a downgrade is not offered", world.store.updateStuck, undefined);
+    });
+  })
+  .then(function () {
+    console.log();
+    console.log("and 23.10 is newer than 23.6, which a float compare gets wrong");
+
+    var world = load({ running: "23.6", latest: "23.10" });
+    return settle().then(function () {
+      check("the two-digit patch is offered", world.store.updateStuck, "23.10");
     });
   })
   .then(function () {

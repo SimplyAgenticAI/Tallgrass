@@ -27,6 +27,33 @@ function say(text, kind) {
   msgEl.className = "msg" + (kind ? " " + kind : "");
 }
 
+/* Is `offered` actually newer than `running`?
+ *
+ * Tuples of integers, never a float compare: 23.10 as a number is SMALLER
+ * than 23.6, so the first two-digit patch in a line would read as a
+ * downgrade. And never a plain !== : a hand-loaded copy that is AHEAD of the
+ * dashboard it points at would otherwise be offered an older build as an
+ * update, which is how you talk somebody into reinstalling backwards.
+ *
+ * Duplicated in background.js on purpose. The popup and the service worker
+ * are separate contexts with no shared module, and six lines in two places
+ * beats a build step in an extension that deliberately has none.
+ */
+function isNewer(offered, running) {
+  const parts = (value) => String(value || "").split(".").map((chunk) => {
+    const n = parseInt(chunk, 10);
+    return isNaN(n) ? 0 : n;
+  });
+  const a = parts(offered);
+  const b = parts(running);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
 /* ---------------------------------------------------------- content script */
 
 async function getActiveTab() {
@@ -95,11 +122,30 @@ function checkConnection() {
     dotEl.className = "dot on";
     statusEl.textContent = "v" + response.version;
 
+    /* A store copy updates itself, so it is never told about an update.
+     *
+     * update_url is present in the manifest of an installed store extension
+     * and absent from an unpacked one. Reading it needs no permission, which
+     * matters: chrome.management would have answered the same question and
+     * cost a permission, and a new permission is what turns a routine review
+     * into a three-week one.
+     *
+     * Without this the popup nagged every store user permanently. The
+     * dashboard advertises the version in this repo; the store is however
+     * many review cycles behind; the two can never agree, so the notice never
+     * cleared — and it told them to sideload, which is the exact thing the
+     * store listing exists to delete. The dashboard stopped reporting the
+     * repo version to hosted browsers in V23.7, which fixed it from the other
+     * end; this is the half that lives in the extension, so a store copy
+     * pointed at any dashboard stays quiet.
+     */
+    const fromStore = Boolean(chrome.runtime.getManifest().update_url);
+
     // A mismatch only self-heals when the extension folder is the live
     // project. Loaded from a zip, or pointed at a hosted dashboard, no
     // amount of reloading changes the files — so say what to actually do.
     const latest = response.extension_version;
-    if (latest && latest !== running) {
+    if (!fromStore && latest && latest !== running && isNewer(latest, running)) {
       // Built with textContent, not innerHTML: `latest` comes off the network
       // (the dashboard's reported version), and nothing off the network should
       // ever be parsed as markup, however benign a version string looks.
