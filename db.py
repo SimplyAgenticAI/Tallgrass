@@ -5,10 +5,13 @@ and profiles they already have access to. There is no Facebook API that
 exposes group post engagement, so the extension is the only ingest path.
 """
 
+import logging
 import os
 import re
 import sqlite3
 from contextlib import contextmanager
+
+log = logging.getLogger("tallgrass.db")
 
 # Render's free tier has an ephemeral filesystem — set DATA_DIR to a mounted
 # persistent disk in production or the database resets on every deploy.
@@ -615,12 +618,28 @@ def claim_unowned_data(user_id):
     return claimed
 
 
+# The only labels a source may carry.
+#
+# "feed" is in here and must stay: the extension sends it for a Home-feed
+# capture, and the manual re-label control does NOT offer it — so a whitelist
+# copied from that control would reject every feed scan.
+SOURCE_KINDS = ("group", "page", "profile", "feed")
+
+
 def upsert_source(conn, fb_id, kind, name, url=None, member_count=None, user_id=None):
     """Insert or refresh a group/profile we're capturing from.
 
     Keyed on (user_id, fb_id): two accounts may track the same public group
     without either one overwriting the other.
     """
+    # The manual re-label endpoint has always checked this against a list.
+    # Capture never did — it took whatever the payload said and stored it, and
+    # kind is set once on insert and deliberately never refreshed, so a bad
+    # value would outlive every later scan. It also reaches innerHTML in the
+    # score explainer. The honest extension only ever sends one of these four
+    # literals, so nothing legitimate is turned away by requiring it.
+    if kind not in SOURCE_KINDS:
+        kind = "group"
     # Same exposure as a post body, and more likely than it sounds: a group
     # called "𝗖𝗘𝗢 𝗠𝗶𝗻𝗱𝘀𝗲𝘁" is scraped, truncated in the extension, and
     # arrives holding half a character.
@@ -851,6 +870,94 @@ def has_any_posts(user_id=None):
                 "SELECT COUNT(*) AS n FROM posts WHERE user_id = ?", (user_id,)
             ).fetchone()
         return row["n"] > 0
+
+
+# The share counts poisoned before V17.5, and the one-time repair for them.
+#
+# extractEngagement joined every aria-label with newlines and matched the
+# share tally with \s, which matches a newline — so the match could start on
+# the Share BUTTON's bare label, step over the join, and capture the leading
+# number of whatever label came next. On video posts that was the view tally.
+# A photo post with 2,000 reactions and 39 comments was stored with 1,000,000
+# shares and ranked as a 99.9x breakout on a number nobody had.
+#
+# V17.5 fixed the extractor and said plainly that already-stored rows were
+# still poisoned and untouched. They still were, three weeks later. A wrong
+# share count is not cosmetic: shares carry a 5x weight, so it inflates the
+# post's own score AND drags its group's median, which changes the ranking of
+# every other post in that group. It is wrong in the exact place the product
+# exists to be right.
+#
+# The signature is shares == video_plays with both above zero — the two landed
+# on the identical number because one was copied from the other.
+#
+# Two guards against repairing something that was never broken:
+#
+#   COALESCE(updated_at, captured_at) < the fix date, so a row whose counts
+#   were last WRITTEN by the fixed extractor is never touched, even if it was
+#   first captured long before.
+#
+#   A floor, because a video with 2 shares and 2 views is an ordinary
+#   coincidence while 1,000,000 of each is not. Set low enough to catch real
+#   poison and high enough that small honest ties survive.
+#
+# Zeroed rather than guessed at: no count beats a confidently wrong one, which
+# is the same rule the extractor now follows.
+SHARES_FIX_DATE = "2026-08-19"        # V17.5 shipped 2026-08-17; a margin
+SHARES_POISON_FLOOR = 25
+SHARES_REPAIRED_KEY = "shares_poison_repaired"
+
+_POISONED_SHARES_WHERE = """
+    shares > 0
+    AND shares = video_plays
+    AND shares >= ?
+    AND COALESCE(updated_at, captured_at) < ?
+"""
+
+
+def count_poisoned_shares():
+    """How many stored rows still carry a view count as their share count."""
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) AS n FROM posts WHERE" + _POISONED_SHARES_WHERE,
+            (SHARES_POISON_FLOOR, SHARES_FIX_DATE)).fetchone()["n"]
+
+
+def repair_poisoned_shares():
+    """Zero the fabricated share counts. Returns how many rows changed.
+
+    Never deletes a post and never touches likes, comments or video_plays —
+    those were read correctly. Scores are computed on read, so clearing the
+    column is the whole repair: every multiple and every median recomputes
+    from the corrected numbers on the next page load.
+    """
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE posts SET shares = 0 WHERE" + _POISONED_SHARES_WHERE,
+            (SHARES_POISON_FLOOR, SHARES_FIX_DATE))
+        return cursor.rowcount
+
+
+def repair_poisoned_shares_once():
+    """Run the repair a single time, ever, and remember that it ran.
+
+    At startup rather than behind a button: these are wrong numbers on a
+    ranking nobody can see the inputs to, so waiting for somebody to notice
+    and click is not a fix. Guarded by a stored flag so a restart cannot
+    repeat it, and the flag is written even when nothing matched — an install
+    with no poisoned rows has still answered the question.
+    """
+    if get_setting(SHARES_REPAIRED_KEY, ""):
+        return 0
+    try:
+        fixed = repair_poisoned_shares()
+        set_setting(SHARES_REPAIRED_KEY, SHARES_FIX_DATE)
+        return fixed
+    except Exception:                              # noqa: BLE001
+        # A failed repair must never stop the app booting. It stays unflagged
+        # and is retried on the next start.
+        log.exception("share-count repair failed")
+        return 0
 
 
 def users_holding_only_samples(limit=500):

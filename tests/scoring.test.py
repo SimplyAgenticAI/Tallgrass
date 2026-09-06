@@ -235,6 +235,70 @@ def main():
     check("  the default is still five",
           outliers.weighted_engagement(post(shares=1)), 5)
 
+    # ------------------------------- the share counts poisoned before V17.5
+    #
+    # A view tally stored as a share count, times the 5x share weight. It
+    # inflated the post's own multiple AND the median it was measured
+    # against, so it moved the ranking of every other post in the group. The
+    # extractor was fixed in V17.5; the stored rows were not, for three weeks.
+    #
+    # These check the repair only zeroes what was actually broken. Every guard
+    # here exists because removing it would delete a number somebody really
+    # earned.
+    print()
+    print("the poisoned share counts, and only those")
+
+    import os
+    import tempfile
+    os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
+    import db
+    db.init_db()
+
+    old = "2026-08-01"
+    after = "2026-09-01"
+    cases = [
+        # label,                             shares,  plays, updated, repair?
+        ("a view count copied into shares", 1000000, 1000000, old,   True),
+        ("a smaller one, same signature",       300,     300, old,   True),
+        ("a genuine tie below the floor",         2,       2, old,   False),
+        ("a genuine tie just under it",          24,      24, old,   False),
+        ("counts rewritten after the fix",     5000,    5000, after, False),
+        ("real shares, unequal views",          800,   40000, old,   False),
+        ("shares on a post with no video",      900,       0, old,   False),
+    ]
+    with db.get_db() as conn:
+        conn.execute("INSERT INTO sources (user_id, fb_id, kind, name) "
+                     "VALUES (1, 'poison-src', 'group', 'G')")
+        source_id = conn.execute(
+            "SELECT id FROM sources WHERE fb_id = 'poison-src'").fetchone()["id"]
+        for i, (label, shares, plays, updated, _want) in enumerate(cases):
+            conn.execute(
+                "INSERT INTO posts (user_id, source_id, fb_post_id, body, likes,"
+                " comments, shares, video_plays, captured_at, updated_at,"
+                " engagement_read) VALUES (1,?,?,?,100,10,?,?,?,?,1)",
+                (source_id, "poison-%d" % i, label, shares, plays, old, updated))
+
+    check("the count matches what will be repaired",
+          db.count_poisoned_shares(), 2)
+    check("the repair reports the same number",
+          db.repair_poisoned_shares(), 2)
+
+    with db.get_db() as conn:
+        for i, (label, shares, _plays, _updated, want) in enumerate(cases):
+            now = conn.execute("SELECT shares FROM posts WHERE fb_post_id = ?",
+                               ("poison-%d" % i,)).fetchone()["shares"]
+            check("  %s" % label, now != shares, want)
+
+    # Likes, comments and the view count were all read correctly. Only the one
+    # fabricated column moves.
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT likes, comments, video_plays FROM posts "
+            "WHERE fb_post_id = 'poison-0'").fetchone()
+    check("nothing else on the row is touched",
+          (row["likes"], row["comments"], row["video_plays"]),
+          (100, 10, 1000000))
+
     print()
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))

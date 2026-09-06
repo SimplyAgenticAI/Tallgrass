@@ -60,7 +60,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "23.9"
+APP_VERSION = "24.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -125,6 +125,15 @@ log = logging.getLogger("tallgrass")
 
 db.init_db()
 db.promote_sole_account()
+
+# The share counts poisoned before V17.5, repaired once. See db.py for what
+# was wrong and how narrowly this is scoped. Runs here rather than behind an
+# admin button because it is wrong numbers underneath a ranking whose inputs
+# nobody can see — waiting for somebody to notice and click is not a fix.
+_repaired_shares = db.repair_poisoned_shares_once()
+if _repaired_shares:
+    log.info("repaired %d posts carrying a view count as their share count",
+             _repaired_shares)
 
 
 def _daily_backup():

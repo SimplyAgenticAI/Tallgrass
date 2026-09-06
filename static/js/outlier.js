@@ -2637,17 +2637,39 @@
 
     function commas(n) {
       var v = parseFloat(n);
-      return isNaN(v) ? String(n) : v.toLocaleString("en-US");
+      // A value that will not parse as a number still reaches innerHTML, so
+      // the fallback has to be escaped like any other text.
+      return isNaN(v) ? esc(n) : v.toLocaleString("en-US");
+    }
+
+    /* Everything that is not a number, on its way into innerHTML.
+     *
+     * This is the only innerHTML in the file that interpolates stored values,
+     * and one of them — d.kind — is a column written by whatever posted to
+     * the capture API, not a constant. The honest extension only ever sends
+     * group/page/profile/feed, and the API needs a key, so this is not a way
+     * in from outside; it is one row of bad data away from being a scripted
+     * dialog, and the row is written once on insert and never refreshed.
+     *
+     * Escaping here costs nothing and does not depend on the ingest guard
+     * staying correct. Both are in place, deliberately.
+     */
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
     function explainHTML(d) {
       var isComment = d.kind === "comment";
       var thing = isComment ? "comment" : "post";
       // d.kind carries the real source kind now, so a post captured from a
-      // page is no longer described as scored against a group.
-      var place = isComment ? "thread" : (d.kind || "group");
+      // page is no longer described as scored against a group. Escaped: it is
+      // a stored column, not a literal.
+      var place = isComment ? "thread" : esc(d.kind || "group");
       var pool = isComment ? "comments in this source" : "posts in this " + place;
       var medWord = isComment ? "comment median" : place + " median";
+      var tier = esc(d.tier || "");
       return (
         '<p>Every ' + thing + ' is scored against what is <b>normal for its ' + place +
           '</b> — never a global number, because ' + commas(d.typical) +
@@ -2661,7 +2683,7 @@
           '</b>, the middle score of all ' + pool +
           '. The median, not the average, so one viral ' + thing + " can't skew it.</p>" +
         '<p class="sh-multiple"><b>' + commas(d.weighted) + ' &divide; ' + commas(d.typical) +
-          ' = ' + d.multiple + '&times;</b> &middot; ' + (d.tier || "") + "</p>" +
+          ' = ' + commas(d.multiple) + '&times;</b> &middot; ' + tier + "</p>" +
         '<div class="sh-bar" aria-hidden="true"><div class="sh-bar-fill"></div>' +
           '<div class="sh-bar-notch"><span>median</span></div></div>' +
         '<p class="sh-note">On the card, the notch is that median line and the glow is ' +

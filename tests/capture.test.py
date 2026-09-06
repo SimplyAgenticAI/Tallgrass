@@ -319,6 +319,37 @@ def main():
               True)
         check("  with its real characters intact", bold_a in stored["body"], True)
 
+    # -------------------------------------- a source kind is a label, not text
+    #
+    # The manual re-label endpoint always checked kind against a list. Capture
+    # never did — it stored whatever the payload said. That column is set once
+    # on insert and deliberately never refreshed by a later scan, so a bad
+    # value would have outlived every rescan, and it reaches innerHTML in the
+    # score explainer. Reachable only with an account's own API key, so it was
+    # a way to attack yourself rather than a way in — which is a reason to
+    # close it cheaply, not a reason to leave it.
+    print()
+    print("a source kind is one of four labels or it is not stored")
+
+    with db.get_db() as conn:
+        for i, (given, want) in enumerate([
+            ("group", "group"),
+            ("page", "page"),
+            ("profile", "profile"),
+            # Sent for a Home-feed capture. A whitelist copied from the manual
+            # re-label control would not have it, and every feed scan would
+            # silently become a group.
+            ("feed", "feed"),
+            ("<img src=x onerror=alert(1)>", "group"),
+            ("", "group"),
+            (None, "group"),
+        ]):
+            source_id = db.upsert_source(conn, fb_id="kind-%d" % i, kind=given,
+                                         name="S%d" % i, user_id=1)
+            stored = conn.execute("SELECT kind FROM sources WHERE id = ?",
+                                  (source_id,)).fetchone()["kind"]
+            check("  %r is stored as %r" % (given, want), stored, want)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()
