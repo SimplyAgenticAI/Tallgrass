@@ -908,6 +908,40 @@ select.kind-select option { color: initial; }
 .istep-msg.ok { color: var(--emerald-bright); }
 .istep-msg.error { color: var(--ember); }
 
+/* Getting to chrome://extensions. Chrome forbids a link to it, so the copy
+   button IS the step and is weighted like one, with the keystrokes appearing
+   underneath the moment the address is on the clipboard. */
+.openext { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.openext .btn { align-self: stretch; }
+.openext .path-line { align-self: stretch; }
+.openext-copy.is-copied {
+  background: rgba(52,211,153,0.16); border-color: var(--border-lit);
+  color: var(--emerald-bright);
+}
+.openext-keys {
+  align-self: stretch; padding: 13px 15px; border-radius: var(--r-md);
+  background: rgba(52,211,153,0.07); border: 1px solid var(--border-lit);
+}
+.openext-keys-lead {
+  margin: 0 0 9px; font-size: 12.5px; font-weight: 600;
+  color: var(--emerald-bright);
+}
+.openext-steps {
+  margin: 0; padding-left: 18px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.openext-steps li { font-size: 13px; line-height: 1.7; }
+.openext-steps span { color: var(--text-muted); font-size: 12.5px; margin-left: 4px; }
+.openext-keys kbd {
+  display: inline-block; min-width: 20px; text-align: center;
+  padding: 2px 7px; border-radius: var(--r-xs);
+  background: rgba(6,20,13,0.8); border: 1px solid var(--border-lit);
+  border-bottom-width: 2px;
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 600;
+  color: var(--emerald-bright);
+}
+.openext-why { margin: 0; line-height: 1.6; }
+
 .alt-route {
   font-size: 12.5px; color: var(--text-faint); line-height: 1.6; margin: 0;
   padding-left: 12px; border-left: 2px solid var(--border);

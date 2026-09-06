@@ -1114,6 +1114,73 @@
       .catch(function () { toast("Clipboard blocked by the browser", true); });
   });
 
+  /* -------------------------------------------- install: chrome://extensions
+
+     The one step of the install that cannot be automated. Chrome will not let
+     a page navigate to its own settings — an anchor to chrome://extensions is
+     inert and silently so — so the address has to travel via the clipboard
+     and the person's own address bar.
+
+     Copying is therefore not a convenience here, it is the step. It gets a
+     primary button, and the keystrokes appear the moment the copy lands so
+     there is nothing to remember between clicking and pasting. */
+
+  function macModifier() {
+    var platform =
+      (navigator.userAgentData && navigator.userAgentData.platform) ||
+      navigator.platform || "";
+    return /mac/i.test(platform);
+  }
+
+  /* Mac writes Command, not Ctrl, and getting this wrong on the one step
+     somebody has to perform by hand is the difference between it working and
+     it appearing broken. Ctrl is in the markup, so it is already right for
+     the large majority before this runs. */
+  if (macModifier()) {
+    var mods = document.querySelectorAll(".openext-mod");
+    for (var m = 0; m < mods.length; m++) mods[m].textContent = "⌘";
+  }
+
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest(".openext-copy");
+    if (!btn) return;
+
+    var block = btn.closest(".openext");
+    var keys = block && block.querySelector(".openext-keys");
+    var code = block && block.querySelector(".openext-url");
+    var url = btn.dataset.url || "chrome://extensions";
+
+    function reveal(copied) {
+      if (keys) keys.hidden = false;
+      if (copied) {
+        btn.textContent = "Copied — now paste it below";
+        btn.classList.add("is-copied");
+        toast("Copied — paste it into the address bar");
+        return;
+      }
+      /* Clipboard writes are refused outside a secure context and by some
+         managed profiles. Selecting the text means the manual route is one
+         keystroke rather than reading it off the screen and retyping it. */
+      btn.textContent = "Selected — copy it yourself";
+      if (code && window.getSelection && document.createRange) {
+        var range = document.createRange();
+        range.selectNodeContents(code);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      toast("Clipboard blocked — copy the selected address", true);
+    }
+
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      reveal(false);
+      return;
+    }
+    navigator.clipboard.writeText(url)
+      .then(function () { reveal(true); })
+      .catch(function () { reveal(false); });
+  });
+
   /* ------------------------------------------------------------ demo data */
 
   function demoRequest(method, label) {

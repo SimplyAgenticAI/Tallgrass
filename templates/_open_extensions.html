@@ -1,0 +1,50 @@
+{# Getting somebody to chrome://extensions.
+
+   This wants to be a link and cannot be one. Chrome blocks every web page
+   from navigating to its own settings pages, and it blocks them silently:
+   an <a href="chrome://extensions"> renders like a link, hovers like a link,
+   and does absolutely nothing when clicked. No error, no new tab, no clue.
+   That is worse than no link, because the visitor concludes the install is
+   broken rather than that they need to paste something.
+
+   window.open, location.href, target=_blank and a right-click "open in new
+   tab" are all refused the same way. There is no page-side trick left; the
+   only thing that can open that URL is the person's own address bar.
+
+   So: one obvious button that puts the URL on the clipboard, and the moment
+   it lands, the exact keystrokes that finish the job. Two keys and Enter,
+   with nothing to read off the screen and retype.
+
+   The modifier is written as Ctrl in the markup and corrected to the Command
+   symbol by outlier.js on a Mac, so it is right before the script runs and
+   righter after. #}
+
+<div class="openext">
+  <button type="button" class="btn btn-primary openext-copy"
+          data-url="chrome://extensions">
+    Copy the extensions-page address
+  </button>
+
+  {# Kept visible rather than hidden behind the button: somebody who would
+     rather type it, or who has the clipboard locked down, still needs to be
+     able to read it. #}
+  <div class="path-line">
+    <code class="openext-url">chrome://extensions</code>
+  </div>
+
+  <div class="openext-keys" hidden>
+    <p class="openext-keys-lead">Copied. Now, in this window:</p>
+    <ol class="openext-steps">
+      <li><kbd class="openext-mod">Ctrl</kbd> <kbd>L</kbd>
+        <span>jumps to the address bar</span></li>
+      <li><kbd class="openext-mod">Ctrl</kbd> <kbd>V</kbd>
+        <span>pastes the address</span></li>
+      <li><kbd>Enter</kbd> <span>opens the extensions page</span></li>
+    </ol>
+  </div>
+
+  <p class="fine openext-why">
+    Chrome won't let a website open its own settings, so this last bit has to
+    be pasted. It's the only step Tallgrass can't do for you.
+  </p>
+</div>
