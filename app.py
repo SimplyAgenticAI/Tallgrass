@@ -1867,6 +1867,43 @@ def post_image(post_id):
     return response
 
 
+@app.route("/api/admin/outreach", methods=["POST"])
+@auth.login_required
+def api_admin_outreach():
+    """Switch the onboarding email on or off, and edit what it says.
+
+    Both live in the database rather than the environment. A switch you want
+    to flip the moment an email reads wrong should not need a redeploy, and
+    copy you cannot change without one is copy nobody improves.
+    """
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    action = payload.get("action")
+
+    if action == "toggle":
+        outreach.set_enabled(bool(payload.get("on")))
+    elif action in ("save", "reset"):
+        kind = payload.get("kind")
+        if kind not in outreach.KINDS:
+            return jsonify({"ok": False, "error": "Unknown email"}), 400
+        if action == "reset":
+            outreach.reset_template(kind)
+        else:
+            subject = (payload.get("subject") or "").strip()
+            body = (payload.get("body") or "").strip()
+            if not subject or not body:
+                return jsonify({"ok": False,
+                                "error": "Subject and body are both needed. "
+                                         "Use Reset to restore the original."}), 400
+            outreach.set_template(kind, subject, body)
+    else:
+        return jsonify({"ok": False, "error": "Unknown action"}), 400
+
+    return jsonify({"ok": True, "outreach": outreach.status()})
+
+
 @app.route("/api/admin/demo-sample", methods=["POST"])
 @auth.login_required
 def api_admin_demo_sample():

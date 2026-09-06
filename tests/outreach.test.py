@@ -1,8 +1,9 @@
 """Email the product sends on its own.
 
 Fifteen people signed up and heard nothing, because `mailer.send` had exactly
-one caller — the password reset. There are now two more: a welcome at signup
-and a single nudge to somebody who never captured anything.
+one caller — the password reset. There are now three more: a welcome at
+signup, a single nudge to somebody who never captured anything, and one that
+fires when their own data first produces a real outlier.
 
 Automatic email is the one feature whose failure mode is worse than not
 shipping it. Sending twice, sending to somebody who said no, or sending the
@@ -15,7 +16,9 @@ these tests are mostly about:
             the provider costs somebody their only welcome
   never     opting out is honoured everywhere except a password reset, which
   uninvited is asked for
-  off       the sweep sends nothing at all unless OUTREACH is on
+  off       the sweep sends nothing at all while the switch is off
+  editable  the copy can be rewritten from /admin without the unsubscribe
+            link going with it, and a stray brace cannot break a send
 
 Run: python tests/outreach.test.py
 """
@@ -241,6 +244,125 @@ def main():
           outreach.sweep("https://tallgrassapp.com/"), 1)
 
     print()
+    print("the switch is a button, not a redeploy")
+    # It lived in the environment, which meant turning it off the moment an
+    # email read wrong required a restart of the service.
+    outreach.set_enabled(False)
+    check("off stays off even with OUTREACH=on in the environment",
+          outreach.enabled(), False)
+    check("  and the sweep sends nothing",
+          outreach.sweep("https://tallgrassapp.com/"), 0)
+    outreach.set_enabled(True)
+    check("back on again", outreach.enabled(), True)
+
+    print()
+    print("the copy can be edited, and put back")
+    original = outreach.get_template(outreach.NUDGE)
+    check("starts as the original", original["edited"], False)
+    outreach.set_template(outreach.NUDGE, "My own subject",
+                          "My own words, and the link: {install}")
+    edited = outreach.get_template(outreach.NUDGE)
+    check("the edit sticks", edited["subject"], "My own subject")
+    check("  and is marked as edited", edited["edited"], True)
+
+    with db.get_db() as conn:
+        conn.execute("INSERT INTO users (email, password_hash, created_at) "
+                     "VALUES ('edited@example.com', 'x', "
+                     "datetime('now', '-4 days'))")
+    before = len(SENT)
+    outreach.sweep("https://tallgrassapp.com/")
+    check("the sent email uses the new copy",
+          SENT[-1]["subject"], "My own subject")
+    check("  with its tokens filled in",
+          "https://tallgrassapp.com/capture" in SENT[-1]["body"], True)
+    # Editable copy must not be able to remove the way out.
+    check("  and the unsubscribe link is STILL there",
+          "unsubscribe/" in SENT[-1]["body"], True)
+
+    outreach.reset_template(outreach.NUDGE)
+    check("reset restores the original",
+          outreach.get_template(outreach.NUDGE)["subject"],
+          outreach.DEFAULTS[outreach.NUDGE]["subject"])
+
+    print()
+    print("a stray brace in the copy does not blow up a send")
+    # str.format would raise on this and take the sweep down with it, which is
+    # why substitution is plain replacement.
+    outreach.set_template(outreach.WELCOME, "Braces {oops} here",
+                          "A body with {a stray brace} and {dashboard}.")
+    brace, _ = auth.create_user("brace@example.com", "a-long-enough-pass",
+                                "marshfield")
+    sent, reason = outreach.welcome(brace, "https://tallgrassapp.com/")
+    check("it still sends", sent, True)
+    check("  leaving the unknown token alone",
+          "{a stray brace}" in SENT[-1]["body"], True)
+    check("  and filling the real one",
+          "https://tallgrassapp.com/" in SENT[-1]["body"], True)
+    outreach.reset_template(outreach.WELCOME)
+
+    print()
+    print("somebody whose own data scored gets told, once")
+    # Welcome greets, nudge chases. Neither says anything to the person who
+    # actually got it working — who is the one about to decide whether this is
+    # worth paying for.
+    with db.get_db() as conn:
+        winner = conn.execute(
+            "INSERT INTO users (email, password_hash, created_at) VALUES "
+            "('winner@example.com', 'x', datetime('now', '-3 days'))").lastrowid
+        source = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
+            "(?, 'page:win', 'page', 'A Page They Scanned')", (winner,)).lastrowid
+        counts = [40, 55, 38, 61, 44, 50, 47, 58, 42, 900]
+        for index, likes in enumerate(counts):
+            conn.execute(
+                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
+                "post_type, posted_at, likes, comments, shares, "
+                "engagement_read, is_demo) VALUES (?, ?, ?, 'b', 'text', "
+                "'2026-09-0%dT00:00:00', ?, 0, 0, 1, 0)" % (index % 9 + 1),
+                (winner, "w%d" % index, source, likes))
+
+    waiting = [u["email"] for u in outreach.winners()]
+    check("they are queued", "winner@example.com" in waiting, True)
+
+    before = len(SENT)
+    outreach.sweep("https://tallgrassapp.com/")
+    theirs = [m for m in SENT[before:] if m["to"] == "winner@example.com"]
+    check("they get one", len(theirs), 1)
+    # The number is the entire point of the email. Without it this is a
+    # newsletter about a feature.
+    check("  leading with their real multiple",
+          "x" in theirs[0]["subject"] and any(c.isdigit()
+                                              for c in theirs[0]["subject"]), True)
+    check("  naming the source it came from",
+          "A Page They Scanned" in theirs[0]["body"], True)
+
+    before = len(SENT)
+    outreach.sweep("https://tallgrassapp.com/")
+    check("and never a second one",
+          len([m for m in SENT[before:] if m["to"] == "winner@example.com"]), 0)
+
+    print()
+    print("somebody with only SAMPLE data is never congratulated")
+    # An email celebrating a number the app generated for them would be the
+    # emptiest message this product could send.
+    with db.get_db() as conn:
+        faker = conn.execute(
+            "INSERT INTO users (email, password_hash, created_at) VALUES "
+            "('samples2@example.com', 'x', datetime('now', '-3 days'))").lastrowid
+        src2 = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
+            "(?, 'demo-g', 'group', '[DEMO] G')", (faker,)).lastrowid
+        for index in range(12):
+            conn.execute(
+                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
+                "post_type, posted_at, likes, engagement_read, is_demo) "
+                "VALUES (?, ?, ?, 'b', 'text', '2026-09-01T00:00:00', ?, 1, 1)",
+                (faker, "d%d" % index, src2, 50 + index * 40))
+    check("they are not queued",
+          "samples2@example.com" in [u["email"] for u in outreach.winners()],
+          False)
+
+    print()
     print("the unsubscribe page works without being signed in")
     # Somebody reading their email is not necessarily signed in here, and
     # making them sign in to stop email is an unsubscribe in name only.
@@ -281,7 +403,7 @@ def main():
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1
-    print("two emails, sent once, only to people who want them")
+    print("three emails, sent once each, only to people who want them")
     return 0
 
 

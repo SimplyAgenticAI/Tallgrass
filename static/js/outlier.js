@@ -604,6 +604,75 @@
     });
   }
 
+  /* ------------------------------------------- admin: onboarding email */
+
+  var outreachToggle = document.getElementById("outreach-toggle");
+  var outreachMsg = document.getElementById("outreach-msg");
+
+  if (outreachToggle) {
+    outreachToggle.addEventListener("click", function () {
+      var turningOn = outreachToggle.getAttribute("data-on") !== "1";
+      outreachToggle.disabled = true;
+      outreachMsg.className = "msg-line";
+      outreachMsg.textContent = turningOn ? "Turning on…" : "Turning off…";
+      post("/api/admin/outreach", { action: "toggle", on: turningOn })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not change it");
+          toast(turningOn ? "Onboarding email is on" : "Onboarding email is off");
+          window.setTimeout(function () { window.location.reload(); }, 600);
+        })
+        .catch(function (error) {
+          outreachMsg.className = "msg-line error";
+          outreachMsg.textContent = error.message;
+          outreachToggle.disabled = false;
+        });
+    });
+  }
+
+  /* Editing the copy. Each <details> carries its own kind, so one handler
+     serves all of them however many emails there end up being. */
+  function outreachEdit(button, action) {
+    var block = button.closest("[data-kind]");
+    if (!block) return;
+    var kind = block.getAttribute("data-kind");
+    var subject = block.querySelector(".outreach-subject");
+    var body = block.querySelector(".outreach-body");
+
+    button.disabled = true;
+    outreachMsg.className = "msg-line";
+    outreachMsg.textContent = action === "reset" ? "Restoring…" : "Saving…";
+
+    post("/api/admin/outreach", {
+      action: action,
+      kind: kind,
+      subject: subject ? subject.value : "",
+      body: body ? body.value : ""
+    })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Could not save it");
+        toast(action === "reset" ? "Original copy restored" : "Email saved");
+        window.setTimeout(function () { window.location.reload(); }, 600);
+      })
+      .catch(function (error) {
+        outreachMsg.className = "msg-line error";
+        outreachMsg.textContent = error.message;
+        button.disabled = false;
+      });
+  }
+
+  var saveButtons = document.querySelectorAll(".outreach-save");
+  for (var oi = 0; oi < saveButtons.length; oi++) {
+    saveButtons[oi].addEventListener("click", function (event) {
+      outreachEdit(event.currentTarget, "save");
+    });
+  }
+  var resetButtons = document.querySelectorAll(".outreach-reset");
+  for (var ri = 0; ri < resetButtons.length; ri++) {
+    resetButtons[ri].addEventListener("click", function (event) {
+      outreachEdit(event.currentTarget, "reset");
+    });
+  }
+
   /* ------------------------------------- admin: sample data for new users */
 
   var sampleSave = document.getElementById("sample-save");

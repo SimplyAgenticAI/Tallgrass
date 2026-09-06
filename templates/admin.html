@@ -282,47 +282,85 @@
 
   {% if not outreach.configured %}
   <p class="fine" style="margin:0">
-    <b>Nothing can be sent</b> — see the SMTP settings below. The welcome email
-    and the nudge both need it.
+    <b>Nothing can be sent</b> — see the SMTP settings below. Every email here
+    needs it.
   </p>
-  {% elif not outreach.enabled %}
-  <div class="auth-error" style="background:rgba(217,180,95,0.1);border-color:rgba(217,180,95,0.4);margin:0">
-    <b>The nudge sweep is OFF.</b>
-    Welcome emails still go out to new signups — those go to somebody who just
-    signed up and is expecting one. The sweep is what reaches backwards over
-    accounts that stalled, so it stays off until you turn it on.
-    <div class="fine" style="margin-top:8px">
-      Set <code>OUTREACH</code> = <code>on</code> in this service's environment.
-      {% if outreach.waiting %}
-      <b>{{ outreach.waiting }}</b>
-      dormant account{{ '' if outreach.waiting == 1 else 's' }}
-      would be emailed once, within about fifteen minutes of the next page load.
-      {% else %}
-      No account is currently waiting for one.
-      {% endif %}
-    </div>
-  </div>
   {% else %}
-  <p class="fine" style="margin:0">
-    <b>On.</b> Stalled accounts get one nudge, once, between day 2 and day 45
-    after signing up.
-    {% if outreach.waiting %}
-      <b>{{ outreach.waiting }}</b> waiting to be sent.
-    {% else %}
-      Nothing waiting.
+
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn {{ 'btn-ghost danger' if outreach.enabled else 'btn-primary' }}"
+            id="outreach-toggle" type="button"
+            data-on="{{ '1' if outreach.enabled else '0' }}">
+      {{ 'Turn sending OFF' if outreach.enabled else 'Turn sending ON' }}
+    </button>
+    <span class="fine">
+      {% if outreach.enabled %}
+        <b style="color:var(--emerald-bright)">On.</b>
+      {% else %}
+        <b style="color:var(--gold)">Off.</b>
+        Welcome emails still go to new signups — they asked for those by
+        signing up. This switch controls the sweep, which reaches backwards
+        over existing accounts.
+      {% endif %}
+    </span>
+  </div>
+
+  <p class="fine" style="margin:0 0 14px">
+    Waiting to be sent:
+    <b>{{ outreach.waiting }}</b> nudge{{ '' if outreach.waiting == 1 else 's' }},
+    <b>{{ outreach.winners_waiting }}</b> first-outlier.
+    {% if outreach.optouts %}
+      <b>{{ outreach.optouts }}</b>
+      {{ 'person has' if outreach.optouts == 1 else 'people have' }} opted out.
     {% endif %}
+    Nobody is ever sent the same one twice.
   </p>
-  {% endif %}
+  <div class="msg-line" id="outreach-msg"></div>
+
+  {# The copy itself. Editable here because an email you cannot change without
+     a deploy is an email nobody improves — and these are written in first
+     person, so they should sound like the person sending them. #}
+  {% for email in outreach.emails %}
+  <details class="outreach-email" style="margin-bottom:10px">
+    <summary class="fine">
+      <b>{{ email.label }}</b>
+      · {{ email.sent }} sent
+      {% if email.edited %}· <span style="color:var(--emerald)">edited</span>{% endif %}
+    </summary>
+    <div style="margin-top:10px" data-kind="{{ email.kind }}">
+      <label class="fine" style="display:block;margin-bottom:8px">
+        Subject
+        <input type="text" class="outreach-subject" maxlength="200"
+               value="{{ email.subject }}"
+               style="width:100%;margin-top:4px">
+      </label>
+      <label class="fine" style="display:block">
+        Body
+        <textarea class="outreach-body" rows="14"
+                  style="width:100%;margin-top:4px;font-family:var(--font-mono);font-size:12.5px">{{ email.body }}</textarea>
+      </label>
+      <div style="display:flex;gap:9px;margin-top:9px;flex-wrap:wrap">
+        <button class="btn btn-primary outreach-save" type="button">Save</button>
+        <button class="btn btn-ghost outreach-reset" type="button">
+          Reset to original
+        </button>
+      </div>
+    </div>
+  </details>
+  {% endfor %}
 
   <p class="fine" style="margin:12px 0 0">
-    Sent so far: <b>{{ outreach.welcome_sent }}</b> welcome,
-    <b>{{ outreach.nudge_sent }}</b> nudge.
-    {% if outreach.optouts %}
-      <b>{{ outreach.optouts }}</b> {{ 'person has' if outreach.optouts == 1 else 'people have' }}
-      opted out.
-    {% endif %}
-    Nobody is ever sent either twice.
+    You can use these anywhere in a subject or body:
+    {% for token, what in outreach.tokens.items() %}
+    <br><code>{{ token }}</code> — {{ what }}
+    {% endfor %}
   </p>
+  <p class="fine" style="margin:8px 0 0">
+    An unsubscribe link is added to every message automatically and can't be
+    edited out. Somebody who can't find a way out presses the spam button
+    instead, and a sender reputation is much easier to keep than to repair.
+  </p>
+  {% endif %}
 </section>
 
 {# Getting somebody back into their account. Reset tokens are stored hashed, so
