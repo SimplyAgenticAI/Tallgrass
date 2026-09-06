@@ -143,6 +143,16 @@
     Full tracebacks are in the host's logs. These are kept so the reason is
     visible without opening them.
   </p>
+  {# An error stays on this page until something overwrites it, which means a
+     bug that has since been FIXED goes on being reported as if it were
+     current. That is worse than not showing it: a panel that cries wolf is a
+     panel you stop reading, and this one is meant to be read. #}
+  <div style="margin-top:12px">
+    <button class="btn btn-ghost" id="clear-errors" type="button">
+      Clear — this is dealt with
+    </button>
+    <div class="msg-line" id="clear-errors-msg"></div>
+  </div>
 </section>
 {% endif %}
 
@@ -307,8 +317,7 @@
 
   <p class="fine" style="margin:0 0 14px">
     Waiting to be sent:
-    <b>{{ outreach.waiting }}</b> nudge{{ '' if outreach.waiting == 1 else 's' }},
-    <b>{{ outreach.winners_waiting }}</b> first-outlier.
+    <b>{{ outreach.waiting }}</b> nudge{{ '' if outreach.waiting == 1 else 's' }}.
     {% if outreach.optouts %}
       <b>{{ outreach.optouts }}</b>
       {{ 'person has' if outreach.optouts == 1 else 'people have' }} opted out.
@@ -330,10 +339,14 @@
     <div class="outreach-head">
       <span>
         <b>{{ email.label }}</b>
-        {% if email.on %}
-        <span class="kind-chip" style="color:var(--emerald-bright)">on</span>
+        {% if email.sending %}
+        <span class="kind-chip" style="color:var(--emerald-bright);border-color:var(--emerald)">ON</span>
+        {% elif email.on %}
+        {# Its own switch is on; the master one above is what is stopping it.
+           Saying "off" here would blame the button the operator just used. #}
+        <span class="kind-chip" style="color:var(--gold);border-color:var(--gold)">ON · paused</span>
         {% else %}
-        <span class="kind-chip" style="color:var(--text-faint)">off</span>
+        <span class="kind-chip" style="color:var(--text-faint)">OFF</span>
         {% endif %}
         <span class="fine" style="display:block;margin-top:3px">
           {{ email.note }}
@@ -342,10 +355,11 @@
       <span class="fine" style="white-space:nowrap">
         {{ email.sent }} sent{% if email.edited %} ·
         <span style="color:var(--emerald-bright)">edited</span>{% endif %}
-        <button class="btn btn-ghost outreach-kind" type="button"
+        <button class="btn {{ 'btn-ghost' if email.on else 'btn-primary' }} outreach-kind"
+                type="button"
                 data-on="{{ '1' if email.on else '0' }}"
                 style="margin-left:9px">
-          {{ 'Turn off' if email.on else 'Turn on' }}
+          {{ 'Turn this one off' if email.on else 'Turn this one on' }}
         </button>
       </span>
     </div>

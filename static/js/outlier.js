@@ -604,6 +604,29 @@
     });
   }
 
+  /* ------------------------------------------------ admin: clear errors */
+
+  var clearErrors = document.getElementById("clear-errors");
+  if (clearErrors) {
+    var clearErrorsMsg = document.getElementById("clear-errors-msg");
+    clearErrors.addEventListener("click", function () {
+      clearErrors.disabled = true;
+      clearErrorsMsg.className = "msg-line";
+      clearErrorsMsg.textContent = "Clearing…";
+      post("/api/admin/clear-errors")
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not clear them");
+          toast("Cleared");
+          window.setTimeout(function () { window.location.reload(); }, 500);
+        })
+        .catch(function (error) {
+          clearErrorsMsg.className = "msg-line error";
+          clearErrorsMsg.textContent = error.message;
+          clearErrors.disabled = false;
+        });
+    });
+  }
+
   /* ------------------------------------------- admin: onboarding email */
 
   var outreachToggle = document.getElementById("outreach-toggle");

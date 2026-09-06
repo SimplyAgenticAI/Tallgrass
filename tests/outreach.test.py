@@ -1,9 +1,9 @@
 """Email the product sends on its own.
 
 Fifteen people signed up and heard nothing, because `mailer.send` had exactly
-one caller — the password reset. There are now three more: a welcome at
-signup, a single nudge to somebody who never captured anything, and one that
-fires when their own data first produces a real outlier.
+one caller — the password reset. There are now two more: a welcome at signup
+and a single nudge to somebody who never captured anything, both switchable
+and editable from the admin page.
 
 Automatic email is the one feature whose failure mode is worse than not
 shipping it. Sending twice, sending to somebody who said no, or sending the
@@ -260,9 +260,8 @@ def main():
     # Somebody who signs up and scans the same afternoon would otherwise get a
     # welcome and a congratulations within the hour, which reads as a sequence
     # running rather than a person writing.
-    check("first_win is off until asked for",
-          outreach.kind_enabled(outreach.FIRST_WIN), False)
-    check("  but welcome is on", outreach.kind_enabled(outreach.WELCOME), True)
+    check("welcome is on by default",
+          outreach.kind_enabled(outreach.WELCOME), True)
     check("  and so is the nudge", outreach.kind_enabled(outreach.NUDGE), True)
 
     outreach.set_kind_enabled(outreach.NUDGE, False)
@@ -286,6 +285,17 @@ def main():
     print("the master switch beats every individual one")
     outreach.set_enabled(False)
     check("welcome is off too", outreach.kind_enabled(outreach.WELCOME), False)
+    # But its OWN switch is untouched, and that is what the button shows.
+    # Folding the master switch into the only available answer meant that with
+    # sending paused, turning a message on saved correctly and still displayed
+    # as off — so the button never changed and there was no way back.
+    check("  while its own switch still reads on",
+          outreach.kind_on(outreach.WELCOME), True)
+    outreach.set_kind_enabled(outreach.NUDGE, True)
+    check("  and one turned on while paused reads on",
+          outreach.kind_on(outreach.NUDGE), True)
+    check("    even though nothing is being sent",
+          outreach.kind_enabled(outreach.NUDGE), False)
     master, _ = auth.create_user("master@example.com", "a-long-enough-pass",
                                  "stonebridge")
     sent, reason = outreach.welcome(master, "https://tallgrassapp.com/")
@@ -342,97 +352,6 @@ def main():
     outreach.reset_template(outreach.WELCOME)
 
     print()
-    print("somebody whose own data scored gets told, once")
-    # Welcome greets, nudge chases. Neither says anything to the person who
-    # actually got it working — who is the one about to decide whether this is
-    # worth paying for.
-    with db.get_db() as conn:
-        winner = conn.execute(
-            "INSERT INTO users (email, password_hash, created_at) VALUES "
-            "('winner@example.com', 'x', datetime('now', '-3 days'))").lastrowid
-        source = conn.execute(
-            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
-            "(?, 'page:win', 'page', 'A Page They Scanned')", (winner,)).lastrowid
-        counts = [40, 55, 38, 61, 44, 50, 47, 58, 42, 900]
-        for index, likes in enumerate(counts):
-            conn.execute(
-                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
-                "post_type, posted_at, likes, comments, shares, "
-                "engagement_read, is_demo) VALUES (?, ?, ?, 'b', 'text', "
-                "'2026-09-0%dT00:00:00', ?, 0, 0, 1, 0)" % (index % 9 + 1),
-                (winner, "w%d" % index, source, likes))
-
-    waiting = [u["email"] for u in outreach.winners()]
-    check("they are queued", "winner@example.com" in waiting, True)
-
-    # Off by default, so nothing happens until it is asked for.
-    before = len(SENT)
-    outreach.sweep("https://tallgrassapp.com/")
-    check("but nothing is sent while it is switched off",
-          any(m["to"] == "winner@example.com" for m in SENT[before:]), False)
-
-    print()
-    print("and it never lands the same day as the welcome")
-    # A person who signs up and scans the same afternoon would otherwise get
-    # two emails within the hour, which reads as a sequence running rather
-    # than a person writing.
-    with db.get_db() as conn:
-        eager = conn.execute(
-            "INSERT INTO users (email, password_hash, created_at) VALUES "
-            "('eager@example.com', 'x', datetime('now'))").lastrowid
-        eager_source = conn.execute(
-            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
-            "(?, 'page:eager', 'page', 'Fast Mover')", (eager,)).lastrowid
-        for index, likes in enumerate([40, 55, 38, 61, 44, 50, 47, 58, 42, 900]):
-            conn.execute(
-                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
-                "post_type, posted_at, likes, comments, shares, "
-                "engagement_read, is_demo) VALUES (?, ?, ?, 'b', 'text', "
-                "'2026-09-01T00:00:00', ?, 0, 0, 1, 0)",
-                (eager, "e%d" % index, eager_source, likes))
-    outreach.set_kind_enabled(outreach.FIRST_WIN, True)
-    check("somebody who signed up minutes ago is not queued",
-          "eager@example.com" in [u["email"] for u in outreach.winners()], False)
-
-    before = len(SENT)
-    outreach.sweep("https://tallgrassapp.com/")
-    theirs = [m for m in SENT[before:] if m["to"] == "winner@example.com"]
-    check("they get one", len(theirs), 1)
-    # The number is the entire point of the email. Without it this is a
-    # newsletter about a feature.
-    check("  leading with their real multiple",
-          "x" in theirs[0]["subject"] and any(c.isdigit()
-                                              for c in theirs[0]["subject"]), True)
-    check("  naming the source it came from",
-          "A Page They Scanned" in theirs[0]["body"], True)
-
-    before = len(SENT)
-    outreach.sweep("https://tallgrassapp.com/")
-    check("and never a second one",
-          len([m for m in SENT[before:] if m["to"] == "winner@example.com"]), 0)
-
-    print()
-    print("somebody with only SAMPLE data is never congratulated")
-    # An email celebrating a number the app generated for them would be the
-    # emptiest message this product could send.
-    with db.get_db() as conn:
-        faker = conn.execute(
-            "INSERT INTO users (email, password_hash, created_at) VALUES "
-            "('samples2@example.com', 'x', datetime('now', '-3 days'))").lastrowid
-        src2 = conn.execute(
-            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
-            "(?, 'demo-g', 'group', '[DEMO] G')", (faker,)).lastrowid
-        for index in range(12):
-            conn.execute(
-                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
-                "post_type, posted_at, likes, engagement_read, is_demo) "
-                "VALUES (?, ?, ?, 'b', 'text', '2026-09-01T00:00:00', ?, 1, 1)",
-                (faker, "d%d" % index, src2, 50 + index * 40))
-    check("they are not queued",
-          "samples2@example.com" in [u["email"] for u in outreach.winners()],
-          False)
-
-    print()
     print("the unsubscribe page works without being signed in")
     # Somebody reading their email is not necessarily signed in here, and
     # making them sign in to stop email is an unsubscribe in name only.
@@ -473,7 +392,7 @@ def main():
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1
-    print("three emails, sent once each, only to people who want them")
+    print("two emails, sent once each, only to people who want them")
     return 0
 
 

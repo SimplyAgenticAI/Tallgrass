@@ -1867,6 +1867,23 @@ def post_image(post_id):
     return response
 
 
+@app.route("/api/admin/clear-errors", methods=["POST"])
+@auth.login_required
+def api_admin_clear_errors():
+    """Dismiss the last recorded failures.
+
+    They persist until something overwrites them, so a bug that has since been
+    fixed keeps being reported as though it were current — which is how a
+    panel meant to be read becomes one that is ignored.
+    """
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+    for key in (CAPTURE_ERROR_KEY, UNHANDLED_ERROR_KEY, MAIL_ERROR_KEY):
+        db.set_setting(key, "")
+    log.info("recorded errors cleared by admin")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/outreach", methods=["POST"])
 @auth.login_required
 def api_admin_outreach():

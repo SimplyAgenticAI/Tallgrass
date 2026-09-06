@@ -6,27 +6,25 @@ only message the product could produce was one you had to ask for. An account
 that stalled on the install stalled in silence, and the first and last signal
 was that they never came back.
 
-Three messages, one per thing worth saying:
+Two messages, and deliberately only two:
 
-  welcome    Sent at signup. Says what they now have (a working dashboard full
-             of sample data) and what the one remaining step is.
-  nudge      Sent once, days later, and ONLY to somebody who still has not
-             captured a real post. It names the thing that actually stops
-             people — the Developer-mode install — and offers a hand.
-  first_win  Sent once, when their OWN data first produces a real outlier. It
-             leads with their number, because that is the moment the product
-             has proved itself and the moment they decide whether it is worth
-             paying for. Sample data never triggers it: congratulating
-             somebody on a number this app generated for them would be the
-             emptiest message it could send.
+  welcome  Sent at signup. Says what they now have (a working dashboard full
+           of sample data) and what the one remaining step is.
+  nudge    Sent once, days later, and ONLY to somebody who still has not
+           captured a real post. It names the thing that actually stops
+           people — the Developer-mode install — and offers a hand.
 
-Nobody gets a fourth. There is no drip and no re-engagement campaign — these
-are the three moments where there is something true to say, and a fourth would
-be sending mail because a scheduler exists.
+There was briefly a third, sent when somebody's own captures first produced an
+outlier. It was removed on the operator's call: two emails from a product
+somebody just signed up to is the edge of welcome, and a third arriving
+because a threshold tripped is where onboarding starts to feel like a
+sequence running rather than a person writing. The machinery to add another
+kind is still here — a key in KINDS, an entry in DEFAULTS — if that judgement
+ever changes.
 
-The switch and the copy both live in the database, not the environment. A
-switch you want to flip the moment an email reads wrong should not need a
-redeploy, and copy you cannot edit without one is copy nobody improves.
+The switches and the copy live in the database, not the environment. A switch
+you want to flip the moment an email reads wrong should not need a redeploy,
+and copy you cannot edit without one is copy nobody improves.
 
 Three rules this module will not break:
 
@@ -37,9 +35,10 @@ Three rules this module will not break:
   somebody who     email_optout is checked on every path. Password resets
   said no.         ignore it, correctly — those are asked for.
   Off until
-  switched on.     The sweep does nothing unless OUTREACH=on. A deploy must
-                   not be able to email every dormant account by surprise,
-                   before anybody has read the copy.
+  switched on.     Nothing sends while the master switch is off, whatever the
+                   individual ones say. A deploy must not be able to email
+                   every dormant account by surprise, before anybody has read
+                   the copy.
 """
 
 import hashlib
@@ -55,9 +54,8 @@ log = logging.getLogger("tallgrass.outreach")
 
 WELCOME = "welcome"
 NUDGE = "nudge"
-FIRST_WIN = "first_win"
 
-KINDS = (WELCOME, NUDGE, FIRST_WIN)
+KINDS = (WELCOME, NUDGE)
 
 # How long to leave somebody alone before the nudge. Long enough that it is
 # not nagging a person who is mid-install, short enough to arrive while they
@@ -120,37 +118,36 @@ def set_enabled(on):
 
 
 # Which messages are on when nobody has said otherwise.
-#
-# first_win starts OFF on purpose. Somebody who signs up and scans the same
-# afternoon would otherwise get a welcome and a congratulations within the
-# hour, which reads as a sequence running rather than a person writing — and
-# the whole reason these are worth sending is that they do not read that way.
-# It is worth having; it is not worth having by surprise.
-DEFAULT_ON = {WELCOME: True, NUDGE: True, FIRST_WIN: False}
-
-# And even switched on, first_win waits. The point of the email is that their
-# own data proved something, which is not news ten minutes after signing up —
-# it is the same event as the welcome, told twice.
-FIRST_WIN_MIN_HOURS = 24
+DEFAULT_ON = {WELCOME: True, NUDGE: True}
 
 
-def kind_enabled(kind):
-    """Whether this particular message may be sent.
+def kind_on(kind):
+    """This message's OWN switch, ignoring the master one.
 
-    Both switches have to be on: the master one is a kill switch for all
-    automated email, and this is the per-message choice underneath it.
+    Kept separate from kind_enabled because the admin page needs to show what
+    the button did. Folding the master switch into the only available answer
+    meant that with sending paused, turning an individual message on saved
+    correctly and still displayed as off — so the button never changed and
+    there was no way to turn it back off again.
     """
-    if not enabled():
-        return False
     stored = db.get_setting(_key(kind, "on"), "")
     if stored:
         return stored == "on"
     return DEFAULT_ON.get(kind, False)
 
 
+def kind_enabled(kind):
+    """Whether this message may ACTUALLY be sent right now.
+
+    Both switches have to be on: the master one is a kill switch for all
+    automated email, and kind_on is the per-message choice underneath it.
+    """
+    return enabled() and kind_on(kind)
+
+
 def set_kind_enabled(kind, on):
     db.set_setting(_key(kind, "on"), "on" if on else "off")
-    return kind_enabled(kind)
+    return kind_on(kind)
 
 
 # ------------------------------------------------------------- unsubscribing
@@ -188,9 +185,9 @@ def user_id_for_token(token):
 # The starter copy. Editable from /admin, and these are what "Reset" restores.
 #
 # Written to be read by one person from another, not by a company at a list.
-# All three end by asking for a reply, because at this size a reply is worth
-# more than a click — the thing you cannot get from analytics is somebody
-# telling you which step they gave up on.
+# Both end by asking for a reply, because at this size a reply is worth more
+# than a click — the thing you cannot get from analytics is somebody telling
+# you which step they gave up on.
 DEFAULTS = {
     WELCOME: {
         "subject": "Your Tallgrass account is ready",
@@ -235,31 +232,6 @@ DEFAULTS = {
     },
     # The third one, and the one that was missing.
     #
-    # Welcome greets somebody and nudge chases somebody who stalled. Neither
-    # says anything to the person who actually got it working — who is the one
-    # worth talking to, and the one about to decide whether this is worth
-    # paying for. It fires once, when their own data first produces a real
-    # outlier, and it leads with their number rather than a feature.
-    FIRST_WIN: {
-        "subject": "Your first outlier: {top_multiple}x",
-        "body": (
-            "Your first scan has scored.\n\n"
-            "The best post Tallgrass found in {source} beat that group's "
-            "median by {top_multiple}x. On its own that is just a number — "
-            "what it means is that the post did {top_multiple} times what a "
-            "normal post does in that specific group, which is the only "
-            "comparison that tells you anything. A thousand reactions is "
-            "ordinary in one group and extraordinary in another.\n\n"
-            "Here it is:\n\n{dashboard}\n\n"
-            "Then the part most people skip. Open that post and press Remix. "
-            "Finding what worked is half of this; writing your own version of "
-            "the thing that made it work is the half that puts something in "
-            "your own feed.\n\n"
-            "If the number looks wrong, or the post it picked seems off, "
-            "reply and tell me — that is exactly the sort of thing I want to "
-            "hear about early."
-        ),
-    },
 }
 
 # What an editable body may refer to. Substituted by plain replacement rather
@@ -267,14 +239,11 @@ DEFAULTS = {
 TOKENS = {
     "{dashboard}": "the dashboard's address",
     "{install}": "the install instructions page",
-    "{top_multiple}": "their best post's multiple (first-outlier email only)",
-    "{source}": "the group it came from (first-outlier email only)",
 }
 
 LABELS = {
     WELCOME: "Welcome",
     NUDGE: "Nudge",
-    FIRST_WIN: "First outlier",
 }
 
 NOTES = {
@@ -282,9 +251,6 @@ NOTES = {
     NUDGE: "Sent once, %d–%d days after signing up, and only to somebody who "
            "still has not captured a real post." % (NUDGE_AFTER_DAYS,
                                                     NUDGE_BEFORE_DAYS),
-    FIRST_WIN: "Sent once, when their own captures first produce a real "
-               "outlier — never sooner than %d hours after signup, so it "
-               "cannot land the same day as the welcome." % FIRST_WIN_MIN_HOURS,
 }
 
 
@@ -331,9 +297,10 @@ def render(text, base_url, facts=None):
     values = {
         "{dashboard}": base_url,
         "{install}": "%scapture" % base_url,
-        "{top_multiple}": "",
-        "{source}": "your group",
     }
+    # `facts` is how a message would carry something about the specific
+    # account — a number, a group name. Nothing needs it today; the parameter
+    # stays because it is the seam a per-account message would use.
     values.update(facts or {})
     for token, value in values.items():
         text = text.replace(token, str(value))
@@ -435,67 +402,6 @@ def dormant():
         return []
 
 
-def winners():
-    """Accounts whose own captures have produced a real outlier, unemailed.
-
-    The cheap half is SQL: who has enough readable posts in one source to have
-    a baseline at all. The expensive half — actually scoring them — is done
-    per candidate below, because it is a handful of accounts rather than all
-    of them, and the email is only worth sending if it can lead with a number.
-    """
-    try:
-        with db.get_db() as conn:
-            return [dict(r) for r in conn.execute(
-                """
-                SELECT u.id, u.email, u.email_optout
-                FROM users u
-                WHERE COALESCE(u.email_optout, 0) = 0
-                  AND u.created_at <= datetime('now', ?)
-                  AND EXISTS (
-                      SELECT 1 FROM posts p
-                      WHERE p.user_id = u.id AND p.is_demo = 0
-                        AND p.engagement_read = 1
-                      GROUP BY p.source_id HAVING COUNT(*) >= ?)
-                  AND NOT EXISTS (SELECT 1 FROM outreach o
-                                   WHERE o.user_id = u.id AND o.kind = ?)
-                ORDER BY u.created_at
-                """, ("-%d hours" % FIRST_WIN_MIN_HOURS,
-                      _min_sample(), FIRST_WIN)).fetchall()]
-    except Exception:                         # noqa: BLE001
-        return []
-
-
-def _min_sample():
-    import outliers
-    return outliers.MIN_SAMPLE
-
-
-def best_post(user_id):
-    """Their biggest real outlier, as (multiple, source name). None if none.
-
-    Sample data is excluded: an email congratulating somebody on a number the
-    app generated for them would be the emptiest message this product could
-    send.
-    """
-    try:
-        import app
-        import outliers
-        scored = outliers.score_posts(app._scoring_rows(user_id=user_id))
-        real = [s for s in scored
-                if not s["is_demo"] and s.get("outlier_multiple")]
-        if not real:
-            return None
-        top = max(real, key=lambda s: s["outlier_multiple"])
-        with db.get_db() as conn:
-            row = conn.execute("SELECT name FROM sources WHERE id = ?",
-                               (top["source_id"],)).fetchone()
-        return top["outlier_multiple"], (row["name"] if row else "your group")
-    except Exception:                         # noqa: BLE001
-        log.warning("could not score user %s for first-win email", user_id,
-                    exc_info=True)
-        return None
-
-
 def sweep(base_url, limit=BATCH):
     """Send what is due. Returns how many went out."""
     if not enabled() or not mailer.is_configured():
@@ -507,20 +413,6 @@ def sweep(base_url, limit=BATCH):
             ok, _ = _send(user, NUDGE, base_url)
             if ok:
                 sent += 1
-
-    # Scoring is not free, so a switched-off message must not pay for it.
-    for user in (winners()[:limit] if kind_enabled(FIRST_WIN) else []):
-        best = best_post(user["id"])
-        if not best:
-            # They cleared the sample floor but nothing actually beat its
-            # median yet. Not a failure — just not news, so nothing is
-            # claimed and they stay eligible for when it is.
-            continue
-        multiple, source = best
-        ok, _ = _send(user, FIRST_WIN, base_url,
-                      facts={"{top_multiple}": multiple, "{source}": source})
-        if ok:
-            sent += 1
 
     return sent
 
@@ -573,14 +465,17 @@ def status():
         "configured": mailer.is_configured(),
         "optouts": summary["optouts"],
         "waiting": len(dormant()) if on and kind_enabled(NUDGE) else 0,
-        "winners_waiting": len(winners()) if on and kind_enabled(FIRST_WIN) else 0,
         "tokens": TOKENS,
         "emails": [
             {
                 "kind": kind,
                 "label": LABELS[kind],
                 "sent": summary["sent"].get(kind, 0),
-                "on": kind_enabled(kind),
+                # What the button did, and what is actually happening. They
+                # differ whenever the master switch is off, and saying so is
+                # the difference between "paused" and "you clicked nothing".
+                "on": kind_on(kind),
+                "sending": kind_enabled(kind),
                 "note": NOTES.get(kind, ""),
                 **get_template(kind),
             }
