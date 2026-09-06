@@ -150,6 +150,46 @@ def main():
     for path in ["/", "/welcome", "/login", "/register", "/pricing"]:
         check("GET %s signed out" % path, anon.get(path).status_code, 200)
 
+    # ------------------------------------------------ what /api/ping promises
+    #
+    # The extension polls this every minute and compares extension_version to
+    # its own. Anything the dashboard names here, it is telling a browser it
+    # can install — so a hosted dashboard must name the version the Chrome Web
+    # Store has approved, never the one sitting in this repo.
+    #
+    # It reported the repo's manifest to everybody once. The store was on 22.9
+    # and the repo had run on to 23.6 through fourteen dashboard-only releases,
+    # so every store user's popup showed an update that did not exist, with
+    # instructions to sideload it by hand - the exact thing the store listing
+    # was published to delete. The versions diverge by design now, and this is
+    # what stops them being confused for each other again.
+    print()
+    print("the ping only advertises versions somebody can actually install")
+
+    was_local = app._is_local_dashboard
+    try:
+        app._is_local_dashboard = lambda: False
+        hosted = anon.get("/api/ping").get_json()
+        check("hosted reports the STORE version",
+              hosted["extension_version"], app.EXTENSION_STORE_VERSION)
+        check("  so a user on the store build is never nagged",
+              hosted["extension_version"] == app.EXTENSION_STORE_VERSION, True)
+
+        # Locally the extension is the project folder loaded unpacked, so a
+        # newer copy on disk really is installable — reloading the card adopts
+        # it. Reporting the store version here would break the dev loop.
+        app._is_local_dashboard = lambda: True
+        local = anon.get("/api/ping").get_json()
+        check("local reports the REPO version",
+              local["extension_version"], app._extension_version())
+    finally:
+        app._is_local_dashboard = was_local
+
+    # The download button serves the repo's zip, so its label has to describe
+    # the bytes it hands over — not the store's number.
+    check("the zip's own version is still the repo's",
+          app._extension_version(), app._manifest_version("0"))
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()

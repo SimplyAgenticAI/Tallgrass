@@ -22,6 +22,48 @@ every self-hosted and local install for no gain.
 
 ---
 
+## Which changes need the store at all?
+
+**Almost none of them.** Fourteen of the fifteen releases before V23.7 touched
+no extension code whatsoever. The rule, readable straight off a diff:
+
+| You changed | What to do |
+|---|---|
+| `app.py`, `templates/`, `static/`, `outreach.py` … | Bump `APP_VERSION`, `git push`. Live in ~2 min. |
+| Anything inside `extension/` | Bump the **manifest** version too → owes a store upload |
+
+`APP_VERSION` (in `app.py`) moves on every commit. The manifest version moves
+**only** when `extension/` moves — that bump is the signal, and it is the only
+signal, that a store submission is owed.
+
+To check before pushing:
+
+```
+git diff --name-only HEAD | grep ^extension/
+```
+
+Nothing printed means nothing to submit.
+
+### Three version numbers, and why
+
+| Constant | Means | Bump when |
+|---|---|---|
+| `APP_VERSION` (`app.py`) | The dashboard | Every commit |
+| `version` (`extension/manifest.json`) | The extension in this repo | `extension/` changes |
+| `EXTENSION_STORE_VERSION` (`app.py`) | What the store has **approved** | A submission goes live |
+
+`/api/ping` reports `EXTENSION_STORE_VERSION` to hosted browsers, because that
+is the newest version a real user can actually install. Reporting the repo's
+manifest instead is what once told every store user to sideload an update that
+did not exist. Locally it reports the repo's manifest, which is correct there —
+an unpacked extension adopts the folder on reload.
+
+**So: after a store submission goes live, bump `EXTENSION_STORE_VERSION`.**
+Forgetting it is harmless — nobody is nagged — it just means the popup won't
+mention an update that Chrome is already installing silently anyway.
+
+---
+
 ## Re-publishing an update
 
 Package to upload: **`tallgrass-extension-vX.Y.zip`** — built from `extension/`

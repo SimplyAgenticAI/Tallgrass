@@ -40,14 +40,36 @@ def _manifest_version(default="0.0.0"):
         return default
 
 
-# One version number for the whole product.
+# Two version numbers, because there are now two products.
 #
-# There used to be two — a constant here and a literal in the manifest — and
-# they drifted apart immediately, because bumping one is a different edit from
-# bumping the other. The manifest wins because Chrome demands a literal there
-# and will not read anything else, so the dashboard takes its version from the
-# same file rather than keeping a second copy to forget about.
-APP_VERSION = _manifest_version("11.1")
+# These were deliberately merged into one — the manifest's — after a constant
+# here and a literal there drifted apart immediately. That was right while the
+# extension and the dashboard shipped together as one thing.
+#
+# The Chrome Web Store listing ended that on 6 September 2026. The dashboard
+# ships on a push and is live in two minutes; the extension ships through a
+# review queue and is live in days. Forcing one number onto two release cycles
+# made every dashboard-only change LOOK like an extension change, and the
+# extension believed it: it polls /api/ping, compared the manifest version the
+# server had on disk against its own, and told every store user an update was
+# waiting that did not exist and that they could not have installed. Fourteen
+# of the fifteen releases before this one never touched extension/ at all.
+#
+# So the rule this restores, which is readable straight off a diff:
+#
+#   APP_VERSION moves on every commit.
+#   The manifest version moves ONLY when something in extension/ moves — and
+#   when it does, that is the signal a store upload is owed.
+APP_VERSION = "23.7"
+
+# What is actually PUBLISHED on the Chrome Web Store right now.
+#
+# Not the same as the manifest on disk, and the difference is the point: the
+# repo can be several extension versions ahead of what review has approved.
+# This is the number a hosted browser can really obtain, so it is the one
+# /api/ping reports. Bump it when a store submission goes live, and at no
+# other time — see STORE_LISTING.md.
+EXTENSION_STORE_VERSION = "22.9"
 
 # The product name lives here and nowhere else. APP_SHORT_NAME is what prose
 # uses on the second mention — spelling out the full name mid-sentence reads
@@ -2387,14 +2409,34 @@ def _is_local_dashboard():
 
 
 def _extension_version():
-    """The version of the extension this dashboard is serving.
+    """The version of the extension in THIS repo — what the zip contains.
 
-    Read from disk on each call rather than reused from APP_VERSION, because
-    an extension already loaded in a browser can be older than the copy here —
-    that difference is exactly what the popup reports. On a running server the
-    two are the same file and therefore the same number.
+    Read from disk on each call rather than reused from a constant, because
+    it labels the download button and has to describe the bytes that button
+    actually serves.
     """
     return _manifest_version(APP_VERSION)
+
+
+def _available_extension_version():
+    """The newest extension version this browser can actually GET.
+
+    A different question from _extension_version, and conflating the two is
+    what told every store user to sideload an update they could not install.
+
+    Hosted: whatever the Chrome Web Store has approved. The repo may be well
+    ahead of it — today it is — but a version sitting in review is not a
+    version anybody can install, and reporting it produces an update notice
+    that can never be satisfied and never goes away.
+
+    Local: the repo's own manifest. Here the extension is almost always the
+    project folder loaded unpacked, so a newer copy on disk genuinely IS
+    installable — reloading the card adopts it. That is the entire point of
+    the self-update path and it stays exactly as it was.
+    """
+    if _is_local_dashboard():
+        return _extension_version()
+    return EXTENSION_STORE_VERSION
 
 
 @app.route("/api/ping", methods=["GET", "POST", "OPTIONS"])
@@ -2405,7 +2447,7 @@ def api_ping():
     return jsonify({
         "ok": True,
         "version": APP_VERSION,
-        "extension_version": _extension_version(),
+        "extension_version": _available_extension_version(),
         "is_local": _is_local_dashboard(),
     })
 
