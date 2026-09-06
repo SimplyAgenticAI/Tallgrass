@@ -119,6 +119,40 @@ def set_enabled(on):
     return enabled()
 
 
+# Which messages are on when nobody has said otherwise.
+#
+# first_win starts OFF on purpose. Somebody who signs up and scans the same
+# afternoon would otherwise get a welcome and a congratulations within the
+# hour, which reads as a sequence running rather than a person writing — and
+# the whole reason these are worth sending is that they do not read that way.
+# It is worth having; it is not worth having by surprise.
+DEFAULT_ON = {WELCOME: True, NUDGE: True, FIRST_WIN: False}
+
+# And even switched on, first_win waits. The point of the email is that their
+# own data proved something, which is not news ten minutes after signing up —
+# it is the same event as the welcome, told twice.
+FIRST_WIN_MIN_HOURS = 24
+
+
+def kind_enabled(kind):
+    """Whether this particular message may be sent.
+
+    Both switches have to be on: the master one is a kill switch for all
+    automated email, and this is the per-message choice underneath it.
+    """
+    if not enabled():
+        return False
+    stored = db.get_setting(_key(kind, "on"), "")
+    if stored:
+        return stored == "on"
+    return DEFAULT_ON.get(kind, False)
+
+
+def set_kind_enabled(kind, on):
+    db.set_setting(_key(kind, "on"), "on" if on else "off")
+    return kind_enabled(kind)
+
+
 # ------------------------------------------------------------- unsubscribing
 
 def unsubscribe_token(user_id):
@@ -238,9 +272,19 @@ TOKENS = {
 }
 
 LABELS = {
-    WELCOME: "Welcome — sent at signup",
-    NUDGE: "Nudge — sent once if they never capture anything",
-    FIRST_WIN: "First outlier — sent once when their own data first scores",
+    WELCOME: "Welcome",
+    NUDGE: "Nudge",
+    FIRST_WIN: "First outlier",
+}
+
+NOTES = {
+    WELCOME: "Sent the moment somebody signs up.",
+    NUDGE: "Sent once, %d–%d days after signing up, and only to somebody who "
+           "still has not captured a real post." % (NUDGE_AFTER_DAYS,
+                                                    NUDGE_BEFORE_DAYS),
+    FIRST_WIN: "Sent once, when their own captures first produce a real "
+               "outlier — never sooner than %d hours after signup, so it "
+               "cannot land the same day as the welcome." % FIRST_WIN_MIN_HOURS,
 }
 
 
@@ -304,6 +348,12 @@ def _send(user, kind, base_url, facts=None):
         return False, "opted out"
     if not mailer.is_configured():
         return False, "email is not configured"
+    # Checked here rather than at each call site, so a message that is switched
+    # off cannot be sent by any route — and, just as importantly, does not
+    # claim its row. Somebody who was skipped while it was off is still owed it
+    # if it is ever switched on.
+    if not kind_enabled(kind):
+        return False, "this email is switched off"
 
     if not db.claim_outreach(user["id"], kind):
         return False, "already sent"
@@ -400,6 +450,7 @@ def winners():
                 SELECT u.id, u.email, u.email_optout
                 FROM users u
                 WHERE COALESCE(u.email_optout, 0) = 0
+                  AND u.created_at <= datetime('now', ?)
                   AND EXISTS (
                       SELECT 1 FROM posts p
                       WHERE p.user_id = u.id AND p.is_demo = 0
@@ -408,7 +459,8 @@ def winners():
                   AND NOT EXISTS (SELECT 1 FROM outreach o
                                    WHERE o.user_id = u.id AND o.kind = ?)
                 ORDER BY u.created_at
-                """, (_min_sample(), FIRST_WIN)).fetchall()]
+                """, ("-%d hours" % FIRST_WIN_MIN_HOURS,
+                      _min_sample(), FIRST_WIN)).fetchall()]
     except Exception:                         # noqa: BLE001
         return []
 
@@ -450,12 +502,14 @@ def sweep(base_url, limit=BATCH):
         return 0
 
     sent = 0
-    for user in dormant()[:limit]:
-        ok, _ = _send(user, NUDGE, base_url)
-        if ok:
-            sent += 1
+    if kind_enabled(NUDGE):
+        for user in dormant()[:limit]:
+            ok, _ = _send(user, NUDGE, base_url)
+            if ok:
+                sent += 1
 
-    for user in winners()[:limit]:
+    # Scoring is not free, so a switched-off message must not pay for it.
+    for user in (winners()[:limit] if kind_enabled(FIRST_WIN) else []):
         best = best_post(user["id"])
         if not best:
             # They cleared the sample floor but nothing actually beat its
@@ -513,18 +567,21 @@ def maybe_sweep(base_url):
 def status():
     """What the admin page needs to say about all this."""
     summary = db.outreach_summary()
+    on = enabled()
     return {
-        "enabled": enabled(),
+        "enabled": on,
         "configured": mailer.is_configured(),
         "optouts": summary["optouts"],
-        "waiting": len(dormant()),
-        "winners_waiting": len(winners()),
+        "waiting": len(dormant()) if on and kind_enabled(NUDGE) else 0,
+        "winners_waiting": len(winners()) if on and kind_enabled(FIRST_WIN) else 0,
         "tokens": TOKENS,
         "emails": [
             {
                 "kind": kind,
                 "label": LABELS[kind],
                 "sent": summary["sent"].get(kind, 0),
+                "on": kind_enabled(kind),
+                "note": NOTES.get(kind, ""),
                 **get_template(kind),
             }
             for kind in KINDS

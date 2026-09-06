@@ -256,6 +256,47 @@ def main():
     check("back on again", outreach.enabled(), True)
 
     print()
+    print("each message has its own switch under the master one")
+    # Somebody who signs up and scans the same afternoon would otherwise get a
+    # welcome and a congratulations within the hour, which reads as a sequence
+    # running rather than a person writing.
+    check("first_win is off until asked for",
+          outreach.kind_enabled(outreach.FIRST_WIN), False)
+    check("  but welcome is on", outreach.kind_enabled(outreach.WELCOME), True)
+    check("  and so is the nudge", outreach.kind_enabled(outreach.NUDGE), True)
+
+    outreach.set_kind_enabled(outreach.NUDGE, False)
+    with db.get_db() as conn:
+        conn.execute("INSERT INTO users (email, password_hash, created_at) "
+                     "VALUES ('offswitch@example.com', 'x', "
+                     "datetime('now', '-4 days'))")
+    before = len(SENT)
+    outreach.sweep("https://tallgrassapp.com/")
+    check("a switched-off nudge sends nothing", len(SENT), before)
+    # Skipped is not the same as spent: they must still be owed it.
+    check("  and the person is still queued for it",
+          "offswitch@example.com" in [u["email"] for u in outreach.dormant()],
+          True)
+    outreach.set_kind_enabled(outreach.NUDGE, True)
+    outreach.sweep("https://tallgrassapp.com/")
+    check("switching it back on delivers it",
+          any(m["to"] == "offswitch@example.com" for m in SENT[before:]), True)
+
+    print()
+    print("the master switch beats every individual one")
+    outreach.set_enabled(False)
+    check("welcome is off too", outreach.kind_enabled(outreach.WELCOME), False)
+    master, _ = auth.create_user("master@example.com", "a-long-enough-pass",
+                                 "stonebridge")
+    sent, reason = outreach.welcome(master, "https://tallgrassapp.com/")
+    check("  so a signup gets nothing", sent, False)
+    check("  and says why", reason, "this email is switched off")
+    # And it did not burn the claim on the way past.
+    outreach.set_enabled(True)
+    sent, _ = outreach.welcome(master, "https://tallgrassapp.com/")
+    check("switching back on, they still get it", sent, True)
+
+    print()
     print("the copy can be edited, and put back")
     original = outreach.get_template(outreach.NUDGE)
     check("starts as the original", original["edited"], False)
@@ -323,6 +364,35 @@ def main():
 
     waiting = [u["email"] for u in outreach.winners()]
     check("they are queued", "winner@example.com" in waiting, True)
+
+    # Off by default, so nothing happens until it is asked for.
+    before = len(SENT)
+    outreach.sweep("https://tallgrassapp.com/")
+    check("but nothing is sent while it is switched off",
+          any(m["to"] == "winner@example.com" for m in SENT[before:]), False)
+
+    print()
+    print("and it never lands the same day as the welcome")
+    # A person who signs up and scans the same afternoon would otherwise get
+    # two emails within the hour, which reads as a sequence running rather
+    # than a person writing.
+    with db.get_db() as conn:
+        eager = conn.execute(
+            "INSERT INTO users (email, password_hash, created_at) VALUES "
+            "('eager@example.com', 'x', datetime('now'))").lastrowid
+        eager_source = conn.execute(
+            "INSERT INTO sources (user_id, fb_id, kind, name) VALUES "
+            "(?, 'page:eager', 'page', 'Fast Mover')", (eager,)).lastrowid
+        for index, likes in enumerate([40, 55, 38, 61, 44, 50, 47, 58, 42, 900]):
+            conn.execute(
+                "INSERT INTO posts (user_id, fb_post_id, source_id, body, "
+                "post_type, posted_at, likes, comments, shares, "
+                "engagement_read, is_demo) VALUES (?, ?, ?, 'b', 'text', "
+                "'2026-09-01T00:00:00', ?, 0, 0, 1, 0)",
+                (eager, "e%d" % index, eager_source, likes))
+    outreach.set_kind_enabled(outreach.FIRST_WIN, True)
+    check("somebody who signed up minutes ago is not queued",
+          "eager@example.com" in [u["email"] for u in outreach.winners()], False)
 
     before = len(SENT)
     outreach.sweep("https://tallgrassapp.com/")

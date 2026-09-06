@@ -296,11 +296,11 @@
     <span class="fine">
       {% if outreach.enabled %}
         <b style="color:var(--emerald-bright)">On.</b>
+        Each message below still has its own switch.
       {% else %}
         <b style="color:var(--gold)">Off.</b>
-        Welcome emails still go to new signups — they asked for those by
-        signing up. This switch controls the sweep, which reaches backwards
-        over existing accounts.
+        Nothing automated is sent at all, whatever the individual switches
+        say. Password resets are unaffected — those are asked for.
       {% endif %}
     </span>
   </div>
@@ -328,10 +328,25 @@
   {% for email in outreach.emails %}
   <div class="outreach-email" data-kind="{{ email.kind }}">
     <div class="outreach-head">
-      <b>{{ email.label }}</b>
-      <span class="fine">
+      <span>
+        <b>{{ email.label }}</b>
+        {% if email.on %}
+        <span class="kind-chip" style="color:var(--emerald-bright)">on</span>
+        {% else %}
+        <span class="kind-chip" style="color:var(--text-faint)">off</span>
+        {% endif %}
+        <span class="fine" style="display:block;margin-top:3px">
+          {{ email.note }}
+        </span>
+      </span>
+      <span class="fine" style="white-space:nowrap">
         {{ email.sent }} sent{% if email.edited %} ·
         <span style="color:var(--emerald-bright)">edited</span>{% endif %}
+        <button class="btn btn-ghost outreach-kind" type="button"
+                data-on="{{ '1' if email.on else '0' }}"
+                style="margin-left:9px">
+          {{ 'Turn off' if email.on else 'Turn on' }}
+        </button>
       </span>
     </div>
 

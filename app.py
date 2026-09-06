@@ -1884,6 +1884,11 @@ def api_admin_outreach():
 
     if action == "toggle":
         outreach.set_enabled(bool(payload.get("on")))
+    elif action == "toggle_kind":
+        kind = payload.get("kind")
+        if kind not in outreach.KINDS:
+            return jsonify({"ok": False, "error": "Unknown email"}), 400
+        outreach.set_kind_enabled(kind, bool(payload.get("on")))
     elif action in ("save", "reset"):
         kind = payload.get("kind")
         if kind not in outreach.KINDS:

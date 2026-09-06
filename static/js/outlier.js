@@ -660,6 +660,36 @@
       });
   }
 
+  /* Each message has its own switch under the master one, so the sequence
+     can be shortened without turning everything off. */
+  var kindButtons = document.querySelectorAll(".outreach-kind");
+  for (var ki = 0; ki < kindButtons.length; ki++) {
+    kindButtons[ki].addEventListener("click", function (event) {
+      var button = event.currentTarget;
+      var block = button.closest("[data-kind]");
+      if (!block) return;
+      var turningOn = button.getAttribute("data-on") !== "1";
+      button.disabled = true;
+      outreachMsg.className = "msg-line";
+      outreachMsg.textContent = turningOn ? "Turning on…" : "Turning off…";
+      post("/api/admin/outreach", {
+        action: "toggle_kind",
+        kind: block.getAttribute("data-kind"),
+        on: turningOn
+      })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not change it");
+          toast(turningOn ? "Email turned on" : "Email turned off");
+          window.setTimeout(function () { window.location.reload(); }, 600);
+        })
+        .catch(function (error) {
+          outreachMsg.className = "msg-line error";
+          outreachMsg.textContent = error.message;
+          button.disabled = false;
+        });
+    });
+  }
+
   var saveButtons = document.querySelectorAll(".outreach-save");
   for (var oi = 0; oi < saveButtons.length; oi++) {
     saveButtons[oi].addEventListener("click", function (event) {
