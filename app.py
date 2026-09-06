@@ -25,7 +25,7 @@ import outliers
 import outreach
 import remix
 import sage
-from demo_data import seed_demo_data
+from demo_data import refresh_sample_accounts, seed_demo_data
 
 app = Flask(__name__)
 
@@ -60,7 +60,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "23.8"
+APP_VERSION = "23.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1979,12 +1979,23 @@ def api_admin_outreach():
 @app.route("/api/admin/demo-sample", methods=["POST"])
 @auth.login_required
 def api_admin_demo_sample():
-    """Make the ticked sources the sample set for new accounts, immediately.
+    """Make the ticked sources the sample set, immediately — including for
+    accounts that already exist.
 
     No download, no commit, no deploy. The snapshot goes onto the persistent
     disk, which survives all three — needing a git push to change which posts
     a new user sees was three steps too many for something you want to try,
     look at and adjust.
+
+    Saving used to change what the NEXT signup would be given and nothing
+    else. Every account already created kept the sample set it was seeded
+    with, for good, and the page said only "it takes effect on the next
+    signup" — technically true and no help at all when you have just ticked
+    new sources, pressed Save, opened an account and found the old posts.
+
+    So the accounts still living entirely on samples are re-seeded here.
+    Anybody with a real capture is left alone: their demo rows are already
+    hidden by the feed, so rewriting them changes nothing anybody can see.
     """
     if not _require_admin():
         return jsonify({"ok": False, "error": "Admins only"}), 403
@@ -1993,8 +2004,15 @@ def api_admin_demo_sample():
 
     if payload.get("clear"):
         demo_snapshot.clear()
+        # Going back to the written set is a change to the sample set like any
+        # other, and has to reach the same accounts — otherwise "back to the
+        # written set" leaves everybody looking at the snapshot just deleted.
+        accounts, posts = refresh_sample_accounts()
+        log.info("demo sample cleared; refreshed %d accounts (%d posts)",
+                 accounts, posts)
         return jsonify({"ok": True, "cleared": True,
-                        "snapshot": demo_snapshot.summary()})
+                        "snapshot": demo_snapshot.summary(),
+                        "refreshed": {"accounts": accounts, "posts": posts}})
 
     ids = [int(i) for i in payload.get("source_ids", []) if str(i).isdigit()]
     if not ids:
@@ -2013,9 +2031,15 @@ def api_admin_demo_sample():
                         "error": "None of those has enough captured posts to "
                                  "score. Scan them first."}), 400
 
-    log.info("demo sample published: %d sources, %d posts",
-             summary["sources"], summary["posts"])
-    return jsonify({"ok": True, "snapshot": summary, "skipped": skipped})
+    # Only after the snapshot is safely on disk. Refreshing first would seed
+    # everybody from the set being replaced.
+    accounts, posts = refresh_sample_accounts()
+
+    log.info("demo sample published: %d sources, %d posts; "
+             "refreshed %d accounts (%d posts)",
+             summary["sources"], summary["posts"], accounts, posts)
+    return jsonify({"ok": True, "snapshot": summary, "skipped": skipped,
+                    "refreshed": {"accounts": accounts, "posts": posts}})
 
 
 @app.route("/admin/demo-snapshot", methods=["POST"])

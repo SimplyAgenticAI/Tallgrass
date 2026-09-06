@@ -22,10 +22,13 @@ first impression of the product, which is what tests/onboarding.test.py now
 pins.
 """
 
+import logging
 import random
 from datetime import datetime, timedelta, timezone
 
 import db
+
+log = logging.getLogger("tallgrass.demo")
 
 SEED = 20260807  # fixed so the demo set is identical on every machine
 
@@ -119,17 +122,59 @@ DEMO_POSTS = [
 
 
 def seed_demo_data(user_id=None):
-    """Insert the demo set for one account. Returns posts written.
+    """Make the current sample set this account's sample data. Returns posts written.
 
     A committed snapshot of real captures wins if this install has one. The
     written set below is the fallback, and stays for the case it was built
     for: an install with no snapshot, which is every fresh clone.
+
+    REPLACES rather than adds, and that is a fix, not a preference. Posts
+    upsert on fb_post_id, so re-seeding the same snapshot was idempotent and
+    looked correct — but the moment the operator published a DIFFERENT set,
+    seeding again left the account holding both. Two sample sets, two sources,
+    and a median computed across a pile of posts from groups that have nothing
+    to do with each other. Pressing "Load sample data" three times built three.
+
+    At signup there is nothing to clear and this is a no-op, so the cost is
+    one DELETE against rows that do not exist.
     """
     import demo_snapshot
+
+    # Before, not after: seeding writes into the same tables, and clearing
+    # afterwards would take the new rows out with the old ones.
+    db.clear_demo_data(user_id)
+
     snapshot = demo_snapshot.load()
     if snapshot:
         return _seed_from_snapshot(snapshot, user_id)
     return _seed_written(user_id)
+
+
+def refresh_sample_accounts(limit=500):
+    """Re-seed every account that is still living entirely on sample data.
+
+    The half that was missing. Publishing a new sample set changed what the
+    NEXT signup would see and nothing else, so the operator would tick new
+    sources, press Save, look at an account, and find the posts from before —
+    with nothing on the page to say that was expected.
+
+    Only accounts with no real captures are touched: see
+    db.users_holding_only_samples for why.
+
+    Returns (accounts, posts). Failures are counted, not raised — one bad
+    account must not take down a publish that has already succeeded, and the
+    caller reports what happened either way.
+    """
+    accounts = db.users_holding_only_samples(limit)
+    posts = 0
+    done = 0
+    for user_id in accounts:
+        try:
+            posts += seed_demo_data(user_id)
+            done += 1
+        except Exception:                          # noqa: BLE001
+            log.exception("could not refresh sample data for user %s", user_id)
+    return done, posts
 
 
 def _seed_from_snapshot(snapshot, user_id):

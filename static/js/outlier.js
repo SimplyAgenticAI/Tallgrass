@@ -774,6 +774,17 @@
                    data.snapshot.posts + " posts, " +
                    data.snapshot.images + " with pictures.");
       }
+      /* Who this actually reached. Saving used to change only what the next
+         signup would get, silently, so the honest thing is to say how many
+         existing accounts were rewritten — including when the answer is
+         none, which otherwise reads as the save not having worked. */
+      if (data.refreshed) {
+        var n = data.refreshed.accounts;
+        lines.push(n
+          ? "Updated " + n + " existing account" + (n === 1 ? "" : "s") +
+            " still on sample data."
+          : "No existing accounts needed updating.");
+      }
       /* Which sources contributed nothing, and why. Reporting only the
          success is how an export of three posts across five chosen sources
          looked like it had worked. */

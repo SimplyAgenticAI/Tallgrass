@@ -853,6 +853,36 @@ def has_any_posts(user_id=None):
         return row["n"] > 0
 
 
+def users_holding_only_samples(limit=500):
+    """Accounts whose entire feed is sample data, oldest first.
+
+    The set that a change to the sample set should actually reach. They have
+    demo rows and not one real capture, so what they are looking at IS the
+    sample set — if it is out of date, so is everything they have ever seen of
+    this product.
+
+    Anybody with a real capture is deliberately excluded. Their demo rows are
+    already hidden by the feed, so rewriting them changes nothing visible and
+    is work done on a live account for no reason.
+
+    Same "no real posts" test outreach.dormant uses, and it must stay the
+    same: two definitions of "never captured anything" drifting apart is how
+    the feed and the groups list ended up disagreeing about scoring.
+    """
+    with get_db() as conn:
+        return [r["id"] for r in conn.execute(
+            """
+            SELECT u.id
+            FROM users u
+            WHERE EXISTS (SELECT 1 FROM posts p
+                           WHERE p.user_id = u.id AND p.is_demo = 1)
+              AND NOT EXISTS (SELECT 1 FROM posts p
+                               WHERE p.user_id = u.id AND p.is_demo = 0)
+            ORDER BY u.id
+            LIMIT ?
+            """, (int(limit),)).fetchall()]
+
+
 def clear_demo_data(user_id=None):
     """Remove demo posts and any source left with nothing behind it.
 

@@ -358,6 +358,102 @@ def main():
                             data={"source_id": "1", "csrf_token": "t"}
                             ).status_code, 403)
 
+    # ------------------------------------ changing the set reaches people
+    #
+    # Publishing a new sample set used to change what the NEXT signup would be
+    # given and nothing else. Every existing account kept the posts it was
+    # seeded with, permanently — so the operator ticked new sources, pressed
+    # Save, opened an account and saw the old ones, with nothing on the page
+    # saying that was expected.
+    #
+    # Worse, seeding again ADDED. Posts upsert on fb_post_id, so re-seeding
+    # the same set looked idempotent; the moment the set actually changed, an
+    # account ended up holding both, with a median computed across two groups
+    # that have nothing to do with each other. Three presses, three sets.
+    print()
+    print("changing the sample set reaches accounts that are still on it")
+
+    def sample_bodies(user_id):
+        with db.get_db() as conn:
+            return {r["body"] for r in conn.execute(
+                "SELECT body FROM posts WHERE user_id = ? AND is_demo = 1",
+                (user_id,)).fetchall()}
+
+    def source_count(user_id):
+        with db.get_db() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) AS n FROM sources WHERE user_id = ?",
+                (user_id,)).fetchone()["n"]
+
+    stale, _ = auth.create_user("stale@example.com", "a-long-enough-pass",
+                                "staleuser")
+    demo_data.seed_demo_data(stale["id"])
+    before = sample_bodies(stale["id"])
+    sources_before = source_count(stale["id"])
+    check("an account starts on the current set", len(before) > 0, True)
+
+    # Somebody with a real capture. Their demo rows are already hidden by the
+    # feed, so they must not be rewritten — and their real post must survive
+    # whatever happens to the sample set.
+    keeper, _ = auth.create_user("keeper@example.com", "a-long-enough-pass",
+                                 "keeperuser")
+    demo_data.seed_demo_data(keeper["id"])
+    with db.get_db() as conn:
+        keeper_source = conn.execute(
+            "SELECT id FROM sources WHERE user_id = ?", (keeper["id"],)
+        ).fetchone()["id"]
+        conn.execute(
+            "INSERT INTO posts (user_id, source_id, fb_post_id, body, is_demo,"
+            " likes, comments, shares) VALUES (?, ?, ?, ?, 0, 9, 2, 0)",
+            (keeper["id"], keeper_source, "real-capture-1", "A REAL POST"))
+    keeper_demo_before = sample_bodies(keeper["id"])
+
+    # The operator publishes a different set.
+    replacement = {
+        "format": demo_snapshot.FORMAT_VERSION,
+        "captured_at": "2026-09-06", "note": "", "skipped": [],
+        "sources": [{
+            "fb_id": "replacement-source", "kind": "group",
+            "name": "Replacement Group", "url": "", "member_count": 50,
+            "from_capture": 0,
+            "posts": [{"fb_post_id": "replacement-%d" % i,
+                       "body": "REPLACEMENT post %d" % i, "post_type": "text",
+                       "hours_ago": i + 1, "likes": 20 + i, "comments": 2,
+                       "shares": 0, "video_plays": 0, "author": "Someone",
+                       "permalink": "", "image_count": 0, "has_video": False,
+                       "engagement_read": True, "image_text": "",
+                       "image_desc": "", "body_from_image": False}
+                      for i in range(12)]}]}
+    demo_snapshot.save(replacement, demo_snapshot.LIVE_PATH)
+
+    accounts, _posts = demo_data.refresh_sample_accounts()
+    check("the refresh reports what it touched", accounts >= 1, True)
+
+    after = sample_bodies(stale["id"])
+    check("the stalled account is on the NEW set",
+          all("REPLACEMENT" in b for b in after), True)
+    check("  and none of the old set is left",
+          bool(after & before), False)
+    check("  replaced, not piled on top",
+          source_count(stale["id"]), sources_before)
+
+    check("an account with a real capture is left alone",
+          sample_bodies(keeper["id"]), keeper_demo_before)
+    with db.get_db() as conn:
+        real_kept = conn.execute(
+            "SELECT COUNT(*) AS n FROM posts WHERE user_id = ? AND is_demo = 0",
+            (keeper["id"],)).fetchone()["n"]
+    check("  and their real post survives", real_kept, 1)
+
+    # Re-seeding has to converge. It did not: each press of "Load sample data"
+    # against a changed set added another whole copy.
+    for _ in range(3):
+        demo_data.seed_demo_data(stale["id"])
+    check("re-seeding three more times changes nothing",
+          sample_bodies(stale["id"]), after)
+    check("  and still one source",
+          source_count(stale["id"]), sources_before)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()
