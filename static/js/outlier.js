@@ -2288,6 +2288,15 @@
       extensionSeen = true;
       var detail = event.detail || {};
       var version = detail.version ? " (v" + detail.version + ")" : "";
+
+      /* Queried here rather than closed over: the content script can answer
+         the ping below synchronously, which runs this handler before the
+         `var` further down has been assigned. Asking somebody to reload a
+         page that has already found the extension is the kind of small lie
+         that makes the rest of the page less believable. */
+      var reloadBtn = document.getElementById("store-reload");
+      if (reloadBtn) reloadBtn.hidden = true;
+
       if (connectBtn) {
         connectBtn.style.display = "";
         connectBtn.textContent = "Reconnect";
@@ -2311,11 +2320,34 @@
     // ready first.
     window.dispatchEvent(new CustomEvent("outlier:ping-extension"));
 
+    /* Installing from the store cannot announce itself to a tab that was
+       already open — Chrome injects content scripts into pages loaded AFTER
+       the install, never backwards into existing ones. So the tab somebody
+       installs FROM is precisely the tab that will never notice, and telling
+       them to reload has to be a button rather than a sentence.
+
+       Shown on the way out to the store rather than on a timer, because that
+       click is the only moment we know an install is being attempted. */
+    var storeInstall = document.getElementById("store-install");
+    var storeReload = document.getElementById("store-reload");
+
+    if (storeInstall && storeReload) {
+      storeInstall.addEventListener("click", function () {
+        storeReload.hidden = false;
+        say(connectCopy, "Finish adding it in the other tab, then come back " +
+                         "and reload this page.");
+      });
+      storeReload.addEventListener("click", function () {
+        window.location.reload();
+      });
+    }
+
     setTimeout(function () {
       if (extensionSeen) return;
-      say(connectCopy,
-        "No extension detected on this page. Install it from the Capture page, " +
-        "then reload here — or connect manually below.");
+      say(connectCopy, storeInstall
+        ? "No extension detected yet. Install it above, then reload this page."
+        : "No extension detected on this page. Install it from the Capture " +
+          "page, then reload here — or connect manually below.");
     }, 1200);
 
     window.addEventListener("outlier:connect-result", function (event) {

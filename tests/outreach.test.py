@@ -78,8 +78,8 @@ def main():
     sent, reason = outreach.welcome(user, "https://tallgrassapp.com/")
     check("the welcome goes out", sent, True)
     check("to them", SENT[-1]["to"], "newbie@example.com")
-    check("and it points at the install",
-          "capture" in SENT[-1]["body"], True)
+    check("and it points at the store listing",
+          outreach.app_store_url() in SENT[-1]["body"], True)
     check("and at what they already have",
           "sample" in SENT[-1]["body"].lower(), True)
 
@@ -217,8 +217,17 @@ def main():
     count = outreach.sweep("https://tallgrassapp.com/")
     check("it sent to everyone waiting", count, len(waiting))
     check("  one message each", len(SENT) - before, len(waiting))
-    check("  and the nudge names the real blocker",
-          "Developer mode" in SENT[-1]["body"], True)
+    # The nudge exists to get somebody past the install, so it has to carry the
+    # one-click route. And it must never again TELL anyone to sideload: the
+    # store listing was approved on 6 September 2026 specifically to delete
+    # that, and a nudge that walks people back to chrome://extensions would
+    # rebuild the wall the whole exercise was about. Naming Developer mode in
+    # the past tense is fine and the current copy does — it is the instruction
+    # that must not come back, so the address is what is checked.
+    check("  and the nudge carries the one-click install",
+          outreach.app_store_url() in SENT[-1]["body"], True)
+    check("  and never sends anybody to sideload it",
+          "chrome://extensions" in SENT[-1]["body"], False)
 
     check("a second sweep sends nothing",
           outreach.sweep("https://tallgrassapp.com/"), 0)

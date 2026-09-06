@@ -942,6 +942,18 @@ select.kind-select option { color: initial; }
 }
 .openext-why { margin: 0; line-height: 1.6; }
 
+/* The old six-step sideload, kept and folded away. It is a fallback now, not
+   a route, and it should not read like a second half of the page. */
+.manual-route {
+  margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);
+}
+.manual-route > summary {
+  cursor: pointer; color: var(--text-muted);
+  padding: 4px 0; list-style-position: outside;
+}
+.manual-route > summary:hover { color: var(--emerald-bright); }
+.manual-route[open] > summary { color: var(--emerald-bright); margin-bottom: 4px; }
+
 .alt-route {
   font-size: 12.5px; color: var(--text-faint); line-height: 1.6; margin: 0;
   padding-left: 12px; border-left: 2px solid var(--border);

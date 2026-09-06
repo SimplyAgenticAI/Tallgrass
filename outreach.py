@@ -203,31 +203,32 @@ DEFAULTS = {
             "{dashboard}\n\n"
             "When you want it running on your own groups, there's one step "
             "left — the Chrome extension, which reads posts as you scroll "
-            "Facebook:\n\n"
-            "{install}\n\n"
+            "Facebook. It's on the Chrome Web Store, so it's one click:\n\n"
+            "{store}\n\n"
+            "Then open the dashboard again and it connects itself. Nothing to "
+            "copy, nothing to paste.\n\n"
             "The moment your first real scan lands, the sample data hides "
             "itself and everything you see is yours.\n\n"
             "If you get stuck, reply to this email. A real person reads it."
         ),
     },
     NUDGE: {
-        "subject": "Stuck on the Tallgrass install?",
+        "subject": "The Tallgrass install just got a lot easier",
         "body": (
-            "You signed up for Tallgrass a couple of days ago and haven't "
-            "captured anything yet, so I wanted to check whether the install "
-            "was the thing that stopped you. It usually is.\n\n"
-            "It's the awkward part and I'd rather say so plainly: the "
-            "extension has to be loaded by hand for now. Download a zip, "
-            "unzip it somewhere permanent, turn on Developer mode at "
-            "chrome://extensions, and drag the folder in. Five minutes if it "
-            "goes well.\n\n"
-            "The steps, with pictures:\n\n{install}\n\n"
-            "If it went badly, or you got somewhere and it didn't work, reply "
-            "and tell me where it broke. I'll either fix it or walk you "
-            "through it — and knowing where people get stuck is genuinely "
-            "useful to me.\n\n"
-            "Your sample data is still there in the meantime, if you'd rather "
-            "just look at what it does first:\n\n{dashboard}"
+            "You signed up for Tallgrass a while back and haven't captured "
+            "anything yet. I'm fairly sure I know why, and it wasn't you.\n\n"
+            "To install the extension you had to download a zip, unzip it "
+            "somewhere permanent, turn on Developer mode and drag a folder "
+            "into Chrome. That's a lot to ask, and almost nobody finished "
+            "it.\n\n"
+            "It's on the Chrome Web Store now. One click:\n\n"
+            "{store}\n\n"
+            "Then open the dashboard and it connects itself — no key to "
+            "copy, no folder to keep, and it updates on its own from here.\n\n"
+            "{dashboard}\n\n"
+            "If you try it and something still doesn't work, reply and tell "
+            "me where it broke. Knowing where people get stuck is genuinely "
+            "useful to me."
         ),
     },
     # The third one, and the one that was missing.
@@ -239,6 +240,7 @@ DEFAULTS = {
 TOKENS = {
     "{dashboard}": "the dashboard's address",
     "{install}": "the install instructions page",
+    "{store}": "the Chrome Web Store listing",
 }
 
 LABELS = {
@@ -292,11 +294,39 @@ def _footer(base_url, user_id):
             "No more emails about getting started: %s\n" % link)
 
 
+def app_store_url():
+    """The Chrome Web Store listing, read from app.py where it is defined.
+
+    Imported inside the function because app.py imports THIS module, so a
+    module-level import would be a cycle. By the time any email is rendered
+    app is long since in sys.modules, and this is a dictionary lookup.
+
+    Copying the URL into a second file would have been simpler to read and
+    wrong the first time the listing is re-published under a new slug.
+    """
+    try:
+        import app
+        return app.EXTENSION_STORE_URL
+    except Exception:
+        # A message that arrives with a broken link is worse than one that
+        # sends people the long way round, and the Capture page always works.
+        return ""
+
+
 def render(text, base_url, facts=None):
     """Fill the tokens in. Never raises on odd copy."""
     values = {
         "{dashboard}": base_url,
         "{install}": "%scapture" % base_url,
+        # The store listing itself, for copy that wants to send somebody
+        # straight there. {install} still points at the Capture page, which is
+        # the right destination when the message is walking them through it —
+        # this is the one for "here, click this."
+        #
+        # Falls back to the Capture page rather than to an empty string: a
+        # token that vanishes leaves "install it here:" followed by nothing,
+        # which reads as a broken email rather than a longer route.
+        "{store}": app_store_url() or ("%scapture" % base_url),
     }
     # `facts` is how a message would carry something about the specific
     # account — a number, a group name. Nothing needs it today; the parameter

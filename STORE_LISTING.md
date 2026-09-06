@@ -1,9 +1,40 @@
 # Chrome Web Store submission — Tallgrass
 
-Everything needed to publish the extension. Upload page:
-**https://chrome.google.com/webstore/devconsole/** (one-time $5 developer fee).
+## ✅ LIVE — approved 6 September 2026
 
-Package to upload: **`tallgrass-extension-vX.Y.zip`** (built from `extension/`, manifest at the zip root).
+- **Listing:** https://chromewebstore.google.com/detail/tallgrass-%E2%80%94-by-macrandle/mjnnjgcfknpjddiglapjjgpkhpogccgg
+- **Extension ID:** `mjnnjgcfknpjddiglapjjgpkhpogccgg`
+- **Approved package:** v22.9
+
+The URL lives in code at `app.py` → `EXTENSION_STORE_URL`, which is where the
+Capture page and both onboarding emails read it from. Change it there and
+nowhere else if the listing is ever re-published under a new slug.
+
+**The approved package points `DEFAULT_ENDPOINT` at `http://localhost:5050`,
+and that is correct — do not "fix" it.** A store build is generic and cannot
+know which dashboard it belongs to. `connect.js` runs on `tallgrassapp.com`
+and writes the real origin plus a freshly minted key into extension storage
+the first time somebody opens the dashboard signed in, so the localhost
+literal only ever applies to an extension that has never seen a dashboard.
+
+Re-uploading a build stamped with a hardcoded production URL would break
+every self-hosted and local install for no gain.
+
+---
+
+## Re-publishing an update
+
+Package to upload: **`tallgrass-extension-vX.Y.zip`** — built from `extension/`
+**unstamped**, manifest at the zip root. Do not upload the zip that
+`/extension/download` serves: that one is stamped with the origin that served
+it, which is right for a hand-loaded copy and wrong for the store.
+
+Upload page: **https://chrome.google.com/webstore/devconsole/**
+(the one-time $5 developer fee is already paid).
+
+Expect another in-depth review on any update that touches permissions — broad
+host permissions plus a Facebook content script is what made the first review
+take three weeks.
 
 ---
 

@@ -64,6 +64,28 @@ APP_TAGLINE = "Find the standout posts in your Facebook groups, and write the ne
 # the environment once there is a real support address to point at.
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "macrandleacres@gmail.com")
 
+# The Chrome Web Store listing, approved 6 September 2026.
+#
+# This one string deletes the worst page in the product. Installing used to be
+# six manual steps ending in Developer mode, and the numbers said what that
+# cost: fifteen signups, not one of them ever captured a post. A store listing
+# is a link and a button, and a link can go in an email.
+#
+# It lives here rather than in the template because two other places need it —
+# the onboarding emails, and any future "you never finished installing" nudge
+# — and a URL copied into three files is a URL that will be right in one of
+# them after the next re-listing.
+#
+# The ID is the durable half. The slug in the path is decorative and Chrome
+# ignores it, but it is kept verbatim as the store publishes it, because a
+# hand-shortened store URL is exactly the kind of thing that works until it
+# quietly doesn't.
+EXTENSION_STORE_ID = "mjnnjgcfknpjddiglapjjgpkhpogccgg"
+EXTENSION_STORE_URL = (
+    "https://chromewebstore.google.com/detail/"
+    "tallgrass-%E2%80%94-by-macrandle/" + EXTENSION_STORE_ID
+)
+
 # The date shown on the legal pages. Bump it when the terms change in a way
 # that affects what is collected or who receives it — not for typos.
 LEGAL_UPDATED = "10 August 2026"
@@ -1435,6 +1457,7 @@ def inject_globals():
         "app_parent": APP_PARENT,
         "app_tagline": APP_TAGLINE,
         "support_email": SUPPORT_EMAIL,
+        "store_url": EXTENSION_STORE_URL,
         "updated": LEGAL_UPDATED,
         # The scoring thresholds, so no template hardcodes "8" and quietly
         # disagrees with the engine when it changes.
