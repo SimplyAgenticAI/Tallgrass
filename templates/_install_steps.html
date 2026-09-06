@@ -69,14 +69,53 @@
 
 </div>
 
-<details class="manual-route">
-  <summary class="fine">Install it by hand instead</summary>
+{# The hand-install route, which is a fallback almost all of the time and the
+   whole point occasionally.
 
-  <p class="fine" style="margin:10px 0 0">
-    Only worth doing if the store build is behind this dashboard
-    (store copies lag by a review cycle) or your Chrome profile blocks store
-    installs. The hand-loaded copy does not update itself.
+   That occasion is a review wait. When an extraction fix goes out — Facebook
+   moves their markup and engagement reads zero, which has happened three
+   times — the store copy is days behind and everybody's captures are empty in
+   the meantime. A zip served from here reaches somebody in five minutes.
+
+   So this opens itself and says what is actually on offer only while the two
+   versions really differ. The rest of the time it stays a folded-away line,
+   because telling everybody about a manual install they do not need is how
+   the six-step page happened in the first place. #}
+<details class="manual-route" {% if extension_ahead %}open{% endif %}>
+  <summary class="fine">
+    {% if extension_ahead %}
+      Get v{{ extension_version }} early — the store still has
+      v{{ store_version }}
+    {% else %}
+      Install it by hand instead
+    {% endif %}
+  </summary>
+
+  {% if extension_ahead %}
+  <div class="update-note warn" style="margin-top:12px">
+    <b>Disable the store copy first.</b>
+    Two copies of Tallgrass both read every post you scroll and both send it,
+    so your counts double and every group's median moves with them — the
+    scores stop meaning anything. At <code>chrome://extensions</code>, switch
+    the store copy <b>off</b> rather than removing it, so it comes back on its
+    own when review catches up.
+  </div>
+
+  <p class="fine" style="margin:12px 0 0">
+    This dashboard is running <b>v{{ extension_version }}</b>. The Chrome Web
+    Store has approved <b>v{{ store_version }}</b> and is still reviewing the
+    rest. Chrome will deliver it to everybody automatically once that clears
+    and there is nothing you need to do — this is only for wanting it now.
+    A hand-loaded copy does not update itself.
   </p>
+  {% else %}
+  <p class="fine" style="margin:10px 0 0">
+    The store copy (v{{ store_version }}) is current, so there's nothing here
+    you don't already have. Worth doing only if your Chrome profile blocks
+    store installs. A hand-loaded copy does not update itself, and running one
+    alongside the store copy doubles every capture — disable one first.
+  </p>
+  {% endif %}
 
   <div class="install-flow" style="margin-top:16px">
 

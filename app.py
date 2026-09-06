@@ -60,7 +60,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "23.7"
+APP_VERSION = "23.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1419,6 +1419,11 @@ def capture():
         # it rather than hunting for it.
         extension_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "extension"),
         extension_version=_extension_version(),
+        # The hand-install route stops being a curiosity and becomes the point
+        # exactly while these two differ, so the page is told both numbers and
+        # decides what to say from them.
+        store_version=EXTENSION_STORE_VERSION,
+        extension_ahead=_extension_ahead_of_store(),
         is_local=_is_local_dashboard(),
         has_data=db.has_any_posts(_uid()),
         # The name filter moved here from Settings: it is a rule about how
@@ -2416,6 +2421,41 @@ def _extension_version():
     actually serves.
     """
     return _manifest_version(APP_VERSION)
+
+
+def _version_tuple(text):
+    """"23.10" -> (23, 10), for comparing. Never raises on odd input.
+
+    Tuples rather than floats, because 23.10 as a float is smaller than 23.6
+    and the whole point of this is deciding which of two versions is newer.
+    A part that will not parse counts as 0, so a malformed version reads as
+    old rather than blowing up a page render.
+    """
+    parts = []
+    for chunk in str(text or "").split("."):
+        try:
+            parts.append(int(chunk))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def _extension_ahead_of_store():
+    """Is this dashboard serving a newer extension than the store has?
+
+    True only while a submission is in review — the repo has moved on and the
+    approved package has not caught up. That window is the entire reason the
+    hand-install route still exists: an extraction fix cannot wait days for a
+    review while captures come back empty, and a zip served from here reaches
+    somebody in five minutes.
+
+    Meaningless on a local dashboard, where the extension IS the project
+    folder and there is no store copy in the picture at all.
+    """
+    if _is_local_dashboard():
+        return False
+    return _version_tuple(_extension_version()) > _version_tuple(
+        EXTENSION_STORE_VERSION)
 
 
 def _available_extension_version():

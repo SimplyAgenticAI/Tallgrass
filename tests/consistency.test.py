@@ -190,6 +190,53 @@ def main():
     check("the zip's own version is still the repo's",
           app._extension_version(), app._manifest_version("0"))
 
+    # Tuples, not floats. 23.10 as a float is smaller than 23.6, and this
+    # comparison decides whether the page offers an early copy at all — so
+    # the first two-digit patch would have silently switched the offer off.
+    check("23.10 is newer than 23.6",
+          app._version_tuple("23.10") > app._version_tuple("23.6"), True)
+    check("a version equal to the store's is not ahead",
+          app._version_tuple("22.9") > app._version_tuple("22.9"), False)
+    check("nonsense reads as old rather than raising",
+          app._version_tuple("x.y") > app._version_tuple("22.9"), False)
+
+    # ------------------------------------------- the early-access offer
+    #
+    # Offered only while the repo really is ahead of the approved package —
+    # that window is a review wait, and it is the only time a hand install
+    # gets somebody something they cannot already have. Shown outside it, it
+    # is just the six-step page growing back.
+    print()
+    print("the manual install is offered only when it gets you something")
+
+    was_store = app.EXTENSION_STORE_VERSION
+    try:
+        app._is_local_dashboard = lambda: False
+
+        app.EXTENSION_STORE_VERSION = "0.1"        # store far behind
+        page = c.get("/capture").get_data(as_text=True)
+        check("behind: the early copy is offered",
+              "early" in page and "manual-route" in page, True)
+        check("  and the doubling hazard is named first",
+              "Disable the store copy first" in page, True)
+
+        app.EXTENSION_STORE_VERSION = app._extension_version()   # caught up
+        page = c.get("/capture").get_data(as_text=True)
+        check("caught up: nothing early is advertised",
+              "Get v" in page, False)
+        check("  and the hand route is a folded line again",
+              "Install it by hand instead" in page, True)
+
+        # A local dashboard has no store copy in the picture at all, so it
+        # must never claim one is behind.
+        app._is_local_dashboard = lambda: True
+        app.EXTENSION_STORE_VERSION = "0.1"
+        check("local is never 'ahead of the store'",
+              app._extension_ahead_of_store(), False)
+    finally:
+        app.EXTENSION_STORE_VERSION = was_store
+        app._is_local_dashboard = was_local
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()
