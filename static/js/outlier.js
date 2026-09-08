@@ -1242,6 +1242,68 @@
       .finally(function () { btn.disabled = false; });
   });
 
+  /* ----------------------------------- opportunities: drafting a reply
+   *
+   * Two drafts from one call. They are different jobs — the comment is read
+   * by the whole group, the message by one person who already asked — but
+   * both are written off the same post, and two calls would charge twice for
+   * one read.
+   */
+
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest(".opp-write");
+    if (!btn) return;
+
+    var card = btn.closest(".opp-card");
+    var msg = card && card.querySelector(".opp-msg");
+    var box = card && card.querySelector(".opp-drafts");
+
+    btn.disabled = true;
+    if (msg) {
+      msg.className = "msg-line opp-msg";
+      msg.textContent = "Writing…";
+    }
+
+    post("/api/opportunity/" + btn.dataset.id + "/draft", {})
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Could not write that");
+
+        // textContent, never innerHTML. This is model output written off a
+        // stranger's post, which is the least trustworthy pair of inputs in
+        // the product.
+        var fields = card ? card.querySelectorAll("[data-draft]") : [];
+        for (var i = 0; i < fields.length; i++) {
+          fields[i].textContent = data[fields[i].dataset.draft] || "";
+        }
+        if (box) box.hidden = false;
+        if (msg) msg.textContent = "";
+        btn.textContent = "Rewrite reply";
+        toast("Drafts ready — read them before sending");
+      })
+      .catch(function (error) {
+        if (msg) {
+          msg.className = "msg-line opp-msg error";
+          msg.textContent = error.message;
+        }
+      })
+      .finally(function () { btn.disabled = false; });
+  });
+
+  /* Copy sits beside each draft rather than being one button for both: they
+     go to two different places, and copying the pair together is how the
+     message ends up pasted into a public thread. */
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest(".opp-copy");
+    if (!btn) return;
+    var block = btn.closest(".opp-draft");
+    var body = block && block.querySelector("[data-draft]");
+    if (!body) return;
+
+    navigator.clipboard.writeText((body.textContent || "").trim())
+      .then(function () { toast("Copied"); })
+      .catch(function () { toast("Clipboard blocked by the browser", true); });
+  });
+
   /* ------------------------------------------------------------ demo data */
 
   function demoRequest(method, label) {

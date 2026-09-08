@@ -260,22 +260,45 @@ scanBtn.addEventListener("click", async () => {
  * the dashboard notices afterwards if the results look popular rather than
  * fresh.
  */
+/* The words you keep coming back to.
+ *
+ * One list, not two. "Recent" and "saved" would be separate features with the
+ * same contents and a rule about promotion between them — this just keeps
+ * what you searched and lets you delete what you do not want back.
+ *
+ * They run ONE AT A TIME, deliberately. Firing several searches at once is
+ * the automation signal that gets a person's own Facebook account
+ * checkpointed, and it was turned down on exactly those grounds. The list is
+ * a shortcut for a morning's work, not a queue that empties itself.
+ */
 const RECENT_KEY = "recentSearches";
-const RECENT_MAX = 6;
+const RECENT_MAX = 12;
 
 function searchUrl(query) {
   return "https://www.facebook.com/search/posts/?q=" + encodeURIComponent(query);
 }
 
+async function keywords() {
+  const stored = await chrome.storage.local.get([RECENT_KEY]);
+  return stored[RECENT_KEY] || [];
+}
+
 async function rememberSearch(query) {
   query = (query || "").trim();
   if (!query) return;
-  const stored = await chrome.storage.local.get([RECENT_KEY]);
-  const list = (stored[RECENT_KEY] || []).filter(
+  const list = (await keywords()).filter(
     (q) => q.toLowerCase() !== query.toLowerCase());
   list.unshift(query);
-  await chrome.storage.local.set({ [RECENT_KEY]: list.slice(0, RECENT_MAX) });
-  renderRecent(list.slice(0, RECENT_MAX));
+  const kept = list.slice(0, RECENT_MAX);
+  await chrome.storage.local.set({ [RECENT_KEY]: kept });
+  renderRecent(kept);
+}
+
+async function forgetSearch(query) {
+  const list = (await keywords()).filter(
+    (q) => q.toLowerCase() !== (query || "").toLowerCase());
+  await chrome.storage.local.set({ [RECENT_KEY]: list });
+  renderRecent(list);
 }
 
 function renderRecent(list) {
@@ -285,11 +308,28 @@ function renderRecent(list) {
   (list || []).forEach((query) => {
     // textContent, never innerHTML: these are the user's own words coming
     // back out of storage, and a search someone typed is not markup.
-    const chip = document.createElement("button");
-    chip.type = "button";
+    const chip = document.createElement("span");
     chip.className = "recent-search";
-    chip.textContent = query;
-    chip.addEventListener("click", () => runSearch(query));
+
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "recent-go";
+    go.textContent = query;
+    go.title = "Search Facebook for this";
+    go.addEventListener("click", () => runSearch(query));
+
+    const drop = document.createElement("button");
+    drop.type = "button";
+    drop.className = "recent-drop";
+    drop.textContent = "×";
+    drop.title = "Remove";
+    drop.addEventListener("click", (event) => {
+      event.stopPropagation();
+      forgetSearch(query);
+    });
+
+    chip.appendChild(go);
+    chip.appendChild(drop);
     host.appendChild(chip);
   });
 }

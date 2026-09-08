@@ -3135,7 +3135,40 @@
 
   /* ------------------------------------------------------ HUD */
 
-  var hud, hudBody, hudBtn, hudFind;
+  var hud, hudBody, hudBtn, hudFind, hudKeywords;
+  var renderKeywordChips = function () {};
+
+  /* The saved keyword list, shared with the popup through extension storage.
+   *
+   * One list reachable from both surfaces rather than a copy in each: two
+   * lists that drift apart is worse than one list in the wrong place.
+   */
+  var KEYWORDS_KEY = "recentSearches";
+  var KEYWORDS_MAX = 12;
+
+  function loadKeywords() {
+    try {
+      chrome.storage.local.get([KEYWORDS_KEY], function (state) {
+        renderKeywordChips((state && state[KEYWORDS_KEY]) || []);
+      });
+    } catch (e) { /* orphaned context — the box still works */ }
+  }
+
+  function rememberKeyword(query) {
+    query = (query || "").trim();
+    if (!query) return;
+    try {
+      chrome.storage.local.get([KEYWORDS_KEY], function (state) {
+        var list = ((state && state[KEYWORDS_KEY]) || []).filter(function (q) {
+          return String(q).toLowerCase() !== query.toLowerCase();
+        });
+        list.unshift(query);
+        var kept = list.slice(0, KEYWORDS_MAX);
+        chrome.storage.local.set({ recentSearches: kept });
+        renderKeywordChips(kept);
+      });
+    } catch (e) { /* nothing to save into; the search still runs */ }
+  }
   var HUD_ID = "tallgrass-hud";
 
   function styleEl(el, styles) {
@@ -3453,9 +3486,10 @@
       background: "transparent", color: "#7fa693", fontSize: "0.9em"
     });
 
-    function runFind() {
-      var query = (hudFind.value || "").trim();
+    function runFind(term) {
+      var query = (term || hudFind.value || "").trim();
       if (!query) { hudFind.focus(); return; }
+      rememberKeyword(query);
       // Same origin, so the page can go there itself — no worker round trip.
       location.assign("https://www.facebook.com/search/posts/?q=" +
                       encodeURIComponent(query));
@@ -3469,6 +3503,46 @@
 
     findRow.appendChild(hudFind);
     findRow.appendChild(findBtn);
+
+    /* The words you keep coming back to, shown where the work happens.
+     *
+     * The same list the popup manages — one set of keywords, reachable from
+     * both. Removing one is done in the popup; here they are shortcuts, and a
+     * delete control sitting over Facebook is a misclick waiting to happen.
+     *
+     * They run ONE AT A TIME. Several searches at once is the automation
+     * signal that gets somebody's own account checkpointed, and it was turned
+     * down on those grounds. This is a shortcut for a morning's work, not a
+     * queue that empties itself.
+     */
+    hudKeywords = document.createElement("div");
+    styleEl(hudKeywords, {
+      display: "flex", flexWrap: "wrap", gap: "0.35em",
+      marginTop: "0.5em", flexShrink: "0"
+    });
+
+    renderKeywordChips = function (list) {
+      if (!hudKeywords) return;
+      hudKeywords.textContent = "";
+      (list || []).slice(0, 8).forEach(function (word) {
+        var chip = document.createElement("button");
+        // textContent, never innerHTML — these are the user's own words
+        // coming back out of storage, and a search somebody typed is not
+        // markup. This one renders INSIDE facebook.com.
+        chip.textContent = word;
+        styleEl(chip, {
+          padding: "0.3em 0.7em", borderRadius: "999px", cursor: "pointer",
+          border: "1px solid rgba(110,231,183,0.2)", background: "transparent",
+          color: "#7fa693", fontSize: "0.8em", fontFamily: "inherit",
+          maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        });
+        chip.addEventListener("click", function () { runFind(word); });
+        hudKeywords.appendChild(chip);
+      });
+    };
+
+    loadKeywords();
 
     /* --- buttons --- */
     hudBtn = document.createElement("button");
@@ -3550,6 +3624,7 @@
     content.appendChild(scroller);
     // Above Start: you decide what to look for, then you scan it.
     content.appendChild(findRow);
+    content.appendChild(hudKeywords);
     content.appendChild(hudBtn);
     content.appendChild(rowBtns);
 

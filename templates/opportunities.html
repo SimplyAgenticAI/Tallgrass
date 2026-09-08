@@ -71,8 +71,16 @@
          you go and answer. Deliberately the primary action. #}
       {% if o.permalink %}
       <a class="btn btn-primary" href="{{ o.permalink }}"
-         target="_blank" rel="noopener noreferrer">Open the post</a>
+         target="_blank" rel="noopener noreferrer">Open the post →</a>
+      {% else %}
+      {# Said rather than left as a missing button. A post captured without a
+         permalink is not broken — Facebook does not always render one — but
+         "why does this card have no Open button" is otherwise unanswerable. #}
+      <span class="fine">No link captured — search the text on Facebook</span>
       {% endif %}
+      <button class="btn btn-ghost opp-write" type="button" data-id="{{ o.id }}">
+        {% if o.draft_comment or o.draft_message %}Rewrite reply{% else %}Write a reply{% endif %}
+      </button>
       {% for next_status in ['replied', 'won', 'lost'] %}
         {% if o.status != next_status %}
         <button class="btn btn-ghost opp-set" type="button"
@@ -84,6 +92,34 @@
       {% if o.author %}<span class="fine opp-author">— {{ o.author }}</span>{% endif %}
     </div>
     <div class="msg-line opp-msg"></div>
+
+    {# Two drafts, kept apart, because they are different jobs. The comment is
+       read by the whole group and has to stand on its own; the message is read
+       by one person who already asked. Sending either as the other is the
+       mistake this layout is trying to prevent. #}
+    <div class="opp-drafts" {{ '' if (o.draft_comment or o.draft_message) else 'hidden' }}>
+      <div class="opp-draft">
+        <div class="opp-draft-head">
+          <b>Public comment</b>
+          <span class="fine">useful on its own — no pitch, no “DM me”</span>
+          <button class="copy-btn opp-copy" type="button">Copy</button>
+        </div>
+        <p class="opp-draft-body" data-draft="comment">{{ o.draft_comment or '' }}</p>
+      </div>
+      <div class="opp-draft">
+        <div class="opp-draft-head">
+          <b>First message</b>
+          <span class="fine">they asked, so be direct — no price, no calendar link</span>
+          <button class="copy-btn opp-copy" type="button">Copy</button>
+        </div>
+        <p class="opp-draft-body" data-draft="message">{{ o.draft_message or '' }}</p>
+      </div>
+      <p class="fine opp-draft-note">
+        Read them before you send them. They're written from the captured text
+        and your brand details in Settings — they don't know anything the post
+        didn't say.
+      </p>
+    </div>
   </article>
   {% endfor %}
 </div>

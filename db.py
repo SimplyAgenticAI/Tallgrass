@@ -196,6 +196,11 @@ CREATE TABLE IF NOT EXISTS opportunities (
     -- difference between a list you work and a list you scroll past.
     status        TEXT DEFAULT 'new',
     note          TEXT,
+    -- The two drafts, written by a model the user pays for. Kept so a reload
+    -- does not charge somebody twice for the same sentence.
+    draft_comment TEXT,
+    draft_message TEXT,
+    drafted_at    TEXT,
     updated_at    TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, fb_post_id)
 );
@@ -480,6 +485,20 @@ def _migrate(conn):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_opportunities_user "
         "ON opportunities(user_id, status, score DESC)")
+
+    # The two drafts, kept on the row.
+    #
+    # Written by a model the user pays for, so losing them to a page reload
+    # would be charging somebody twice for the same sentence. They are also
+    # worth having later: what you actually sent is the only record of how you
+    # approached a job you won.
+    opp_cols = _columns(conn, "opportunities")
+    if "draft_comment" not in opp_cols:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN draft_comment TEXT")
+    if "draft_message" not in opp_cols:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN draft_message TEXT")
+    if "drafted_at" not in opp_cols:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN drafted_at TEXT")
 
     post_cols = _columns(conn, "posts")
 
@@ -1125,6 +1144,24 @@ def set_opportunity_status(opportunity_id, user_id, status, note=None):
         return conn.execute(
             "UPDATE opportunities SET %s WHERE id = ? AND user_id IS ?"
             % ", ".join(fields), args).rowcount > 0
+
+
+def get_opportunity(opportunity_id, user_id):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM opportunities WHERE id = ? AND user_id IS ?",
+            (opportunity_id, user_id)).fetchone()
+        return dict(row) if row else None
+
+
+def save_opportunity_drafts(opportunity_id, user_id, comment, message):
+    """Keep what the model wrote, so a reload does not cost another call."""
+    with get_db() as conn:
+        return conn.execute(
+            "UPDATE opportunities SET draft_comment = ?, draft_message = ?, "
+            "drafted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND user_id IS ?",
+            (comment, message, opportunity_id, user_id)).rowcount > 0
 
 
 def delete_opportunity(opportunity_id, user_id):

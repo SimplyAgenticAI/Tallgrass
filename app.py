@@ -25,6 +25,7 @@ import opportunities
 import outliers
 import outreach
 import remix
+import replies
 import sage
 from demo_data import refresh_sample_accounts, seed_demo_data
 
@@ -61,7 +62,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.7"
+APP_VERSION = "24.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1342,6 +1343,37 @@ def opportunities_page():
         version=APP_VERSION,
         active="opportunities",
     )
+
+
+@app.route("/api/opportunity/<int:opportunity_id>/draft", methods=["POST"])
+@auth.login_required
+def api_opportunity_draft(opportunity_id):
+    """Write the public comment and the first message for one opportunity.
+
+    Two drafts from one call, deliberately. They are different jobs — the
+    comment is read by the whole group and has to be useful on its own, the
+    message is read by one person who already asked — but they are written off
+    the same post, and charging for two generations to produce them would be
+    charging twice for one read.
+
+    Stored on the row, so reopening the page does not spend another call on a
+    sentence the user already has.
+    """
+    blocked = _ai_gate("opportunity_draft")
+    if blocked:
+        return blocked
+
+    row = db.get_opportunity(opportunity_id, _uid())
+    if not row:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+
+    result, error = replies.draft(row)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    db.save_opportunity_drafts(opportunity_id, _uid(),
+                               result["comment"], result["message"])
+    return jsonify({"ok": True, **result})
 
 
 @app.route("/api/opportunity/<int:opportunity_id>", methods=["POST", "DELETE"])

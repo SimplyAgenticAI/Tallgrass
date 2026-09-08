@@ -1016,6 +1016,28 @@ select.kind-select option { color: initial; }
 
 .empty-state { padding: 28px; }
 
+/* The two drafts. Separated hard, because they go to two different places and
+   sending one as the other is the mistake worth designing against. */
+.opp-drafts {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.opp-draft {
+  padding: 12px 14px; border-radius: var(--r-md);
+  background: rgba(6,20,13,0.5); border: 1px solid var(--border);
+}
+.opp-draft-head {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.opp-draft-head b { font-size: 12.5px; color: var(--emerald-bright); }
+.opp-draft-head .fine { flex: 1; min-width: 120px; }
+.opp-draft-body {
+  margin: 0; font-size: 13.5px; line-height: 1.7; white-space: pre-wrap;
+}
+.opp-draft-note { margin: 0; opacity: 0.75; }
+
 /* The old six-step sideload, kept and folded away. It is a fallback now, not
    a route, and it should not read like a second half of the page. */
 .manual-route {

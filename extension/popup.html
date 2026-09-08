@@ -107,11 +107,22 @@
     margin-top: 7px;
   }
   .recent-search {
-    padding: 4px 9px; border-radius: 999px; cursor: pointer;
+    display: inline-flex; align-items: stretch; border-radius: 999px;
     background: rgba(16,40,27,0.6); border: 1px solid var(--border);
-    color: var(--muted); font-size: 11px; font-family: inherit;
+    overflow: hidden;
   }
-  .recent-search:hover { color: var(--emerald-bright); border-color: var(--emerald); }
+  .recent-search:hover { border-color: var(--emerald); }
+  .recent-go, .recent-drop {
+    background: none; border: none; cursor: pointer;
+    font-family: inherit; font-size: 11px; padding: 4px 4px 4px 9px;
+    color: var(--muted);
+  }
+  .recent-go:hover { color: var(--emerald-bright); }
+  .recent-drop {
+    padding: 4px 8px 4px 4px; color: var(--faint); font-size: 13px;
+    line-height: 1;
+  }
+  .recent-drop:hover { color: var(--ember); }
   .status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
   .dot.on { background: var(--emerald); box-shadow: 0 0 8px rgba(52,211,153,0.8); }
