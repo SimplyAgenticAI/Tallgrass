@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Opportunities{% endblock %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>Opportunities</h1>
+    <p class="sub">
+      Posts found by searching, ranked by whether answering is worth your time
+      — not by how well they performed.
+    </p>
+  </div>
+</section>
+
+{# The one thing somebody has to understand about this tab, said once, here.
+   Every other number in the product means "this beat its group". These mean
+   the opposite, and a page that does not say so gets read as broken. #}
+<div class="route-note">
+  <b>These rank the other way round.</b>
+  A post with one like and no replies can be the best thing on this page:
+  it means nobody has answered yet. Crowded threads rank lower because forty
+  people already replied.
+</div>
+
+<div class="opp-filters">
+  {% for name in ['new', 'replied', 'won', 'lost', 'all'] %}
+  <a href="{{ url_for('opportunities_page', status=name) }}"
+     class="opp-filter {{ 'active' if status == name }}">
+    {{ name.title() }}
+    <span class="opp-count">{{ counts.get(name, 0) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if opportunities %}
+<div class="opp-list">
+  {% for o in opportunities %}
+  <article class="glass opp-card reveal" data-opp="{{ o.id }}">
+    <div class="opp-top">
+      <span class="opp-score opp-{{ o.tier|replace(' ', '-') }}">
+        {{ o.score|round|int }}
+      </span>
+      <div class="opp-why">
+        <b>{{ o.intent or 'mentions it' }}</b>
+        <span class="fine">
+          {% if o.source_name %}{{ o.source_name }} · {% endif %}
+          {{ o.comments }} {{ 'reply' if o.comments == 1 else 'replies' }}
+          {% if o.query %} · found by “{{ o.query }}”{% endif %}
+        </span>
+      </div>
+      <span class="opp-status opp-status-{{ o.status }}">{{ o.status }}</span>
+    </div>
+
+    <p class="opp-body">{{ o.body or '(no text captured)' }}</p>
+
+    <div class="opp-actions">
+      {# The permalink is the working part of this whole feature — it is how
+         you go and answer. Deliberately the primary action. #}
+      {% if o.permalink %}
+      <a class="btn btn-primary" href="{{ o.permalink }}"
+         target="_blank" rel="noopener noreferrer">Open the post</a>
+      {% endif %}
+      {% for next_status in ['replied', 'won', 'lost'] %}
+        {% if o.status != next_status %}
+        <button class="btn btn-ghost opp-set" type="button"
+                data-id="{{ o.id }}" data-status="{{ next_status }}">
+          Mark {{ next_status }}
+        </button>
+        {% endif %}
+      {% endfor %}
+      {% if o.author %}<span class="fine opp-author">— {{ o.author }}</span>{% endif %}
+    </div>
+    <div class="msg-line opp-msg"></div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="glass panel reveal empty-state">
+  <h2 style="margin:0 0 6px;font-size:16px">Nothing here yet</h2>
+  <p class="fine" style="margin:0">
+    {% if status != 'new' and counts.all %}
+      Nothing is marked <b>{{ status }}</b>.
+      <a href="{{ url_for('opportunities_page', status='new') }}">See the new ones</a>.
+    {% else %}
+      Search Facebook for the words you care about — “needs a website”,
+      “looking for a plumber”, whatever you sell — then press Start on the
+      results page. What comes back lands here, ranked.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+{# Said in the product, where people actually see it, rather than only in a
+   policy nobody opens. #}
+<p class="fine" style="margin-top:18px;opacity:0.75">
+  Results you haven't acted on are deleted automatically after
+  {{ ttl_days }} days. Anything you've marked or made a note on is kept until
+  you delete it.
+</p>
+{% endblock %}

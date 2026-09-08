@@ -154,6 +154,55 @@ CREATE TABLE IF NOT EXISTS posts (
     has_video     INTEGER DEFAULT 0
 );
 
+-- Posts found by searching for words, kept apart from posts on purpose.
+--
+-- These must NEVER go in `posts`, and the reason is the whole product. A
+-- search result was selected BECAUSE it contains a keyword, so it is a biased
+-- sample of its group by construction — nothing like the picture of normal
+-- output that a median needs. File them under their origin groups and they
+-- drag every baseline they touch, silently, and it would surface months later
+-- looking like a scoring bug.
+--
+-- So: separate table, never scored against a median, never counted in one.
+--
+-- What is stored is deliberately the minimum that makes a reply possible. The
+-- permalink is the working part — it is how you go back and answer. There is
+-- no author profile URL and no author id: a name beside a post is a byline,
+-- and a name with a link to reach them is a contact list, and only one of
+-- those is needed to do the job.
+CREATE TABLE IF NOT EXISTS opportunities (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER REFERENCES users(id),
+    fb_post_id    TEXT NOT NULL,
+    -- The search that found it, as the person typed it. Shown on the card so
+    -- a result that makes no sense can be traced to the words that caught it.
+    query         TEXT,
+    body          TEXT,
+    author        TEXT,
+    permalink     TEXT,
+    source_name   TEXT,                   -- where it was posted, for context
+    posted_at     TEXT,
+    likes         INTEGER DEFAULT 0,
+    comments      INTEGER DEFAULT 0,
+    shares        INTEGER DEFAULT 0,
+    found_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+    -- Recency, intent and how crowded the replies already are, scored at
+    -- capture. Stored rather than computed on read because the inputs move:
+    -- a post's age changes every minute, and a card that silently re-ranks
+    -- itself between page loads cannot be worked through as a list.
+    score         REAL,
+    intent        TEXT,                   -- what it looks like they want
+    -- new | replied | won | lost. The lifecycle posts do not have, and the
+    -- difference between a list you work and a list you scroll past.
+    status        TEXT DEFAULT 'new',
+    note          TEXT,
+    updated_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, fb_post_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_opportunities_user
+    ON opportunities(user_id, status, score DESC);
+
 CREATE TABLE IF NOT EXISTS saved (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     post_id       INTEGER UNIQUE REFERENCES posts(id) ON DELETE CASCADE,
@@ -400,6 +449,37 @@ def _migrate(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username "
         "ON users(LOWER(username)) WHERE username IS NOT NULL"
     )
+
+    # Keyword capture. CREATE TABLE IF NOT EXISTS in the schema above covers a
+    # fresh install; this covers one that already existed, which is all of
+    # them. Nothing to backfill — there were no opportunities before there was
+    # a table to hold them.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS opportunities (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER REFERENCES users(id),
+            fb_post_id    TEXT NOT NULL,
+            query         TEXT,
+            body          TEXT,
+            author        TEXT,
+            permalink     TEXT,
+            source_name   TEXT,
+            posted_at     TEXT,
+            likes         INTEGER DEFAULT 0,
+            comments      INTEGER DEFAULT 0,
+            shares        INTEGER DEFAULT 0,
+            found_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            score         REAL,
+            intent        TEXT,
+            status        TEXT DEFAULT 'new',
+            note          TEXT,
+            updated_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, fb_post_id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_opportunities_user "
+        "ON opportunities(user_id, status, score DESC)")
 
     post_cols = _columns(conn, "posts")
 
@@ -958,6 +1038,122 @@ def repair_poisoned_shares_once():
         # and is retried on the next start.
         log.exception("share-count repair failed")
         return 0
+
+
+OPPORTUNITY_STATUSES = ("new", "replied", "won", "lost")
+
+
+def upsert_opportunity(conn, user_id, row, query=""):
+    """Store one search result. Returns True if it was new to this account.
+
+    Deliberately does NOT overwrite status or note on a repeat sighting. The
+    same post turning up in a second search must not quietly mark something
+    you already replied to as unanswered again — the counts move, because
+    those are facts about the post, and the part you wrote stays yours.
+    """
+    import opportunities as scoring
+
+    score, intent = scoring.score(row)
+    existing = conn.execute(
+        "SELECT id FROM opportunities WHERE user_id IS ? AND fb_post_id = ?",
+        (user_id, row.get("fb_post_id"))).fetchone()
+
+    if existing:
+        conn.execute(
+            """
+            UPDATE opportunities
+               SET likes = ?, comments = ?, shares = ?, score = ?,
+                   intent = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?
+            """,
+            (row.get("likes", 0), row.get("comments", 0), row.get("shares", 0),
+             score, intent, existing["id"]))
+        return False
+
+    conn.execute(
+        """
+        INSERT INTO opportunities (
+            user_id, fb_post_id, query, body, author, permalink, source_name,
+            posted_at, likes, comments, shares, score, intent
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (user_id, row.get("fb_post_id"), query, clean_text(row.get("body"), 4000),
+         clean_text(row.get("author"), 120), row.get("permalink"),
+         clean_text(row.get("source_name"), 200), row.get("posted_at"),
+         row.get("likes", 0), row.get("comments", 0), row.get("shares", 0),
+         score, intent))
+    return True
+
+
+def opportunities_for(user_id, status=None, limit=200):
+    """The list, best first. Expired rows are excluded, not deleted here."""
+    sql = ["SELECT * FROM opportunities WHERE user_id IS ?"]
+    args = [user_id]
+    if status and status != "all":
+        sql.append("AND status = ?")
+        args.append(status)
+    sql.append("ORDER BY score DESC, found_at DESC LIMIT ?")
+    args.append(int(limit))
+    with get_db() as conn:
+        return [dict(r) for r in conn.execute(" ".join(sql), args).fetchall()]
+
+
+def opportunity_counts(user_id):
+    """How many sit in each status, for the filter row."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM opportunities "
+            "WHERE user_id IS ? GROUP BY status", (user_id,)).fetchall()
+    counts = {status: 0 for status in OPPORTUNITY_STATUSES}
+    for row in rows:
+        counts[row["status"]] = row["n"]
+    counts["all"] = sum(counts[s] for s in OPPORTUNITY_STATUSES)
+    return counts
+
+
+def set_opportunity_status(opportunity_id, user_id, status, note=None):
+    """Move one through its lifecycle. Scoped to its owner."""
+    if status not in OPPORTUNITY_STATUSES:
+        return False
+    fields = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+    args = [status]
+    if note is not None:
+        fields.append("note = ?")
+        args.append(clean_text(note, 2000))
+    args.extend([opportunity_id, user_id])
+    with get_db() as conn:
+        return conn.execute(
+            "UPDATE opportunities SET %s WHERE id = ? AND user_id IS ?"
+            % ", ".join(fields), args).rowcount > 0
+
+
+def delete_opportunity(opportunity_id, user_id):
+    with get_db() as conn:
+        return conn.execute(
+            "DELETE FROM opportunities WHERE id = ? AND user_id IS ?",
+            (opportunity_id, user_id)).rowcount > 0
+
+
+# How long a result is kept. A month-old request for a quote was answered by
+# somebody else the day it was posted, so expiry costs the product nothing —
+# which turns "how long do you keep this?" from a policy question into a
+# behaviour, and one the page can state plainly.
+OPPORTUNITY_TTL_DAYS = 30
+
+
+def expire_opportunities(days=OPPORTUNITY_TTL_DAYS):
+    """Drop results older than the retention window. Returns rows removed.
+
+    Anything the user has acted on is kept: a note you wrote and a job you
+    won are yours, and deleting those on a timer would be the app throwing
+    away the person's own work rather than tidying up strangers' posts.
+    """
+    with get_db() as conn:
+        return conn.execute(
+            "DELETE FROM opportunities "
+            "WHERE status = 'new' AND note IS NULL "
+            "  AND found_at < datetime('now', ?)",
+            ("-%d days" % int(days),)).rowcount
 
 
 def users_holding_only_samples(limit=500):

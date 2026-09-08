@@ -21,6 +21,7 @@ import demo_snapshot
 import hooks
 import images
 import mailer
+import opportunities
 import outliers
 import outreach
 import remix
@@ -60,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.2"
+APP_VERSION = "24.3"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1254,6 +1255,68 @@ def post_detail(post_id):
         version=APP_VERSION,
         active="feed",
     )
+
+
+@app.route("/opportunities")
+@auth.login_required
+def opportunities_page():
+    """Posts found by searching for words, ranked by whether answering pays.
+
+    A separate tab and a separate table, because this asks the opposite
+    question to the rest of the product. The feed asks what cleared its
+    group's median. This asks who wants something, said so recently, and has
+    not been answered by forty people already — and the best result it can
+    return is very often a post with one like.
+
+    Nothing here is scored against a median or counted into one. See the
+    opportunities table in db.py for why that separation is load bearing.
+    """
+    status = request.args.get("status", "new")
+    if status not in db.OPPORTUNITY_STATUSES and status != "all":
+        status = "new"
+
+    # Cleared on the way past, like the daily backup: no scheduler, no second
+    # process, and it happens on any day the page is opened.
+    try:
+        db.expire_opportunities()
+    except Exception:                                  # noqa: BLE001
+        log.exception("could not expire opportunities")
+
+    rows = db.opportunities_for(_uid(), status=status)
+    for row in rows:
+        row["tier"] = opportunities.tier(row.get("score") or 0)
+
+    return render_template(
+        "opportunities.html",
+        opportunities=rows,
+        counts=db.opportunity_counts(_uid()),
+        status=status,
+        statuses=db.OPPORTUNITY_STATUSES,
+        ttl_days=db.OPPORTUNITY_TTL_DAYS,
+        version=APP_VERSION,
+        active="opportunities",
+    )
+
+
+@app.route("/api/opportunity/<int:opportunity_id>", methods=["POST", "DELETE"])
+@auth.login_required
+def api_opportunity(opportunity_id):
+    """Move one through its lifecycle, or drop it."""
+    if request.method == "DELETE":
+        if not db.delete_opportunity(opportunity_id, _uid()):
+            return jsonify({"ok": False, "error": "Not found"}), 404
+        return jsonify({"ok": True, "deleted": opportunity_id})
+
+    body = request.get_json(silent=True) or {}
+    status = (body.get("status") or "").strip().lower()
+    if status not in db.OPPORTUNITY_STATUSES:
+        return jsonify({"ok": False, "error": "Unknown status"}), 400
+
+    note = body.get("note")
+    if not db.set_opportunity_status(opportunity_id, _uid(), status, note):
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    return jsonify({"ok": True, "status": status,
+                    "counts": db.opportunity_counts(_uid())})
 
 
 @app.route("/library")

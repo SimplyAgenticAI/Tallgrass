@@ -1192,6 +1192,56 @@
       .catch(function () { reveal(false); });
   });
 
+  /* --------------------------------------------- opportunities: lifecycle
+   *
+   * Marking one is the difference between a list you work through and a list
+   * you scroll past — without it, the same twenty posts greet you every
+   * morning with no way to tell which you already answered.
+   *
+   * Delegated, so it keeps working for cards rendered after this ran.
+   */
+
+  document.addEventListener("click", function (event) {
+    var btn = event.target.closest(".opp-set");
+    if (!btn) return;
+
+    var card = btn.closest(".opp-card");
+    var msg = card && card.querySelector(".opp-msg");
+    var status = btn.dataset.status;
+
+    btn.disabled = true;
+    if (msg) { msg.className = "msg-line opp-msg"; msg.textContent = "Saving…"; }
+
+    post("/api/opportunity/" + btn.dataset.id, { status: status })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || "Could not save that");
+
+        // Updated in place rather than reloading. The page is a worklist and
+        // a reload throws away where you had got to in it.
+        var chip = card && card.querySelector(".opp-status");
+        if (chip) {
+          chip.textContent = status;
+          chip.className = "opp-status opp-status-" + status;
+        }
+        if (card && (status === "won" || status === "lost")) {
+          card.classList.add("is-done");
+        }
+        var siblings = card ? card.querySelectorAll(".opp-set") : [];
+        for (var i = 0; i < siblings.length; i++) {
+          siblings[i].hidden = siblings[i].dataset.status === status;
+        }
+        if (msg) msg.textContent = "";
+        toast("Marked " + status);
+      })
+      .catch(function (error) {
+        if (msg) {
+          msg.className = "msg-line opp-msg error";
+          msg.textContent = error.message;
+        }
+      })
+      .finally(function () { btn.disabled = false; });
+  });
+
   /* ------------------------------------------------------------ demo data */
 
   function demoRequest(method, label) {
