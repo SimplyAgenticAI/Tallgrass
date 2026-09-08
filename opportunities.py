@@ -203,6 +203,35 @@ def score(post):
     return round(total * 100, 1), label
 
 
+# Below this many results there is nothing to conclude from a run of old ones.
+TOP_SORT_MIN_SAMPLE = 5
+TOP_SORT_SHARE = 0.6
+
+
+def looks_like_top_results(rows):
+    """Does this batch look sorted by popularity rather than by date?
+
+    Facebook's search defaults to Top, which ranks by engagement — precisely
+    backwards here, because the request nobody has answered yet is the one
+    worth answering. Scan with Top selected and you capture the crowded
+    popular threads, score them mediocre, and nothing says why.
+
+    Detected from the data rather than from the URL, deliberately. Facebook's
+    Recent toggle is an undocumented base64 filters blob; building it into a
+    link would work until it quietly stopped, and a silently wrong sort is the
+    failure this ranking least tolerates. A run of old results is a real
+    signal and cannot break behind our back.
+
+    Soft on purpose. A quiet topic genuinely has old results, so this is worth
+    saying and not worth acting on — the page suggests, it does not refuse.
+    """
+    dated = [r for r in rows if r.get("posted_at")]
+    if len(dated) < TOP_SORT_MIN_SAMPLE:
+        return False
+    stale = sum(1 for r in dated if freshness(r.get("posted_at")) <= 0.30)
+    return stale / float(len(dated)) >= TOP_SORT_SHARE
+
+
 def tier(value):
     """The band a score falls in, for the colour on the card."""
     if value >= 70:

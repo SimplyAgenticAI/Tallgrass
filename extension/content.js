@@ -4006,7 +4006,29 @@
       sendResponse({ ok: true });
     }
     if (message.type === "OUTLIER_SCAN")  { scanPosts(); flush(); sendResponse({ ok: true, stats: STATS }); }
-    if (message.type === "OUTLIER_STATS") { sendResponse({ ok: true, stats: STATS, scrolling: autoScrolling }); }
+    if (message.type === "OUTLIER_STATS") {
+      /* What this page IS, so the popup can say so before anybody commits to
+       * a scan.
+       *
+       * The popup showed counts, buttons and a version and never once named
+       * what it was pointed at — you pressed Start and found out afterwards.
+       * That is the same silence the file's own opening line argues against,
+       * and it bites hardest on a search, where the whole question is whether
+       * the extension understood the words you typed.
+       */
+      var here = optional(detectSource, null);
+      sendResponse({
+        ok: true,
+        stats: STATS,
+        scrolling: autoScrolling,
+        target: here ? {
+          kind: here.kind,
+          name: here.name,
+          query: here.query || "",
+          isSearch: !!here.isSearch
+        } : null
+      });
+    }
   });
 
   /* Capture only while a scan is running.

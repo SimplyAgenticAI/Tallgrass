@@ -22,6 +22,19 @@
   people already replied.
 </div>
 
+{% if top_sorted %}
+{# Not an error, and phrased as a suspicion rather than a finding: a genuinely
+   quiet topic really does return old posts. Worth saying, not worth acting
+   on for the reader. #}
+<div class="update-note warn">
+  <b>These look like Facebook's “Top” results.</b>
+  Most of what's here is several days old, which is usually what happens when
+  the search was left on Top — it ranks by popularity, so you get the busy
+  threads and miss the requests nobody has answered yet. Set
+  <b>Recent</b> on the search filters and scan again.
+</div>
+{% endif %}
+
 <div class="opp-filters">
   {% for name in ['new', 'replied', 'won', 'lost', 'all'] %}
   <a href="{{ url_for('opportunities_page', status=name) }}"

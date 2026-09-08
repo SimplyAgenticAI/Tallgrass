@@ -61,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.5"
+APP_VERSION = "24.6"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1335,6 +1335,10 @@ def opportunities_page():
         status=status,
         statuses=db.OPPORTUNITY_STATUSES,
         ttl_days=db.OPPORTUNITY_TTL_DAYS,
+        # Read off the results rather than off the URL — see opportunities.py.
+        # A search scanned on Facebook's default Top sort produces a page of
+        # old crowded threads and mediocre scores, with nothing saying why.
+        top_sorted=opportunities.looks_like_top_results(rows),
         version=APP_VERSION,
         active="opportunities",
     )

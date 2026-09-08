@@ -66,6 +66,52 @@
     padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px;
   }
   .row-label { color: var(--muted); }
+
+  /* The page this popup is pointed at. Reads as a label, not a control —
+     it is the answer to "does it know where I am", nothing to click. */
+  .target {
+    display: flex; align-items: baseline; gap: 7px;
+    padding: 8px 10px; margin-bottom: 10px; border-radius: 8px;
+    background: rgba(16,40,27,0.5); border: 1px solid var(--border);
+    font-size: 12px; min-width: 0;
+  }
+  .target-kind {
+    flex: none; text-transform: uppercase; letter-spacing: 0.6px;
+    font-size: 9.5px; font-weight: 700; color: var(--emerald-bright);
+  }
+  .target-name {
+    color: var(--text); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .target.is-search { border-color: rgba(110,231,183,0.4); }
+  .target.is-none .target-kind { color: var(--faint); }
+  .target.is-none .target-name { color: var(--muted); }
+
+  .find-block { margin-bottom: 12px; }
+  .find-row { display: flex; gap: 6px; margin-top: 5px; }
+  .find-row input {
+    flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px;
+    background: rgba(6,20,13,0.7); border: 1px solid var(--border);
+    color: var(--text); font-size: 12.5px; font-family: inherit;
+  }
+  .find-row input:focus {
+    outline: none; border-color: var(--emerald);
+  }
+  .btn.find-go { flex: none; width: auto; padding: 8px 14px; margin: 0; }
+  .find-hint {
+    margin: 7px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--faint);
+  }
+  .find-hint b { color: var(--gold); }
+  .recent-searches {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    margin-top: 7px;
+  }
+  .recent-search {
+    padding: 4px 9px; border-radius: 999px; cursor: pointer;
+    background: rgba(16,40,27,0.6); border: 1px solid var(--border);
+    color: var(--muted); font-size: 11px; font-family: inherit;
+  }
+  .recent-search:hover { color: var(--emerald-bright); border-color: var(--emerald); }
   .status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
   .dot.on { background: var(--emerald); box-shadow: 0 0 8px rgba(52,211,153,0.8); }
@@ -126,6 +172,31 @@
     </svg>
   </span>
   <span class="name">Tallgrass <span class="name-suffix">by MacRandle Acres</span></span>
+</div>
+
+<!-- What a scan would read, named before anybody commits to one. This showed
+     nothing at all: counts, buttons and a version, and no word about which
+     page it was pointed at. -->
+<div class="target" id="target">
+  <span class="target-kind" id="target-kind">checking…</span>
+  <span class="target-name" id="target-name"></span>
+</div>
+
+<!-- Looking for something specific. Fills itself in from the search you are
+     already on, so it doubles as the confirmation that the words were read.
+     Goes to the Posts tab, which is the one that answers this question. -->
+<div class="find-block">
+  <label class="row-label" for="find-q">Find posts about</label>
+  <div class="find-row">
+    <input type="text" id="find-q" autocomplete="off"
+           placeholder="needs a website, looking for a plumber…">
+    <button class="btn find-go" id="find-go" type="button">Find</button>
+  </div>
+  <div class="recent-searches" id="recent-searches"></div>
+  <p class="find-hint" id="find-hint">
+    Then set <b>Recent</b> on Facebook's filters — it defaults to Top, which
+    ranks by popularity and buries the requests nobody has answered yet.
+  </p>
 </div>
 
 <div class="stats">

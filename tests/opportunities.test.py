@@ -129,6 +129,27 @@ def main():
         check("  and NO source_id to be filed under", "source_id" in cols, False)
 
     print()
+    print("a Top-sorted scan is noticed after the fact, not guessed at in a URL")
+
+    # Facebook's Recent toggle is an undocumented base64 filters blob. Built
+    # into a link it would work until it quietly stopped, and the failure
+    # would be silent: Top results captured, mediocre scores, nothing saying
+    # why. A run of old results is a real signal that cannot break behind us.
+    def dated(hours):
+        return [{"posted_at": ago(h)} for h in hours]
+
+    check("a Recent scan is not flagged",
+          opp.looks_like_top_results(dated([1, 2, 3, 5, 8, 20])), False)
+    check("a scan of mostly days-old posts is",
+          opp.looks_like_top_results(dated([100, 140, 200, 300, 400, 90])), True)
+    check("a mostly-fresh mix is left alone",
+          opp.looks_like_top_results(dated([1, 2, 3, 200, 300])), False)
+    check("too few results to judge says nothing",
+          opp.looks_like_top_results(dated([400, 500, 600])), False)
+    check("and undated results are not evidence either way",
+          opp.looks_like_top_results([{"posted_at": None}] * 9), False)
+
+    print()
     print("a captured search touches nothing on the posts side")
 
     # The whole safety of this feature in one block. Capture routes on
