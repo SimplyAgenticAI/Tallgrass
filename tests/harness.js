@@ -188,7 +188,28 @@ function runScan(page, urlPath, opts) {
       sendMessage: function (m, cb) {
         if (cb) { cb({ ok: true, new: (m.posts || []).length }); }
       },
-      onMessage: { addListener: function () {} }
+      onMessage: { addListener: function () {} },
+      // The port a scan opens so the service worker can step it while the tab
+      // is hidden, where page timers are throttled to a crawl. Recorded rather
+      // than stubbed away so a test can drive the worker's side of it.
+      connect: function (info) {
+        var port = {
+          name: info && info.name,
+          messages: [],
+          handlers: [],
+          disconnected: false,
+          postMessage: function (m) { port.messages.push(m); },
+          disconnect: function () { port.disconnected = true; },
+          onMessage: { addListener: function (fn) { port.handlers.push(fn); } },
+          onDisconnect: { addListener: function () {} },
+          // What the worker would send.
+          send: function (type) {
+            port.handlers.forEach(function (fn) { fn({ type: type }); });
+          }
+        };
+        global.__testScanPort = port;
+        return port;
+      }
     },
     storage: {
       local: {
@@ -204,6 +225,9 @@ function runScan(page, urlPath, opts) {
   global.document = {
     title: "Audience Growth Lab | Facebook",
     body: page.root, documentElement: page.root, readyState: "complete",
+    // Whether the tab is in the background. Real, because a scan is driven
+    // from a different place depending on it.
+    hidden: false,
     createElement: page.doc.el,
     createElementNS: function (ns, t) { return page.doc.el(t); },
     querySelector: function (s) { return page.root.querySelector(s); },
@@ -232,6 +256,17 @@ function runScan(page, urlPath, opts) {
     },
     addEventListener: function () {}, removeEventListener: function () {},
     dispatchEvent: function () {}, scrollTo: function () {},
+    // Counted and remembered: which driver moved the page, and whether it
+    // asked for a smooth scroll that a hidden tab would never animate.
+    scrollBy: (function () {
+      function scrollBy(opts) {
+        scrollBy.calls += 1;
+        scrollBy.last = opts || {};
+      }
+      scrollBy.calls = 0;
+      scrollBy.last = null;
+      return scrollBy;
+    })(),
     getComputedStyle: function () { return {}; }
   };
   global.navigator = {

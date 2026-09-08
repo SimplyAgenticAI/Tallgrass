@@ -2850,6 +2850,116 @@
     }
   }
 
+  /* ---------------------------------------- driving the scan while hidden
+   *
+   * A scan used to stop the moment the tab went to the background or the
+   * window was minimised, and it looked like a freeze rather than a pause.
+   *
+   * Two separate things caused it, and fixing one without the other fixes
+   * nothing:
+   *
+   *   Chrome clamps a hidden page's timers — about one tick a second at
+   *   first, then ONE A MINUTE once the page has been hidden for five. The
+   *   setInterval below is what drives the whole scan.
+   *
+   *   Smooth scrolling is animation-driven and does not run in a hidden tab
+   *   at all. So even a tick that DID fire moved the page nowhere.
+   *
+   * Message handlers are not throttled — only timers are. So while the tab is
+   * hidden the cadence comes from the service worker, which has no page
+   * visibility to be throttled by, and this side only reacts. The step is
+   * split in two because the pause between scrolling and reading is itself a
+   * timer: keeping it here would put a clamped 1100ms wait in the middle of
+   * every step and undo the point. The worker owns both halves.
+   *
+   * The local interval stays exactly as it was and stays in charge whenever
+   * the tab is visible, so the ordinary path is unchanged.
+   */
+  var STEP_EVERY_MS = 2200;
+  var SETTLE_MS = 1100;
+  var pendingBefore = 0;
+  var scanPort = null;
+
+  // Scroll and read are one step. Both drivers call these two in order.
+  function stepScroll() {
+    if (!autoScrolling) return;
+    if (!contextAlive()) { handleOrphaned(); return; }
+
+    pendingBefore = document.querySelectorAll('div[role="article"]').length;
+
+    // Instant while hidden. "smooth" hands the scroll to an animation that a
+    // background tab never runs, so the page simply would not move.
+    var behavior = document.hidden ? "auto" : "smooth";
+
+    // Scrolling the WINDOW does not move a nested feed container, and some
+    // page timelines render inside one — so Facebook never lazy-loads and
+    // capture stalls after the first batch. Scrolling the LAST article into
+    // view moves whichever element actually scrolls, window or nested, so
+    // more posts load. The window scroll stays as a belt-and-braces.
+    var arts = document.querySelectorAll('div[role="article"]');
+    var last = arts[arts.length - 1];
+    if (last && last.scrollIntoView) {
+      try { last.scrollIntoView({ block: "end", behavior: behavior }); } catch (e) {}
+    }
+    window.scrollBy({ top: Math.round(window.innerHeight * 0.85), behavior: behavior });
+  }
+
+  function stepScan() {
+    if (!autoScrolling) return;
+    if (!contextAlive()) { handleOrphaned(); return; }
+    var beforeArts = pendingBefore;
+
+    var found = scanPosts();
+    flush();
+
+    // Three ways a scan ends, all of them deliberate.
+    if (SEEN.size >= maxPosts) {
+      stopAutoScroll(null, "Target reached — " + SEEN.size + " posts");
+      return;
+    }
+
+    var minutes = (Date.now() - scanStartedAt) / 60000;
+    if (minutes >= maxMinutes) {
+      stopAutoScroll(null, "Time limit — " + SEEN.size + " posts in " +
+                           Math.round(minutes) + " min");
+      return;
+    }
+    finishStep(beforeArts, found);
+  }
+
+  /* The worker's cadence, used only while the tab is hidden.
+   *
+   * Ignored when the page is visible: the interval is already stepping, and
+   * two drivers on one scan would scroll twice as fast and read half as
+   * carefully. Whichever one is not in charge does nothing at all.
+   */
+  function openScanPort() {
+    if (scanPort || !contextAlive()) return;
+    try {
+      scanPort = chrome.runtime.connect({ name: "tallgrass-scan" });
+    } catch (e) {
+      scanPort = null;               // no worker: the interval still runs
+      return;
+    }
+    scanPort.onMessage.addListener(function (message) {
+      if (!autoScrolling || !document.hidden) return;
+      if (message && message.type === "scroll") stepScroll();
+      else if (message && message.type === "scan") stepScan();
+    });
+    scanPort.onDisconnect.addListener(function () {
+      scanPort = null;
+      // A service worker that was shut down takes the port with it. Reopening
+      // is the whole recovery, and only while there is still a scan to drive.
+      if (autoScrolling) setTimeout(openScanPort, 500);
+    });
+  }
+
+  function closeScanPort() {
+    if (!scanPort) return;
+    try { scanPort.disconnect(); } catch (e) {}
+    scanPort = null;
+  }
+
   function startAutoScroll() {
     if (autoScrolling) return;
     if (!contextAlive()) { handleOrphaned(); return; }
@@ -2862,84 +2972,65 @@
     // Tells the service worker not to self-update mid-capture.
     try { chrome.storage.local.set({ capturing: true }); } catch (e) {}
     renderHud();
+    openScanPort();
 
     scrollTimer = setInterval(function () {
-      var beforeArts = document.querySelectorAll('div[role="article"]').length;
+      // Hidden: the worker is driving, and this tick is a throttled straggler.
+      if (document.hidden) return;
+      stepScroll();
+      setTimeout(stepScan, SETTLE_MS);
+    }, STEP_EVERY_MS);
+  }
 
-      // Scrolling the WINDOW does not move a nested feed container, and some
-      // page timelines render inside one — so Facebook never lazy-loads and
-      // capture stalls after the first batch. Scrolling the LAST article into
-      // view moves whichever element actually scrolls, window or nested, so
-      // more posts load. The window scroll stays as a belt-and-braces.
-      var arts = document.querySelectorAll('div[role="article"]');
-      var last = arts[arts.length - 1];
-      if (last && last.scrollIntoView) {
-        try { last.scrollIntoView({ block: "end", behavior: "smooth" }); } catch (e) {}
+  // Did that step get anywhere, and is this the end of the feed? Unchanged
+  // from when it lived inside the interval — it just has a name now, because
+  // two drivers reach it instead of one.
+  function finishStep(beforeArts, found) {
+    // Bottom of the feed: no new articles RENDERED and nothing new
+    // captured. Counting articles rather than window.scrollY is what makes
+    // this correct when a nested container is what actually scrolled — the
+    // window not moving no longer looks like the end when the feed did move.
+    var afterArts = document.querySelectorAll('div[role="article"]').length;
+    if (afterArts <= beforeArts && found === 0) {
+      idleScrolls++;
+
+      /* Write down what a stall looked like, while it is happening.
+       *
+       * A scan that freezes and comes back after a page refresh has been
+       * reported several times, and every report is consistent with two
+       * completely different faults:
+       *
+       *   articles on screen stays low  — Facebook is not loading more,
+       *                                   so the scroll is not reaching
+       *                                   whatever actually scrolls here.
+       *   articles climbing, kept at 0  — they ARE loading and the
+       *                                   extractor is refusing them.
+       *
+       * Those need opposite fixes and the counters alone cannot tell them
+       * apart after the fact. This is not a fix and does not pretend to
+       * be one: it is the evidence, recorded once per stall, so the next
+       * report names the branch instead of describing the symptom.
+       */
+      if (idleScrolls === 3) {
+        logLine("Stalled: " + afterArts + " articles on page, " +
+                STATS.candidates + " readable, " + SEEN.size + " captured");
       }
-      window.scrollBy({ top: Math.round(window.innerHeight * 0.85), behavior: "smooth" });
 
-      // Give Facebook a beat to render, then scan what appeared.
-      setTimeout(function () {
-        var found = scanPosts();
-        flush();
-
-        // Three ways a scan ends, all of them deliberate.
-        if (SEEN.size >= maxPosts) {
-          stopAutoScroll(null, "Target reached — " + SEEN.size + " posts");
-          return;
-        }
-
-        var minutes = (Date.now() - scanStartedAt) / 60000;
-        if (minutes >= maxMinutes) {
-          stopAutoScroll(null, "Time limit — " + SEEN.size + " posts in " +
-                               Math.round(minutes) + " min");
-          return;
-        }
-
-        // Bottom of the feed: no new articles RENDERED and nothing new
-        // captured. Counting articles rather than window.scrollY is what makes
-        // this correct when a nested container is what actually scrolled — the
-        // window not moving no longer looks like the end when the feed did move.
-        var afterArts = document.querySelectorAll('div[role="article"]').length;
-        if (afterArts <= beforeArts && found === 0) {
-          idleScrolls++;
-
-          /* Write down what a stall looked like, while it is happening.
-           *
-           * A scan that freezes and comes back after a page refresh has been
-           * reported several times, and every report is consistent with two
-           * completely different faults:
-           *
-           *   articles on screen stays low  — Facebook is not loading more,
-           *                                   so the scroll is not reaching
-           *                                   whatever actually scrolls here.
-           *   articles climbing, kept at 0  — they ARE loading and the
-           *                                   extractor is refusing them.
-           *
-           * Those need opposite fixes and the counters alone cannot tell them
-           * apart after the fact. This is not a fix and does not pretend to
-           * be one: it is the evidence, recorded once per stall, so the next
-           * report names the branch instead of describing the symptom.
-           */
-          if (idleScrolls === 3) {
-            logLine("Stalled: " + afterArts + " articles on page, " +
-                    STATS.candidates + " readable, " + SEEN.size + " captured");
-          }
-
-          if (idleScrolls >= 6) {
-            stopAutoScroll(null, "Reached the end — " + SEEN.size + " posts");
-          }
-        } else {
-          idleScrolls = 0;
-        }
-      }, 1100);
-    }, 2200);
+      if (idleScrolls >= 6) {
+        stopAutoScroll(null, "Reached the end — " + SEEN.size + " posts");
+      }
+    } else {
+      idleScrolls = 0;
+    }
   }
 
   function stopAutoScroll(reason, done) {
     autoScrolling = false;
     clearInterval(scrollTimer);
     scrollTimer = null;
+    // Before anything else can fail: a port left open keeps the service
+    // worker awake and stepping a scan that has ended.
+    closeScanPort();
     if (reason) STATS.lastError = reason;
     if (done) {
       STATS.done = done;
@@ -3899,6 +3990,15 @@
     flush: flush,
     detectSource: detectSource,
     lastSource: function () { return lastKnownSource; },
+    // The two halves of a scan step, and the switch between the driver that
+    // runs while the tab is visible and the one that runs while it is not.
+    // Exposed so the rule can actually be tested — that exactly one of them
+    // is ever in charge, which is the whole correctness of running hidden.
+    stepScroll: stepScroll,
+    stepScan: stepScan,
+    startAutoScroll: startAutoScroll,
+    stopAutoScroll: stopAutoScroll,
+    scanning: function () { return autoScrolling; },
     // Not in the UI — a developer tool belongs in the console, not in the
     // product. Run __outlier.savePageReport() if the extractors need
     // debugging against a real page.

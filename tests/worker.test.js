@@ -53,6 +53,10 @@ function makeWorld(opts) {
     runtime: {
       onMessage: { addListener: function (fn) { world.onMessage = fn; } },
       onInstalled: { addListener: function () {} },
+      // A hidden tab's scan is stepped over a port, because page timers are
+      // throttled and message handlers are not. Modelled here rather than
+      // stubbed away, so the stepping is actually exercised.
+      onConnect: { addListener: function (fn) { world.onConnect = fn; } },
       getManifest: function () { return { version: "1.0.0" }; },
       reload: function () { world.reloaded = true; },
       lastError: null
@@ -303,6 +307,65 @@ Promise.resolve()
       check("at the right address", noTab.createdTab.url, "https://dash.test/ideas?source=4");
       check("and nothing was activated", noTab.updatedTab === undefined, true);
     });
+  })
+  .then(function () {
+    console.log();
+    console.log("a hidden tab's scan is stepped from here, and stops when it does");
+
+    /* Chrome clamps a hidden page's timers to one a second, then one a
+     * MINUTE after five minutes hidden — so a scan died the moment the tab
+     * went to the background, and it read as a freeze rather than a pause.
+     * Timers in a service worker have no page visibility to be throttled by,
+     * so the cadence comes from here and the page only reacts.
+     *
+     * Both halves are sent from here on purpose. The wait between scrolling
+     * and reading is itself a timer, and leaving it in the page would have
+     * put a clamped pause in the middle of every step. */
+    var world = makeWorld();
+    require(SRC);
+
+    var sent = [];
+    var disconnect = null;
+    var port = {
+      name: "tallgrass-scan",
+      postMessage: function (m) { sent.push(m.type); },
+      onDisconnect: { addListener: function (fn) { disconnect = fn; } }
+    };
+    world.onConnect(port);
+
+    check("it scrolls as soon as the port opens", sent, ["scroll"]);
+
+    return new Promise(function (r) { setTimeout(r, 1400); })
+      .then(function () {
+        check("  then reads what was scrolled to", sent, ["scroll", "scan"]);
+        return new Promise(function (r) { setTimeout(r, 1400); });
+      })
+      .then(function () {
+        check("  and keeps going on its own", sent.length > 2, true);
+
+        // A port left stepping after the scan ends would scroll somebody's
+        // Facebook forever, and keep the worker awake doing it.
+        var before = sent.length;
+        disconnect();
+        return new Promise(function (r) { setTimeout(r, 1400); })
+          .then(function () {
+            check("a disconnect stops it dead", sent.length, before);
+          });
+      });
+  })
+  .then(function () {
+    console.log();
+    console.log("a port for anything else is ignored");
+
+    var world = makeWorld();
+    require(SRC);
+    var sent = [];
+    world.onConnect({
+      name: "something-else",
+      postMessage: function (m) { sent.push(m.type); },
+      onDisconnect: { addListener: function () {} }
+    });
+    check("nothing is sent", sent, []);
   })
   .then(function () {
     console.log();

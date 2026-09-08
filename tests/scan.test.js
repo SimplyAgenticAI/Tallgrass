@@ -338,6 +338,57 @@ check("a reply is stored as item_type comment, never as a post",
         return p.item_type === "post" || p.item_type === "comment";
       }));
 
+/* ------------------------------------ a scan keeps going in a hidden tab
+ *
+ * It used to stop the moment the tab went to the background or the window
+ * was minimised, and it looked like a freeze rather than a pause. Chrome
+ * clamps a hidden page's timers to about one a second, then one a MINUTE
+ * once it has been hidden for five, and the scan is timer-driven.
+ *
+ * The fix is a second driver — the service worker, which has no page
+ * visibility to be throttled by — and the whole correctness of it is that
+ * exactly ONE of the two is ever in charge. Two drivers on one scan would
+ * scroll twice as fast and read half as often, which is a scan that misses
+ * posts and cannot be told apart from a working one.
+ */
+console.log();
+console.log("a hidden tab is stepped by the worker, a visible one is not");
+
+var bg = runScan(buildPage([
+  { author: "A", body: "first", likes: "10 reactions", comments: "2 comments" }
+], "group"), "/groups/growth");
+
+global.document.hidden = false;
+bg.startAutoScroll();
+
+var port = global.__testScanPort;
+check("a scan opens a port for the worker", !!port, true);
+check("  named so the worker knows what it is",
+      port && port.name, "tallgrass-scan");
+
+// Visible: the in-page interval is driving, and the worker's steps must be
+// ignored. Scrolling twice per step is the failure being prevented.
+var scrolledBefore = global.window.scrollBy.calls || 0;
+port.send("scroll");
+check("while visible the worker's step is ignored",
+      (global.window.scrollBy.calls || 0), scrolledBefore);
+
+// Hidden: the interval is throttled to nothing, so the worker's step is the
+// only thing that moves the page.
+global.document.hidden = true;
+port.send("scroll");
+check("while hidden the worker's step scrolls",
+      (global.window.scrollBy.calls || 0) > scrolledBefore, true);
+
+// Smooth scrolling is animation-driven and does not run in a hidden tab at
+// all, so a step that fired would still have moved nothing.
+check("  and it scrolls instantly, not smoothly",
+      global.window.scrollBy.last && global.window.scrollBy.last.behavior, "auto");
+
+global.document.hidden = false;
+bg.stopAutoScroll();
+check("stopping disconnects the port", port.disconnected, true);
+
 console.log();
 if (FAILURES.length) {
   console.log(FAILURES.length + " FAILURES");

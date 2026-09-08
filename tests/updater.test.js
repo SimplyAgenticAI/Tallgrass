@@ -41,6 +41,7 @@ function load(opts) {
     runtime: {
       onMessage: { addListener: function () {} },
       onInstalled: { addListener: function () {} },
+      onConnect: { addListener: function () {} },
       getManifest: function () {
         var manifest = { version: opts.running || "1.0.0" };
         // Chrome adds update_url to an INSTALLED store extension's manifest

@@ -181,7 +181,13 @@ startBtn.addEventListener("click", async () => {
   scrolling = !scrolling;
   startBtn.textContent = scrolling ? "Stop auto-scroll" : "Start auto-scroll";
   startBtn.className = scrolling ? "btn stop" : "btn";
-  say(scrolling ? "Scrolling and capturing…" : "Stopped.", "ok");
+  // Worth saying once, here, where somebody is deciding whether they have to
+  // sit and watch it. It used to stop when the tab went to the background,
+  // so "you can leave" is new information and not reassurance for its own
+  // sake — leave the tab OPEN is the part that still matters.
+  say(scrolling
+    ? "Scrolling and capturing… you can switch tabs, just leave this one open."
+    : "Stopped.", "ok");
 });
 
 scanBtn.addEventListener("click", async () => {

@@ -357,6 +357,68 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.storage.local.set(seed);
 });
 
+/* ------------------------------------------------- stepping a hidden scan
+ *
+ * Chrome clamps a hidden page's timers to about one tick a second, and to one
+ * a MINUTE once it has been hidden five. The scan is driven by a timer, so
+ * backgrounding the tab or minimising the window stopped it — and it read as
+ * a freeze, not a pause.
+ *
+ * Timers here are not clamped: a service worker has no page visibility to be
+ * throttled by. So while a tab is hidden the cadence comes from this side and
+ * the content script only reacts, because message handlers were never
+ * throttled — only timers were.
+ *
+ * Both halves of a step are sent from here. The wait between scrolling and
+ * reading is itself a timer, and leaving it in the page would have put a
+ * clamped 1100ms pause in the middle of every step and undone the point.
+ *
+ * The port doubles as the keep-alive. A worker with no events is shut down
+ * after about thirty seconds, and traffic on a connected port is what resets
+ * that — which this produces anyway, twice a step. If it is shut down
+ * regardless, the port drops and the content script reconnects; nothing is
+ * lost, because the page holds the scan state and this holds none of it.
+ */
+
+const SCAN_STEP_MS = 2200;      // one step, matching the in-page interval
+const SCAN_SETTLE_MS = 1100;    // Facebook's beat to render what was scrolled to
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "tallgrass-scan") return;
+
+  let stopped = false;
+  let timer = null;
+
+  const send = (type) => {
+    if (stopped) return false;
+    try {
+      port.postMessage({ type });
+      return true;
+    } catch (error) {
+      // The tab navigated or closed between scheduling and sending.
+      stopped = true;
+      return false;
+    }
+  };
+
+  const step = () => {
+    if (!send("scroll")) return;
+    timer = setTimeout(() => {
+      if (!send("scan")) return;
+      timer = setTimeout(step, SCAN_STEP_MS - SCAN_SETTLE_MS);
+    }, SCAN_SETTLE_MS);
+  };
+
+  port.onDisconnect.addListener(() => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    timer = null;
+  });
+
+  step();
+});
+
+
 /* ------------------------------------------------------------ self-update
  *
  * Chrome Web Store extensions update themselves. An unpacked one does not —
