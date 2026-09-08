@@ -268,6 +268,41 @@ def main():
     check("a normal capture still writes a post", count("posts") > posts_before, True)
     check("  and did not disturb the opportunities", count("opportunities"), 2)
 
+    print()
+    print("every card has a way through to the post")
+
+    # Getting to the post IS the tab. Everything else on a card is deciding
+    # whether to, so a card you cannot act on is a card that does nothing.
+    #
+    # This was behind `if permalink`, and Facebook does not reliably render a
+    # post's own link on a search results page — so most cards had no button
+    # at all and nothing saying why. The fallback is the one already used on
+    # post cards: search the post's own first words rather than guess at a
+    # link, because a guess can open the WRONG post and a search cannot.
+    # A result Facebook rendered without a usable post link. This is the
+    # ordinary case on a search page, not the exotic one.
+    client.post("/api/capture", json={
+        "source": {"fb_id": "search:plumber", "kind": "search",
+                   "name": "plumber", "query": "plumber"},
+        "posts": [{"fb_post_id": "no-link-1", "found_in": "",
+                   "body": "Looking for a plumber, ours retired last month.",
+                   "author_name": "Ann", "permalink": None,
+                   "posted_at": ago(4), "likes": 1, "comments": 0,
+                   "shares": 0}]}, headers={"X-Outlier-Key": key})
+
+    page = client.get("/opportunities?status=all").get_data(as_text=True)
+    cards = page.count('class="glass opp-card')
+    check("all three results are on the page", cards, 3)
+    check("  and each one has a primary way through",
+          page.count("btn btn-primary"), cards)
+    check("the one with a link opens it", "Open the post" in page, True)
+    check("  and still offers find-by-text as a backup",
+          "Find by text" in page, True)
+    check("the one without a link searches for it instead",
+          "Find this post" in page, True)
+    check("  through Facebook's own search",
+          "facebook.com/search/posts/?q=" in page, True)
+
     # The backstop, tested under the worst case it exists for.
     #
     # Routing is decided by the batch's source, read at SEND time. Facebook is

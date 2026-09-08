@@ -67,16 +67,37 @@
     <p class="opp-body">{{ o.body or '(no text captured)' }}</p>
 
     <div class="opp-actions">
-      {# The permalink is the working part of this whole feature — it is how
-         you go and answer. Deliberately the primary action. #}
+      {# Getting to the post is the whole point of this tab — everything else
+         here is deciding WHETHER to. So there is always a way through, and it
+         is always the primary button.
+
+         This was hidden behind `if o.permalink` and Facebook does not reliably
+         render a post's own link on a search results page, so for most cards
+         there was simply no button and nothing saying why. The same problem
+         was already solved on the post cards: rather than guess at a permalink
+         — a guess that can open the WRONG post — search for the post's own
+         first words. At worst it shows results, and it can never land
+         somewhere wrong.
+
+         Global search rather than a group's, because an opportunity has no
+         source row to search inside. That is deliberate and documented on the
+         table. #}
       {% if o.permalink %}
       <a class="btn btn-primary" href="{{ o.permalink }}"
          target="_blank" rel="noopener noreferrer">Open the post →</a>
-      {% else %}
-      {# Said rather than left as a missing button. A post captured without a
-         permalink is not broken — Facebook does not always render one — but
-         "why does this card have no Open button" is otherwise unanswerable. #}
-      <span class="fine">No link captured — search the text on Facebook</span>
+      {% elif o.body %}
+      <a class="btn btn-primary"
+         href="https://www.facebook.com/search/posts/?q={{ o.body.split()[:10] | join(' ') | urlencode }}"
+         target="_blank" rel="noopener noreferrer">Find this post →</a>
+      {% endif %}
+      {# Kept alongside a permalink as well. Facebook's own links expire, get
+         rewritten and 404, and finding the post again by its words is the
+         thing that always works. #}
+      {% if o.permalink and o.body %}
+      <a class="btn btn-ghost"
+         href="https://www.facebook.com/search/posts/?q={{ o.body.split()[:10] | join(' ') | urlencode }}"
+         target="_blank" rel="noopener noreferrer"
+         title="If the link above doesn't open the right post">Find by text</a>
       {% endif %}
       <button class="btn btn-ghost opp-write" type="button" data-id="{{ o.id }}">
         {% if o.draft_comment or o.draft_message %}Rewrite reply{% else %}Write a reply{% endif %}
