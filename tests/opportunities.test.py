@@ -129,6 +129,88 @@ def main():
         check("  and NO source_id to be filed under", "source_id" in cols, False)
 
     print()
+    print("a captured search touches nothing on the posts side")
+
+    # The whole safety of this feature in one block. Capture routes on
+    # source.kind BEFORE any of the posts path runs, so a search batch cannot
+    # create a source, cannot write a post, and cannot reach a median.
+    import re
+    import shutil
+    import tempfile as tf
+
+    tmp = tf.mkdtemp()
+    os.environ["DATA_DIR"] = tmp
+    for name in ("app", "db", "auth", "billing"):
+        sys.modules.pop(name, None)
+    import app as appmod
+    import db as dbmod
+
+    client = appmod.app.test_client()
+    tok = re.search(r'name="csrf_token" value="([^"]+)"',
+                    client.get("/register").get_data(as_text=True)).group(1)
+    client.post("/register", data={"email": "s@example.com",
+                                   "password": "a-long-enough-pass",
+                                   "password_confirm": "a-long-enough-pass",
+                                   "csrf_token": tok}, follow_redirects=True)
+    tok2 = re.search(r'name="csrf_token" value="([^"]+)"',
+                     client.get("/account").get_data(as_text=True)).group(1)
+    key = client.post("/api/account/connect",
+                      headers={"X-CSRF-Token": tok2}).get_json()["api_key"]
+
+    def count(table):
+        with dbmod.get_db() as conn:
+            return conn.execute("SELECT COUNT(*) AS n FROM %s" % table).fetchone()["n"]
+
+    posts_before, sources_before = count("posts"), count("sources")
+
+    result = client.post("/api/capture", json={
+        "source": {"fb_id": "search:needs a website", "kind": "search",
+                   "name": "needs a website", "query": "needs a website"},
+        "posts": [
+            {"fb_post_id": "group:biz-p1", "found_in": "Local Biz Owners",
+             "body": "Anyone know a good web designer? Ours is embarrassing.",
+             "author_name": "Jo", "permalink": "https://facebook.com/p1",
+             "posted_at": ago(3), "likes": 4, "comments": 2, "shares": 0},
+            {"fb_post_id": "post-p2", "found_in": "",
+             "body": "I love our new website, the team did great.",
+             "author_name": "Sam", "permalink": "https://facebook.com/p2",
+             "posted_at": ago(2), "likes": 30, "comments": 8, "shares": 1},
+        ]}, headers={"X-Outlier-Key": key})
+
+    check("the batch is accepted", result.status_code, 200)
+    check("  and reports what it stored", result.get_json().get("new"), 2)
+    check("NO post row was written", count("posts"), posts_before)
+    check("NO source row was created", count("sources"), sources_before)
+    check("  they are in opportunities instead", count("opportunities"), 2)
+
+    # A second sighting of the same post refreshes it rather than duplicating.
+    # The counts are facts about the post and move; the status is the user's
+    # and does not.
+    client.post("/api/capture", json={
+        "source": {"fb_id": "search:web designer", "kind": "search",
+                   "name": "web designer", "query": "web designer"},
+        "posts": [{"fb_post_id": "group:biz-p1", "found_in": "Local Biz Owners",
+                   "body": "Anyone know a good web designer? Ours is embarrassing.",
+                   "author_name": "Jo", "permalink": "https://facebook.com/p1",
+                   "posted_at": ago(3), "likes": 9, "comments": 6, "shares": 0}]},
+        headers={"X-Outlier-Key": key})
+    check("the same post found by a second search is still one row",
+          count("opportunities"), 2)
+
+    # And an ordinary capture still behaves exactly as it did.
+    client.post("/api/capture", json={
+        "source": {"fb_id": "group:real", "kind": "group",
+                   "name": "Real Group", "url": "u"},
+        "posts": [{"fb_post_id": "r1", "body": "An ordinary post",
+                   "author_name": "X", "likes": 10, "comments": 1, "shares": 0,
+                   "posted_at": ago(50), "engagement_read": 1}]},
+        headers={"X-Outlier-Key": key})
+    check("a normal capture still writes a post", count("posts") > posts_before, True)
+    check("  and did not disturb the opportunities", count("opportunities"), 2)
+
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print()
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1

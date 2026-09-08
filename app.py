@@ -61,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.3"
+APP_VERSION = "24.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1255,6 +1255,48 @@ def post_detail(post_id):
         version=APP_VERSION,
         active="feed",
     )
+
+
+def _capture_opportunities(api_user, source, posts):
+    """Store a batch of search results. Never touches posts or sources.
+
+    The extension sends these through the same endpoint as everything else,
+    because the delivery path — queue, retry, key, batching — is identical and
+    a second one would be a second thing to keep working. What differs is
+    where they land, and that is decided by one branch above rather than by a
+    second pipeline.
+    """
+    query = (source.get("query") or source.get("name") or "").strip()[:200]
+
+    stored = 0
+    with db.get_db() as conn:
+        for post in posts:
+            if not post.get("fb_post_id"):
+                continue
+            try:
+                if db.upsert_opportunity(conn, api_user["id"], {
+                    "fb_post_id": post["fb_post_id"],
+                    "body": post.get("body") or "",
+                    "author": post.get("author_name") or "",
+                    "permalink": post.get("permalink"),
+                    # Where it was posted, as a label. There is no source row
+                    # and no source_id — see the table comment in db.py.
+                    "source_name": post.get("found_in") or "",
+                    "posted_at": post.get("posted_at"),
+                    "likes": post.get("likes", 0),
+                    "comments": post.get("comments", 0),
+                    "shares": post.get("shares", 0),
+                }, query=query):
+                    stored += 1
+            except Exception:                          # noqa: BLE001
+                # One unreadable result costs one result. The batch behind it
+                # is somebody's scan and must not go down with it.
+                log.exception("could not store a search result")
+
+    log.info("search capture: %d results for %r, %d new",
+             len(posts), query, stored)
+    return jsonify({"ok": True, "new": stored, "kind": "search",
+                    "account": api_user.get("email", "")})
 
 
 @app.route("/opportunities")
@@ -2667,6 +2709,18 @@ def api_capture():
     allowed, limit_reason = billing.capture_allowed(api_user)
     if allowed is False:
         return jsonify({"ok": False, "error": limit_reason, "upgrade": True}), 402
+
+    # Search results go to the Opportunities table and stop there.
+    #
+    # Branched HERE, before a single line of the posts path runs, and that
+    # placement is the safety rather than the tidiness. A search result was
+    # selected BECAUSE it contains a keyword, so it is a biased sample of
+    # whatever group it came from — file it as a post and it drags that
+    # group's median, silently, and shows up months later looking like a
+    # scoring bug. No source row is created, no post row is written, and
+    # nothing below this can reach it.
+    if source.get("kind") == "search":
+        return _capture_opportunities(api_user, source, posts)
 
     new_count = 0
     with db.get_db() as conn:

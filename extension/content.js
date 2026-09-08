@@ -397,6 +397,42 @@
      * These are the paths a scan genuinely walks through: the photo viewer,
      * reels, watch, stories and permalinks.
      */
+    /* Search results — the Opportunities tab's source.
+     *
+     * A different question from everything above. Those all ask "what does
+     * this group normally do, and what beat it". This one is "who just asked
+     * for the thing I sell", and the answer is very often a post with one
+     * like that no median would ever surface.
+     *
+     * So results captured here are NEVER filed as posts. The kind travels to
+     * the server, the server writes them to a separate table, and none of
+     * them touches a baseline — a result was selected because it contains a
+     * keyword, which makes it a biased sample of whatever group it came from
+     * and the exact opposite of what a median needs.
+     *
+     * Every one of Facebook's search tabs is a /search/ path with the query
+     * in q, so this reads the query rather than the tab. Posts is the useful
+     * one, and it is the person's own choice which they are looking at.
+     */
+    if (/^\/search(\/|$)/.test(location.pathname)) {
+      var query = "";
+      try {
+        query = (new URLSearchParams(location.search).get("q") || "").trim();
+      } catch (e) { query = ""; }
+      if (!query) return null;             // a search page with nothing searched
+
+      return {
+        // Keyed on the words, so re-running the same search updates what it
+        // found last time rather than stacking a second copy of it.
+        fb_id: "search:" + query.toLowerCase().slice(0, 120),
+        kind: "search",
+        name: query,
+        query: query,
+        isSearch: true,
+        url: location.href
+      };
+    }
+
     var reserved = ["watch", "marketplace", "groups", "home.php", "gaming",
                     "events", "notifications", "messages", "profile.php",
                     "photo", "photo.php", "reel", "reels", "stories",
@@ -2538,16 +2574,51 @@
        * attributed to: its own origin on the feed, the page's source elsewhere.
        */
       var onFeed = !!(source && source.isFeed);
+      var onSearch = !!(source && source.isSearch);
       var effectiveSource = source;
-      if (onFeed) {
+      var foundIn = null;
+      if (onFeed || onSearch) {
+        // Ads are heavier in search results than anywhere else — somebody
+        // searching "need a website" is exactly who gets sold to.
         if (isSponsoredOrSuggested(article)) {
           if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
           return;
         }
-        effectiveSource = extractPostSource(article, author, bar);
-        if (!effectiveSource) {
-          if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
-          return;
+        var own = extractPostSource(article, author, bar);
+
+        if (onFeed) {
+          // A feed post files under its own origin or not at all: attributing
+          // it to the wrong group is the one thing that must never happen,
+          // because it lands in that group's median.
+          if (!own) {
+            if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
+            return;
+          }
+          effectiveSource = own;
+        } else {
+          /* A search result's origin is CONTEXT, not filing.
+           *
+           * Nothing here goes into a median, so an unreadable origin costs a
+           * line of context and nothing else — and dropping the post over it
+           * would throw away the request that was the entire point of
+           * searching. The feed's strictness is right there and wrong here,
+           * and the difference is that one of them is scored against a
+           * baseline.
+           */
+          foundIn = own ? own.name : "";
+
+          /* Keyed on the POST, never on the search that found it.
+           *
+           * fb_post_id is built from this below. Falling back to the search
+           * source would put the query in the key, so the same request found
+           * by "needs a website" and again by "web designer" would be two
+           * rows in the list — the same job, twice, and no way to tell.
+           * "post" is a constant, so it dedupes across every search.
+           */
+          effectiveSource = own || {
+            fb_id: "post", kind: "search",
+            name: source.name, url: source.url
+          };
         }
       }
 
@@ -2720,6 +2791,10 @@
           name: effectiveSource.name, url: effectiveSource.url
         };
       }
+
+      // Where a search result was posted, carried as a label and nothing more.
+      // It is shown on the card so a result can be placed; it files nothing.
+      if (onSearch) payload.found_in = foundIn || "";
 
       if (prior) {
         // Already in the dashboard. Only worth re-sending if this read is
