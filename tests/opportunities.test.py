@@ -208,6 +208,38 @@ def main():
     check("a normal capture still writes a post", count("posts") > posts_before, True)
     check("  and did not disturb the opportunities", count("opportunities"), 2)
 
+    # The backstop, tested under the worst case it exists for.
+    #
+    # Routing is decided by the batch's source, read at SEND time. Facebook is
+    # a single page app: navigating from a search to a group with results
+    # still queued would relabel that batch. resetForSource flushes under the
+    # old source first, so it does not happen — and each row carries what it
+    # is so that it cannot happen even if that ordering breaks later. A search
+    # result inside a group's median is invisible, permanent, and precisely
+    # what this feature had to avoid.
+    posts_now = count("posts")
+    mixed = client.post("/api/capture", json={
+        "source": {"fb_id": "group:biz", "kind": "group",
+                   "name": "Local Biz", "url": "u"},
+        "posts": [
+            {"fb_post_id": "mis-1", "from_search": 1, "found_in": "Local Biz",
+             "body": "Anyone know a good web designer?", "author_name": "Jo",
+             "likes": 4, "comments": 2, "shares": 0, "posted_at": ago(3),
+             "engagement_read": 1},
+            {"fb_post_id": "ordinary-1",
+             "body": "An ordinary post from this group", "author_name": "Ann",
+             "likes": 40, "comments": 3, "shares": 1, "posted_at": ago(30),
+             "engagement_read": 1},
+        ]}, headers={"X-Outlier-Key": key})
+
+    check("a mislabelled batch is still accepted", mixed.status_code, 200)
+    with dbmod.get_db() as conn:
+        landed = {r["fb_post_id"] for r in conn.execute(
+            "SELECT fb_post_id FROM posts WHERE fb_post_id IN ('mis-1','ordinary-1')")}
+    check("  the search result is refused as a post", "mis-1" in landed, False)
+    check("  the ordinary post beside it still lands", "ordinary-1" in landed, True)
+    check("  so exactly one row was added", count("posts"), posts_now + 1)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()

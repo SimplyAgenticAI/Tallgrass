@@ -61,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.4"
+APP_VERSION = "24.5"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2792,8 +2792,26 @@ def api_capture():
         # skipped and named, and the other forty-nine land.
         failed = []
 
+        misrouted = 0
+
         for post in posts:
             if not post.get("fb_post_id"):
+                continue
+
+            # A search result can never become a post, whatever the batch it
+            # arrived in claims to be.
+            #
+            # Routing is normally decided once, by the batch's source. This is
+            # the backstop for the one way that could be wrong: Facebook is a
+            # single page app, the batch's source is read at send time, and a
+            # navigation from a search to a group with results still queued
+            # would relabel them. resetForSource flushes under the old source
+            # first, so it does not happen — and this means it cannot happen
+            # even if that ordering is broken later. A search result in a
+            # group's median is invisible, permanent, and the exact failure
+            # this whole feature was built to avoid.
+            if post.get("from_search"):
+                misrouted += 1
                 continue
 
             try:
@@ -2895,6 +2913,13 @@ def api_capture():
     if failed:
         log.warning("capture: %d of %d posts could not be stored (%s)",
                     len(failed), len(posts), ", ".join(str(f) for f in failed[:5]))
+
+    if misrouted:
+        # Loud, because it means the batch's label and its contents disagreed.
+        # Nothing was corrupted — that is what the guard is for — but the
+        # ordering that should have prevented it has come apart somewhere.
+        log.warning("capture: %d search results arrived in a %r batch and "
+                    "were refused as posts", misrouted, source.get("kind"))
 
     return jsonify({
         "ok": True,

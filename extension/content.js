@@ -2792,9 +2792,26 @@
         };
       }
 
-      // Where a search result was posted, carried as a label and nothing more.
-      // It is shown on the card so a result can be placed; it files nothing.
-      if (onSearch) payload.found_in = foundIn || "";
+      if (onSearch) {
+        // Where it was posted, carried as a label and nothing more. It is
+        // shown on the card so a result can be placed; it files nothing.
+        payload.found_in = foundIn || "";
+
+        /* The row says what it is, not just the batch it rode in on.
+         *
+         * Routing is decided by the batch's source, and the batch's source is
+         * read at SEND time. Facebook is a single page app: navigate from a
+         * search to a group with results still queued and — but for
+         * resetForSource flushing them under the old source first — that
+         * batch would arrive labelled "group" and every result in it would be
+         * written as a post in that group's median.
+         *
+         * That ordering is correct today. This is here so the guarantee does
+         * not depend on it staying correct: the server refuses to write any
+         * row carrying this flag as a post, whatever the batch claims to be.
+         */
+        payload.from_search = 1;
+      }
 
       if (prior) {
         // Already in the dashboard. Only worth re-sending if this read is
