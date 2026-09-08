@@ -3135,7 +3135,7 @@
 
   /* ------------------------------------------------------ HUD */
 
-  var hud, hudBody, hudBtn;
+  var hud, hudBody, hudBtn, hudFind;
   var HUD_ID = "tallgrass-hud";
 
   function styleEl(el, styles) {
@@ -3417,6 +3417,59 @@
       scrollbarColor: "rgba(52,211,153,0.45) rgba(255,255,255,0.03)"
     });
 
+    /* --- find posts by keyword ---
+     *
+     * On the page, not only in the popup. Searching Facebook for the words you
+     * sell against is a thing you do WHILE you are on Facebook, and having the
+     * control live behind the toolbar icon meant discovering it required
+     * already knowing it was there.
+     *
+     * Goes to the Posts tab. Facebook's default search lands on Top, which
+     * mixes people and pages in with posts and ranks by popularity — backwards
+     * here, since the request nobody has answered yet is the one worth
+     * answering. Recent is deliberately not built into the URL: it is an
+     * undocumented base64 filters blob, and a link that quietly stopped
+     * applying it would hand back Top results with nothing saying so.
+     */
+    var findRow = document.createElement("div");
+    styleEl(findRow, {
+      display: "flex", gap: "0.4em", marginTop: "0.9em", flexShrink: "0"
+    });
+
+    hudFind = document.createElement("input");
+    hudFind.type = "text";
+    hudFind.placeholder = "Find posts about…";
+    styleEl(hudFind, {
+      flex: "1", minWidth: "0", padding: "0.6em 0.7em", borderRadius: "8px",
+      border: "1px solid rgba(110,231,183,0.24)", background: "rgba(6,20,13,0.7)",
+      color: "#eafff3", fontSize: "0.9em", fontFamily: "inherit"
+    });
+
+    var findBtn = document.createElement("button");
+    findBtn.textContent = "Find";
+    styleEl(findBtn, {
+      flex: "none", padding: "0.6em 0.9em", borderRadius: "8px",
+      border: "1px solid rgba(110,231,183,0.24)", cursor: "pointer",
+      background: "transparent", color: "#7fa693", fontSize: "0.9em"
+    });
+
+    function runFind() {
+      var query = (hudFind.value || "").trim();
+      if (!query) { hudFind.focus(); return; }
+      // Same origin, so the page can go there itself — no worker round trip.
+      location.assign("https://www.facebook.com/search/posts/?q=" +
+                      encodeURIComponent(query));
+    }
+    findBtn.addEventListener("click", runFind);
+    hudFind.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); runFind(); }
+    });
+    // Typing in here must not reach Facebook's own shortcuts underneath.
+    hudFind.addEventListener("keyup", function (e) { e.stopPropagation(); });
+
+    findRow.appendChild(hudFind);
+    findRow.appendChild(findBtn);
+
     /* --- buttons --- */
     hudBtn = document.createElement("button");
     styleEl(hudBtn, {
@@ -3495,6 +3548,8 @@
     scroller.appendChild(hudLog);
 
     content.appendChild(scroller);
+    // Above Start: you decide what to look for, then you scan it.
+    content.appendChild(findRow);
     content.appendChild(hudBtn);
     content.appendChild(rowBtns);
 
@@ -3835,12 +3890,40 @@
     if (!hud) return;
     hudBody.textContent = "";
 
+    /* What this page is, by its real name.
+     *
+     * This asked one question — group or not — and answered "Profile" for
+     * everything else, so a search read as "Profile: needs a website" and the
+     * home feed as "Profile: Home feed". Wrong in a place whose entire job is
+     * telling you the extension understood where you are, and wrong in the
+     * way that costs most: it says the words were read while naming the wrong
+     * thing to have read them.
+     */
     var source = detectSource();
+    var KINDS = {
+      search: "Search", group: "Group", page: "Page",
+      profile: "Profile", feed: "Home feed"
+    };
     hudBody.appendChild(row(
-      source ? (source.kind === "group" ? "Group" : "Profile") : "Page",
+      source ? (KINDS[source.kind] || source.kind) : "Page",
       source ? source.name.slice(0, 24) : "unsupported",
       source ? "#6ee7b7" : "#e07a5f"
     ));
+
+    /* The search you are on, mirrored into the box, so the field is also the
+     * proof the words were understood. Never while it is being typed in.
+     *
+     * `|| ""` is not defensive noise. renderHud runs on a timer against
+     * whatever the page happens to be, and reading .value straight off threw
+     * TypeError on an element that had not been assigned one — which does not
+     * merely skip the prefill, it kills the whole render and freezes every
+     * number in the panel while the scan carries on underneath.
+     */
+    if (hudFind && source && source.isSearch &&
+        document.activeElement !== hudFind &&
+        !(hudFind.value || "").trim()) {
+      hudFind.value = source.query || source.name || "";
+    }
     // Which dashboard this is feeding. Without it you can scan happily into
     // localhost while reading a hosted dashboard and never see your posts.
     /* No "Sending to <address>" row.
@@ -4110,6 +4193,9 @@
     // is ever in charge, which is the whole correctness of running hidden.
     stepScroll: stepScroll,
     stepScan: stepScan,
+    // The panel redraws on a timer. Exposed so its contents can be asserted
+    // at a known moment instead of by sleeping and hoping.
+    renderHud: renderHud,
     startAutoScroll: startAutoScroll,
     stopAutoScroll: stopAutoScroll,
     scanning: function () { return autoScrolling; },

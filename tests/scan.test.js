@@ -376,6 +376,42 @@ var topTab = runScan(buildPage([], "group"), "/search/top/?q=plumber%20wanted");
 check("any search tab works, not just Posts",
       topTab.detectSource() && topTab.detectSource().query, "plumber wanted");
 
+/* The panel on the page has to say the same thing the popup does.
+ *
+ * It asked one question — group or not — and answered "Profile" to everything
+ * else, so a search read as "Profile: needs a website". Wrong in the one place
+ * whose whole job is telling you the extension understood where you are, and
+ * wrong the expensive way: it claims the words were read while naming the
+ * wrong thing to have read them.
+ */
+console.log();
+console.log("the on-page panel names a search a search, and can start one");
+
+function everyNode(node, out) {
+  out = out || [];
+  if (!node) { return out; }
+  out.push(node);
+  (node.children || []).forEach(function (child) { everyNode(child, out); });
+  return out;
+}
+
+// Drawn on demand rather than waited for. The panel redraws on a timer, and a
+// test that sleeps until it has is a test that fails on a slow machine.
+topTab.renderHud();
+
+var hudNodes = everyNode(global.document.body);
+var hudText = hudNodes.map(function (n) { return n._text || ""; }).filter(Boolean);
+var hudInputs = hudNodes.filter(function (n) { return n.tagName === "INPUT"; });
+
+check("the panel offers a keyword box on the page itself",
+      hudInputs.length > 0, true);
+check("  prefilled with the search you are on",
+      hudInputs.length ? hudInputs[0].value : null, "plumber wanted");
+check("  and the panel calls it a Search",
+      hudText.some(function (t) { return t.trim() === "Search"; }), true);
+check("  never 'Profile'",
+      hudText.some(function (t) { return /Profile/.test(t); }), false);
+
 /* ------------------------------------ a scan keeps going in a hidden tab
  *
  * It used to stop the moment the tab went to the background or the window
