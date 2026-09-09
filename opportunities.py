@@ -200,6 +200,39 @@ def stance(body):
     return UNCLEAR_STANCE, ""
 
 
+def explain(body):
+    """Every rule that fired on this text, and what it matched.
+
+    A classifier nobody can interrogate is a classifier nobody can fix. When a
+    genuine request lands in the adverts, the useful question is not "is it
+    wrong" — it is WHICH RULE fired and on WHAT WORDS, because those are two
+    completely different repairs: a pattern that is too broad, or a body that
+    was captured with somebody else's text in it.
+
+    Returns the matched fragments, not a verdict. The verdict is on the card
+    already.
+    """
+    text = (body or "").strip()
+    out = {"selling": [], "buying": []}
+    if not text:
+        return out
+
+    for weight, label, pattern in SELLING:
+        found = pattern.search(text)
+        if found:
+            out["selling"].append({
+                "label": label, "weight": weight,
+                "matched": found.group(0)[:80],
+            })
+    for weight, pattern in BUYING:
+        found = pattern.search(text)
+        if found:
+            out["buying"].append({
+                "weight": weight, "matched": found.group(0)[:80],
+            })
+    return out
+
+
 def _hours_since(stamp):
     """Age in hours, or None when the timestamp will not parse.
 

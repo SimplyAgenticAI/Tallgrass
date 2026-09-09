@@ -138,6 +138,43 @@
     </div>
     <div class="msg-line opp-msg"></div>
 
+    {# Folded away, because it is for the times something is wrong — but one
+       click away, because when something IS wrong this is the only view that
+       says whether to fix a pattern or fix the capture. #}
+    <details class="opp-why-detail">
+      <summary class="fine">Why is this here?</summary>
+      <div class="opp-why-body">
+        <p class="fine">
+          Read as <b>{{ o.stance or 'unclear' }}</b>, scored
+          <b>{{ o.score|round|int }}</b>.
+          {% if o.permalink %}Direct link captured.{% else %}<b>No direct link captured</b> — the button searches for the text instead.{% endif %}
+        </p>
+        {% if o.why.selling %}
+        <p class="fine"><b>Read as selling because:</b></p>
+        <ul class="opp-why-list">
+          {% for hit in o.why.selling %}
+          <li>{{ hit.label }} — matched “<code>{{ hit.matched }}</code>”</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if o.why.buying %}
+        <p class="fine"><b>Read as asking because:</b></p>
+        <ul class="opp-why-list">
+          {% for hit in o.why.buying %}
+          <li>matched “<code>{{ hit.matched }}</code>”</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if not o.why.selling and not o.why.buying %}
+        <p class="fine">No rule matched either way, so it stays with the requests.</p>
+        {% endif %}
+        <p class="fine opp-why-raw">
+          <b>Text captured ({{ (o.body or '')|length }} characters):</b><br>
+          <code>{{ o.body or '(nothing)' }}</code>
+        </p>
+      </div>
+    </details>
+
     {# Two drafts, kept apart, because they are different jobs. The comment is
        read by the whole group and has to stand on its own; the message is read
        by one person who already asked. Sending either as the other is the

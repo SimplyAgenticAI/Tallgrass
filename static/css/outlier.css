@@ -1057,6 +1057,34 @@ select.kind-select option { color: initial; }
 }
 .opp-draft-note { margin: 0; opacity: 0.75; }
 
+/* Why a result ranked where it did. Folded away — it is for when something is
+   wrong — but one click, because that is when nobody wants to go hunting. */
+.opp-why-detail { margin-top: 10px; }
+.opp-why-detail > summary {
+  cursor: pointer; color: var(--text-faint); padding: 3px 0;
+}
+.opp-why-detail > summary:hover { color: var(--emerald-bright); }
+.opp-why-body {
+  margin-top: 9px; padding: 11px 13px; border-radius: var(--r-md);
+  background: rgba(6,20,13,0.55); border: 1px solid var(--border);
+}
+.opp-why-body p { margin: 0 0 7px; }
+.opp-why-body p:last-child { margin-bottom: 0; }
+.opp-why-list {
+  margin: 0 0 9px; padding-left: 18px;
+  font-size: 12.5px; color: var(--text-muted); line-height: 1.7;
+}
+.opp-why-body code {
+  font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--emerald-bright); word-break: break-word;
+}
+.opp-why-raw code {
+  display: block; margin-top: 5px; padding: 8px 10px;
+  border-radius: var(--r-sm); background: rgba(4,14,9,0.7);
+  max-height: 180px; overflow: auto; white-space: pre-wrap;
+  color: var(--text-muted);
+}
+
 /* The old six-step sideload, kept and folded away. It is a fallback now, not
    a route, and it should not read like a second half of the page. */
 .manual-route {

@@ -62,7 +62,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.0"
+APP_VERSION = "25.1"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1337,6 +1337,11 @@ def opportunities_page():
     rows = db.opportunities_for(_uid(), status=status, view=view)
     for row in rows:
         row["tier"] = opportunities.tier(row.get("score") or 0)
+        # Why it landed where it did, computed fresh from the stored text.
+        # A ranking nobody can interrogate is a ranking nobody can correct,
+        # and "which rule fired on which words" is the only question whose
+        # answer says whether to fix a pattern or fix the capture.
+        row["why"] = opportunities.explain(row.get("body"))
 
     return render_template(
         "opportunities.html",
