@@ -72,6 +72,134 @@ WANTING = [
 ]
 
 
+# ------------------------------------------------- demand, or somebody selling
+#
+# The problem this exists for: searching "need a website" returns mostly people
+# OFFERING to build websites. Marketers farm buyer language deliberately —
+# ranking for the exact words a buyer types is the point of writing that way —
+# so matching keywords can never separate the two. Four seller pitches and
+# three genuine requests all scored 93.2 before this.
+#
+# The grammar separates them cleanly, though, and that is the whole trick:
+#
+#     "I need a website"    their own need — first person
+#     "Need a website?"     aimed at YOU — a pitch
+#
+# Same three words. The tell is who is being addressed.
+#
+# Both sides are scored and compared rather than taking the first match,
+# because a real post carries signals of both: somebody asking for a designer
+# might well say "DM me the details", and a pitch often opens with the exact
+# phrase a buyer would use. Whichever side is heavier decides it.
+
+SELLING = [
+    (1.00, "message-me pitch", re.compile(
+        r"\b(?:d\.?m|p\.?m)\s+me\b|\binbox\s+me\b|\bmessage\s+me\b|"
+        r"\bhit\s+me\s+up\b|\blink\s+in\s+(?:bio|comments)\b|"
+        r"\bcheck\s+(?:out\s+)?my\s+(?:profile|page|portfolio|work)\b|"
+        r"\bsend\s+me\s+a\s+(?:message|dm|pm)\b", re.I)),
+    (0.95, "offering a service", re.compile(
+        r"\b(?:i|we)\s+(?:build|create|design|make|offer|provide|specialis|"
+        r"specializ|help\s+businesses|have\s+\d+\s+(?:slots?|spots?))|"
+        r"\bmy\s+(?:services|agency|studio|portfolio)\b|"
+        r"\bour\s+(?:agency|studio|team)\s+(?:builds?|offers?|creates?)\b|"
+        r"\b(?:i|we)['’]?ve\s+(?:helped|built|worked\s+with)\s+\d+", re.I)),
+    (0.90, "an advert", re.compile(
+        r"\bstarting\s+(?:at|from)\s*[$£€]|\bfree\s+(?:consultation|quote|audit)\b|"
+        r"\bno\s+obligation\b|\bbook\s+a\s+call\b|\blimited\s+(?:time|spots?|slots?)\b|"
+        r"\b\d+\s+(?:slots?|spots?)\s+(?:left|available)\b|"
+        r"\bpackages?\s+(?:start|from)\b|\bdm\s+for\s+(?:a\s+)?(?:quote|price|info)\b",
+        re.I)),
+    # The rhetorical hook: a question aimed at the reader, then the offer.
+    # "Looking for a web designer? Look no further." reads as demand and is
+    # the single most common shape of the thing being filtered out.
+    (0.85, "pitched at the reader", re.compile(
+        r"\b(?:do|does)\s+(?:you|anyone)\s+need\b|"
+        r"\bare\s+you\s+(?:looking|struggling|tired|ready)\b|"
+        r"\blook\s+no\s+further\b|\bi\s+can\s+help\s+(?:you|with)\b|"
+        r"\bwant\s+(?:a|an)\s+[\w\s]{3,30}\?", re.I)),
+]
+
+# Demand, stated in a way a pitch would not be. These are deliberately NOT the
+# same list as WANTING below: "looking for a designer" is written by both
+# sides, so it proves nothing here and only counts towards how strong the ask
+# is once the side has been decided.
+BUYING = [
+    # "DM me YOUR portfolio" is the opposite of "DM me". The direction of the
+    # thing being asked for is what separates them: a seller wants you to make
+    # contact, a buyer wants you to send something over. Weighted above every
+    # selling pattern because it is decisive — nobody pitching asks to be sent
+    # a quote. This is the one case the first version got wrong.
+    (1.10, re.compile(
+        r"\b(?:d\.?m|p\.?m|message|send|inbox)\s+me\s+"
+        r"(?:your|a|an|some|the)\s+"
+        r"(?:portfolio|quote|quotes|price|prices|pricing|rate|rates|"
+        r"example|examples|work|details|info|availability|number)\b", re.I)),
+    (1.00, re.compile(
+        r"\b(?:i|we)\s+(?:need|want|require)\b|"
+        r"\b(?:i|we)\s+(?:am|are|'m|'re)\s+looking\s+for\b|"
+        r"\b(?:i|we)\s+need\s+(?:help|someone|a|an)\b", re.I)),
+    (0.95, re.compile(
+        r"\bcan\s+any(?:one|body)\s+recommend\b|"
+        r"\bany(?:one|body)\s+know\b|"
+        r"\bdoes\s+any(?:one|body)\s+know\b|"
+        r"\bany\s+recommendations?\b|"
+        r"\bwho\s+(?:do|does)\s+(?:you|everyone|people)\s+(?:use|recommend)\b|"
+        r"\brecommendations?\s+for\b", re.I)),
+    # Their own thing, which they are describing a problem with. A pitch talks
+    # about YOUR website; a request talks about THEIRS.
+    (0.80, re.compile(
+        r"\b(?:our|my)\s+(?:website|site|business|company|shop|store|page)\b",
+        re.I)),
+    (0.70, re.compile(
+        r"\bhow\s+much\s+(?:should|would|do)\s+(?:i|we)\b|"
+        r"\bwhat\s+(?:should|would)\s+(?:i|we)\s+expect\s+to\s+pay\b|"
+        r"\bis\s+.{0,20}\s*a\s+fair\s+price\b|\bwhat['’]?s\s+a\s+fair\b", re.I)),
+]
+
+# What an offer keeps of its score. Not zero: zero is what an expired result
+# scores, and the two need telling apart — one is out of time, the other is
+# somebody's advert. Low enough that no offer outranks a real request.
+OFFERING_PENALTY = 0.12
+
+WANTING_STANCE = "wanting"
+OFFERING_STANCE = "offering"
+UNCLEAR_STANCE = "unclear"
+
+
+def stance(body):
+    """Is this somebody asking, or somebody selling? Returns (stance, label).
+
+    Compared rather than first-matched. A genuine request can say "DM me the
+    details" and a pitch almost always opens with the words a buyer uses, so
+    the question is which side is HEAVIER, not which pattern appears first.
+    """
+    text = (body or "").strip()
+    if not text:
+        return UNCLEAR_STANCE, ""
+
+    sells, sell_label = 0.0, ""
+    for weight, label, pattern in SELLING:
+        if pattern.search(text):
+            if weight > sells:
+                sells, sell_label = weight, label
+
+    buys = 0.0
+    for weight, pattern in BUYING:
+        if pattern.search(text) and weight > buys:
+            buys = weight
+
+    # A tie goes to the seller. Showing somebody one advert costs a moment;
+    # burying one real request costs the job, but a list half full of adverts
+    # stops being read at all — and an ambiguous post is far more often a
+    # pitch, because pitches are written to be ambiguous.
+    if sells and sells >= buys:
+        return OFFERING_STANCE, sell_label
+    if buys:
+        return WANTING_STANCE, ""
+    return UNCLEAR_STANCE, ""
+
+
 def _hours_since(stamp):
     """Age in hours, or None when the timestamp will not parse.
 
@@ -168,6 +296,10 @@ ROOM_FLOOR = 0.55         # a crowded thread keeps this much
 def score(post):
     """Rank one result, 0..100, with the reason it got that.
 
+    Returns (score, label, stance). The stance is stored beside the score so
+    the page can filter on it — a classifier is never perfect, and hiding
+    what it caught is worse than ranking it low.
+
     Returns (score, intent_label). Stored at capture rather than computed on
     read: age moves every minute, and a list that silently re-orders itself
     between page loads cannot be worked through.
@@ -190,17 +322,30 @@ def score(post):
     fresh = freshness(post.get("posted_at"))
     want, label = wanting(post.get("body"))
     room = uncrowded(post.get("comments"))
+    side, sell_label = stance(post.get("body"))
 
     # Age gates the whole thing rather than just contributing to it. Something
     # past the window is not a weak opportunity, it is a closed one, and no
     # amount of intent should be able to lift it back into the list.
     if fresh <= 0.0:
-        return 0.0, label
+        return 0.0, label, side
 
     total = (want
              * (FRESH_FLOOR + (1 - FRESH_FLOOR) * fresh)
              * (ROOM_FLOOR + (1 - ROOM_FLOOR) * room))
-    return round(total * 100, 1), label
+
+    # An advert is not an opportunity, however well it is written and however
+    # exactly it matches what was searched for. Demoted rather than dropped:
+    # the classifier can be wrong, and a result you cannot see is one you
+    # cannot correct.
+    if side == OFFERING_STANCE:
+        total *= OFFERING_PENALTY
+        # The label says so, because a silent demotion is indistinguishable
+        # from a broken scan — and the first thing anybody does with a result
+        # ranked low is ask why.
+        label = sell_label or "looks like an offer"
+
+    return round(total * 100, 1), label, side
 
 
 # Below this many results there is nothing to conclude from a run of old ones.

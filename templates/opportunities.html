@@ -35,15 +35,39 @@
 </div>
 {% endif %}
 
+{# Two switches, and they answer different questions.
+
+   The first is the one that matters: searching "need a website" returns mostly
+   people SELLING websites, because marketers farm buyer language on purpose.
+   Adverts are one click away rather than hidden — the classifier can be wrong,
+   and a result nobody can see is a result nobody can correct. #}
+<div class="opp-views">
+  {% for key, label in [('requests', 'Looking for'), ('adverts', 'Offering'), ('all', 'Everything')] %}
+  <a href="{{ url_for('opportunities_page', status=status, view=key) }}"
+     class="opp-view {{ 'active' if view == key }}">
+    {{ label }}
+    <span class="opp-count">{{ view_counts.get(key, 0) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
 <div class="opp-filters">
   {% for name in ['new', 'replied', 'won', 'lost', 'all'] %}
-  <a href="{{ url_for('opportunities_page', status=name) }}"
+  <a href="{{ url_for('opportunities_page', status=name, view=view) }}"
      class="opp-filter {{ 'active' if status == name }}">
     {{ name.title() }}
     <span class="opp-count">{{ counts.get(name, 0) }}</span>
   </a>
   {% endfor %}
 </div>
+
+{% if view == 'adverts' %}
+<p class="fine" style="margin:-6px 0 14px">
+  These were read as people offering the service rather than asking for it, so
+  they're ranked near the bottom. If something here is a genuine request, tell
+  me what it said — the rules are the thing to fix, not the result.
+</p>
+{% endif %}
 
 {% if opportunities %}
 <div class="opp-list">

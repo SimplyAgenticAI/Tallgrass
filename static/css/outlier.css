@@ -947,6 +947,25 @@ select.kind-select option { color: initial; }
    two lists that look identical while meaning opposite things is how somebody
    reads a one-like post as a failure instead of the best lead on the page. */
 
+/* The demand/supply switch. Weighted heavier than the status filters below
+   it, because it is the one that decides whether the page is useful at all. */
+.opp-views {
+  display: inline-flex; gap: 2px; margin-bottom: 12px; padding: 3px;
+  border-radius: var(--r-md); background: rgba(6,20,13,0.6);
+  border: 1px solid var(--border); flex-wrap: wrap;
+}
+.opp-view {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 15px; border-radius: var(--r-sm);
+  color: var(--text-muted); font-size: 13px; text-decoration: none;
+  transition: all 0.18s var(--ease);
+}
+.opp-view:hover { color: var(--emerald-bright); }
+.opp-view.active {
+  background: rgba(52,211,153,0.16); color: var(--emerald-bright);
+  font-weight: 600;
+}
+
 .opp-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .opp-filter {
   display: inline-flex; align-items: center; gap: 7px;

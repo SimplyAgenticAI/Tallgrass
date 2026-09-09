@@ -104,8 +104,8 @@ def main():
     print()
     print("every result says why it ranked")
 
-    _score, label = opp.score({"body": "Anyone know a good designer?",
-                               "comments": 1, "posted_at": ago(1)})
+    _score, label, _side = opp.score({"body": "Anyone know a good designer?",
+                                      "comments": 1, "posted_at": ago(1)})
     check("an outright ask is labelled as one", label, "asking outright")
     check("money talk is labelled as money talk",
           opp.score({"body": "What's a fair budget for this?", "comments": 0,
@@ -127,6 +127,70 @@ def main():
         # The one that matters. An opportunity has no source_id, so it cannot
         # be joined into a group's median even by accident.
         check("  and NO source_id to be filed under", "source_id" in cols, False)
+
+    print()
+    print("somebody selling the thing is not somebody wanting it")
+
+    # The bug this exists for. Searching "need a website" returns mostly people
+    # OFFERING to build websites — marketers farm buyer language deliberately,
+    # because ranking for the words a buyer types is the point of writing that
+    # way. Before this, four seller pitches and three genuine requests all
+    # scored 93.2: the ranking could not tell demand from supply at all.
+    #
+    # Keywords never could. The grammar can:
+    #     "I need a website"   their own need
+    #     "Need a website?"    aimed at YOU
+    sellers = [
+        "Need a website? I build fast, affordable sites for small businesses. DM me!",
+        "Looking for a web designer? Look no further. Portfolio in comments.",
+        "Does anyone need a website built this month? I have 2 slots left.",
+        "I specialise in websites for trades. Starting at $499. Message me for a quote.",
+        "Need a new site? Free consultation this week only. Link in bio.",
+        "Are you tired of your outdated website? We create modern sites. Book a call.",
+        "Web design packages start from £300. No obligation quote, hit me up.",
+    ]
+    buyers = [
+        "Anyone know a good web designer? Ours is embarrassing.",
+        "I need a website for my bakery, no idea where to start.",
+        "Can anyone recommend someone to rebuild our site? Budget is real.",
+        "Our website is so outdated it hurts. Who do you all use?",
+        "What should I expect to pay for a simple 5 page website?",
+        "We need a plumber urgently, ours retired. Any recommendations?",
+        # A buyer who says "DM me" — but "DM me YOUR portfolio" is the reverse
+        # of "DM me". The direction of what is asked for decides it, and this
+        # is the case the first version of the classifier got wrong.
+        "Looking for someone to build a site for my shop. DM me your portfolio please.",
+        "Need a new website for our cafe - anyone know someone local? Send me your rates.",
+    ]
+
+    def side(body):
+        return opp.stance(body)[0]
+
+    for body in sellers:
+        check("  advert: %s…" % body[:34], side(body), "offering")
+    for body in buyers:
+        check("  request: %s…" % body[:33], side(body), "wanting")
+
+    # The scores have to separate too, not just the labels — the list is
+    # sorted by score, so a correctly-labelled advert that still outranks a
+    # request has not actually been dealt with.
+    worst_buyer = min(opp.score({"body": b, "comments": 1,
+                                 "posted_at": ago(3)})[0] for b in buyers)
+    best_seller = max(opp.score({"body": s, "comments": 1,
+                                 "posted_at": ago(3)})[0] for s in sellers)
+    check("every request outranks every advert", worst_buyer > best_seller, True)
+
+    # Demoted, never dropped. A classifier is wrong sometimes and a result
+    # nobody can see is a result nobody can correct.
+    check("an advert still scores something", best_seller > 0, True)
+    check("  which is what tells it apart from an expired one",
+          opp.score({"body": sellers[0], "comments": 1,
+                     "posted_at": ago(24 * 20)})[0], 0.0)
+
+    # Nothing matched either way. That is not evidence of an advert, and
+    # burying a real request because no rule fired is the expensive mistake.
+    check("an unremarkable post is unclear, not an advert",
+          side("Thinking about the website again this week."), "unclear")
 
     print()
     print("the two drafts, and the guard around what writes them")

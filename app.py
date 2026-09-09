@@ -62,7 +62,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "24.9"
+APP_VERSION = "25.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1318,6 +1318,15 @@ def opportunities_page():
     if status not in db.OPPORTUNITY_STATUSES and status != "all":
         status = "new"
 
+    # Requests by default. Searching "need a website" returns mostly people
+    # SELLING websites — marketers farm buyer language on purpose — so the
+    # unfiltered list is the wrong thing to open on. The adverts stay one
+    # click away rather than being hidden, because the classifier can be
+    # wrong and a result nobody can see is one nobody can correct.
+    view = request.args.get("view", "requests")
+    if view not in db.OPPORTUNITY_VIEWS:
+        view = "all"
+
     # Cleared on the way past, like the daily backup: no scheduler, no second
     # process, and it happens on any day the page is opened.
     try:
@@ -1325,14 +1334,16 @@ def opportunities_page():
     except Exception:                                  # noqa: BLE001
         log.exception("could not expire opportunities")
 
-    rows = db.opportunities_for(_uid(), status=status)
+    rows = db.opportunities_for(_uid(), status=status, view=view)
     for row in rows:
         row["tier"] = opportunities.tier(row.get("score") or 0)
 
     return render_template(
         "opportunities.html",
         opportunities=rows,
-        counts=db.opportunity_counts(_uid()),
+        counts=db.opportunity_counts(_uid(), view=view),
+        view=view,
+        view_counts=db.opportunity_view_counts(_uid()),
         status=status,
         statuses=db.OPPORTUNITY_STATUSES,
         ttl_days=db.OPPORTUNITY_TTL_DAYS,

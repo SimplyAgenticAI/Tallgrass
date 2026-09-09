@@ -192,6 +192,12 @@ CREATE TABLE IF NOT EXISTS opportunities (
     -- itself between page loads cannot be worked through as a list.
     score         REAL,
     intent        TEXT,                   -- what it looks like they want
+    -- wanting | offering | unclear. Searching "need a website" returns mostly
+    -- people SELLING websites: marketers farm buyer language on purpose. Kept
+    -- as a column rather than recomputed on read so the list can be filtered
+    -- on it, and so an advert stays visible and correctable rather than being
+    -- silently dropped.
+    stance        TEXT DEFAULT 'unclear',
     -- new | replied | won | lost. The lifecycle posts do not have, and the
     -- difference between a list you work and a list you scroll past.
     status        TEXT DEFAULT 'new',
@@ -499,6 +505,9 @@ def _migrate(conn):
         conn.execute("ALTER TABLE opportunities ADD COLUMN draft_message TEXT")
     if "drafted_at" not in opp_cols:
         conn.execute("ALTER TABLE opportunities ADD COLUMN drafted_at TEXT")
+    if "stance" not in opp_cols:
+        conn.execute("ALTER TABLE opportunities "
+                     "ADD COLUMN stance TEXT DEFAULT 'unclear'")
 
     post_cols = _columns(conn, "posts")
 
@@ -1072,7 +1081,7 @@ def upsert_opportunity(conn, user_id, row, query=""):
     """
     import opportunities as scoring
 
-    score, intent = scoring.score(row)
+    score, intent, side = scoring.score(row)
     existing = conn.execute(
         "SELECT id FROM opportunities WHERE user_id IS ? AND fb_post_id = ?",
         (user_id, row.get("fb_post_id"))).fetchone()
@@ -1082,52 +1091,96 @@ def upsert_opportunity(conn, user_id, row, query=""):
             """
             UPDATE opportunities
                SET likes = ?, comments = ?, shares = ?, score = ?,
-                   intent = ?, updated_at = CURRENT_TIMESTAMP
+                   intent = ?, stance = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?
             """,
             (row.get("likes", 0), row.get("comments", 0), row.get("shares", 0),
-             score, intent, existing["id"]))
+             score, intent, side, existing["id"]))
         return False
 
     conn.execute(
         """
         INSERT INTO opportunities (
             user_id, fb_post_id, query, body, author, permalink, source_name,
-            posted_at, likes, comments, shares, score, intent
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            posted_at, likes, comments, shares, score, intent, stance
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (user_id, row.get("fb_post_id"), query, clean_text(row.get("body"), 4000),
          clean_text(row.get("author"), 120), row.get("permalink"),
          clean_text(row.get("source_name"), 200), row.get("posted_at"),
          row.get("likes", 0), row.get("comments", 0), row.get("shares", 0),
-         score, intent))
+         score, intent, side))
     return True
 
 
-def opportunities_for(user_id, status=None, limit=200):
+# The two views that matter, and what each contains.
+#
+# "unclear" travels with the requests, deliberately. It means no rule fired
+# either way, which is not evidence of an advert — and burying a real request
+# because nothing matched is the expensive mistake. An advert shown costs a
+# moment; a job never seen costs the job.
+OPPORTUNITY_VIEWS = {
+    "requests": ("wanting", "unclear"),
+    "adverts": ("offering",),
+}
+
+
+def opportunities_for(user_id, status=None, view=None, limit=200):
     """The list, best first. Expired rows are excluded, not deleted here."""
     sql = ["SELECT * FROM opportunities WHERE user_id IS ?"]
     args = [user_id]
     if status and status != "all":
         sql.append("AND status = ?")
         args.append(status)
+    if view in OPPORTUNITY_VIEWS:
+        kinds = OPPORTUNITY_VIEWS[view]
+        # COALESCE because rows captured before the classifier existed have no
+        # stance, and they are requests until something says otherwise.
+        sql.append("AND COALESCE(stance, 'unclear') IN (%s)"
+                   % ",".join("?" * len(kinds)))
+        args.extend(kinds)
     sql.append("ORDER BY score DESC, found_at DESC LIMIT ?")
     args.append(int(limit))
     with get_db() as conn:
         return [dict(r) for r in conn.execute(" ".join(sql), args).fetchall()]
 
 
-def opportunity_counts(user_id):
-    """How many sit in each status, for the filter row."""
+def opportunity_counts(user_id, view=None):
+    """How many sit in each status, for the filter row.
+
+    Counted within the current view, so the numbers on the status filters
+    describe the list you are actually looking at rather than a different one.
+    """
+    sql = ["SELECT status, COUNT(*) AS n FROM opportunities WHERE user_id IS ?"]
+    args = [user_id]
+    if view in OPPORTUNITY_VIEWS:
+        kinds = OPPORTUNITY_VIEWS[view]
+        sql.append("AND COALESCE(stance, 'unclear') IN (%s)"
+                   % ",".join("?" * len(kinds)))
+        args.extend(kinds)
+    sql.append("GROUP BY status")
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT status, COUNT(*) AS n FROM opportunities "
-            "WHERE user_id IS ? GROUP BY status", (user_id,)).fetchall()
+        rows = conn.execute(" ".join(sql), args).fetchall()
     counts = {status: 0 for status in OPPORTUNITY_STATUSES}
     for row in rows:
         counts[row["status"]] = row["n"]
     counts["all"] = sum(counts[s] for s in OPPORTUNITY_STATUSES)
     return counts
+
+
+def opportunity_view_counts(user_id):
+    """How many requests and how many adverts, for the view switch itself."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT COALESCE(stance, 'unclear') AS stance, COUNT(*) AS n "
+            "FROM opportunities WHERE user_id IS ? GROUP BY 1",
+            (user_id,)).fetchall()
+    by_stance = {r["stance"]: r["n"] for r in rows}
+    return {
+        "requests": sum(by_stance.get(k, 0) for k in OPPORTUNITY_VIEWS["requests"]),
+        "adverts": sum(by_stance.get(k, 0) for k in OPPORTUNITY_VIEWS["adverts"]),
+        "all": sum(by_stance.values()),
+    }
 
 
 def set_opportunity_status(opportunity_id, user_id, status, note=None):
