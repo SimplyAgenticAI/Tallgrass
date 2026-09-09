@@ -21,11 +21,9 @@ import demo_snapshot
 import hooks
 import images
 import mailer
-import opportunities
 import outliers
 import outreach
 import remix
-import replies
 import sage
 from demo_data import refresh_sample_accounts, seed_demo_data
 
@@ -62,7 +60,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.1"
+APP_VERSION = "25.2"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1256,161 +1254,6 @@ def post_detail(post_id):
         version=APP_VERSION,
         active="feed",
     )
-
-
-def _capture_opportunities(api_user, source, posts):
-    """Store a batch of search results. Never touches posts or sources.
-
-    The extension sends these through the same endpoint as everything else,
-    because the delivery path — queue, retry, key, batching — is identical and
-    a second one would be a second thing to keep working. What differs is
-    where they land, and that is decided by one branch above rather than by a
-    second pipeline.
-    """
-    query = (source.get("query") or source.get("name") or "").strip()[:200]
-
-    stored = 0
-    with db.get_db() as conn:
-        for post in posts:
-            if not post.get("fb_post_id"):
-                continue
-            try:
-                if db.upsert_opportunity(conn, api_user["id"], {
-                    "fb_post_id": post["fb_post_id"],
-                    "body": post.get("body") or "",
-                    "author": post.get("author_name") or "",
-                    "permalink": post.get("permalink"),
-                    # Where it was posted, as a label. There is no source row
-                    # and no source_id — see the table comment in db.py.
-                    "source_name": post.get("found_in") or "",
-                    "posted_at": post.get("posted_at"),
-                    "likes": post.get("likes", 0),
-                    "comments": post.get("comments", 0),
-                    "shares": post.get("shares", 0),
-                }, query=query):
-                    stored += 1
-            except Exception:                          # noqa: BLE001
-                # One unreadable result costs one result. The batch behind it
-                # is somebody's scan and must not go down with it.
-                log.exception("could not store a search result")
-
-    log.info("search capture: %d results for %r, %d new",
-             len(posts), query, stored)
-    return jsonify({"ok": True, "new": stored, "kind": "search",
-                    "account": api_user.get("email", "")})
-
-
-@app.route("/opportunities")
-@auth.login_required
-def opportunities_page():
-    """Posts found by searching for words, ranked by whether answering pays.
-
-    A separate tab and a separate table, because this asks the opposite
-    question to the rest of the product. The feed asks what cleared its
-    group's median. This asks who wants something, said so recently, and has
-    not been answered by forty people already — and the best result it can
-    return is very often a post with one like.
-
-    Nothing here is scored against a median or counted into one. See the
-    opportunities table in db.py for why that separation is load bearing.
-    """
-    status = request.args.get("status", "new")
-    if status not in db.OPPORTUNITY_STATUSES and status != "all":
-        status = "new"
-
-    # Requests by default. Searching "need a website" returns mostly people
-    # SELLING websites — marketers farm buyer language on purpose — so the
-    # unfiltered list is the wrong thing to open on. The adverts stay one
-    # click away rather than being hidden, because the classifier can be
-    # wrong and a result nobody can see is one nobody can correct.
-    view = request.args.get("view", "requests")
-    if view not in db.OPPORTUNITY_VIEWS:
-        view = "all"
-
-    # Cleared on the way past, like the daily backup: no scheduler, no second
-    # process, and it happens on any day the page is opened.
-    try:
-        db.expire_opportunities()
-    except Exception:                                  # noqa: BLE001
-        log.exception("could not expire opportunities")
-
-    rows = db.opportunities_for(_uid(), status=status, view=view)
-    for row in rows:
-        row["tier"] = opportunities.tier(row.get("score") or 0)
-        # Why it landed where it did, computed fresh from the stored text.
-        # A ranking nobody can interrogate is a ranking nobody can correct,
-        # and "which rule fired on which words" is the only question whose
-        # answer says whether to fix a pattern or fix the capture.
-        row["why"] = opportunities.explain(row.get("body"))
-
-    return render_template(
-        "opportunities.html",
-        opportunities=rows,
-        counts=db.opportunity_counts(_uid(), view=view),
-        view=view,
-        view_counts=db.opportunity_view_counts(_uid()),
-        status=status,
-        statuses=db.OPPORTUNITY_STATUSES,
-        ttl_days=db.OPPORTUNITY_TTL_DAYS,
-        # Read off the results rather than off the URL — see opportunities.py.
-        # A search scanned on Facebook's default Top sort produces a page of
-        # old crowded threads and mediocre scores, with nothing saying why.
-        top_sorted=opportunities.looks_like_top_results(rows),
-        version=APP_VERSION,
-        active="opportunities",
-    )
-
-
-@app.route("/api/opportunity/<int:opportunity_id>/draft", methods=["POST"])
-@auth.login_required
-def api_opportunity_draft(opportunity_id):
-    """Write the public comment and the first message for one opportunity.
-
-    Two drafts from one call, deliberately. They are different jobs — the
-    comment is read by the whole group and has to be useful on its own, the
-    message is read by one person who already asked — but they are written off
-    the same post, and charging for two generations to produce them would be
-    charging twice for one read.
-
-    Stored on the row, so reopening the page does not spend another call on a
-    sentence the user already has.
-    """
-    blocked = _ai_gate("opportunity_draft")
-    if blocked:
-        return blocked
-
-    row = db.get_opportunity(opportunity_id, _uid())
-    if not row:
-        return jsonify({"ok": False, "error": "Not found"}), 404
-
-    result, error = replies.draft(row)
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
-
-    db.save_opportunity_drafts(opportunity_id, _uid(),
-                               result["comment"], result["message"])
-    return jsonify({"ok": True, **result})
-
-
-@app.route("/api/opportunity/<int:opportunity_id>", methods=["POST", "DELETE"])
-@auth.login_required
-def api_opportunity(opportunity_id):
-    """Move one through its lifecycle, or drop it."""
-    if request.method == "DELETE":
-        if not db.delete_opportunity(opportunity_id, _uid()):
-            return jsonify({"ok": False, "error": "Not found"}), 404
-        return jsonify({"ok": True, "deleted": opportunity_id})
-
-    body = request.get_json(silent=True) or {}
-    status = (body.get("status") or "").strip().lower()
-    if status not in db.OPPORTUNITY_STATUSES:
-        return jsonify({"ok": False, "error": "Unknown status"}), 400
-
-    note = body.get("note")
-    if not db.set_opportunity_status(opportunity_id, _uid(), status, note):
-        return jsonify({"ok": False, "error": "Not found"}), 404
-    return jsonify({"ok": True, "status": status,
-                    "counts": db.opportunity_counts(_uid())})
 
 
 @app.route("/library")
@@ -2762,18 +2605,6 @@ def api_capture():
     if allowed is False:
         return jsonify({"ok": False, "error": limit_reason, "upgrade": True}), 402
 
-    # Search results go to the Opportunities table and stop there.
-    #
-    # Branched HERE, before a single line of the posts path runs, and that
-    # placement is the safety rather than the tidiness. A search result was
-    # selected BECAUSE it contains a keyword, so it is a biased sample of
-    # whatever group it came from — file it as a post and it drags that
-    # group's median, silently, and shows up months later looking like a
-    # scoring bug. No source row is created, no post row is written, and
-    # nothing below this can reach it.
-    if source.get("kind") == "search":
-        return _capture_opportunities(api_user, source, posts)
-
     new_count = 0
     with db.get_db() as conn:
         # Cached: a feed batch carries a source object on most rows, and
@@ -2844,26 +2675,8 @@ def api_capture():
         # skipped and named, and the other forty-nine land.
         failed = []
 
-        misrouted = 0
-
         for post in posts:
             if not post.get("fb_post_id"):
-                continue
-
-            # A search result can never become a post, whatever the batch it
-            # arrived in claims to be.
-            #
-            # Routing is normally decided once, by the batch's source. This is
-            # the backstop for the one way that could be wrong: Facebook is a
-            # single page app, the batch's source is read at send time, and a
-            # navigation from a search to a group with results still queued
-            # would relabel them. resetForSource flushes under the old source
-            # first, so it does not happen — and this means it cannot happen
-            # even if that ordering is broken later. A search result in a
-            # group's median is invisible, permanent, and the exact failure
-            # this whole feature was built to avoid.
-            if post.get("from_search"):
-                misrouted += 1
                 continue
 
             try:
@@ -2965,13 +2778,6 @@ def api_capture():
     if failed:
         log.warning("capture: %d of %d posts could not be stored (%s)",
                     len(failed), len(posts), ", ".join(str(f) for f in failed[:5]))
-
-    if misrouted:
-        # Loud, because it means the batch's label and its contents disagreed.
-        # Nothing was corrupted — that is what the guard is for — but the
-        # ordering that should have prevented it has come apart somewhere.
-        log.warning("capture: %d search results arrived in a %r batch and "
-                    "were refused as posts", misrouted, source.get("kind"))
 
     return jsonify({
         "ok": True,

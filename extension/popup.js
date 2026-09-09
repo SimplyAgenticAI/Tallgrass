@@ -73,49 +73,6 @@ function askContentScript(type) {
   });
 }
 
-/* ------------------------------------------------- what this page is
- *
- * Named before anybody commits to a scan. The popup used to show counts,
- * buttons and a version and never once say which page it was pointed at — you
- * pressed Start and found out afterwards, which is the same silence this
- * file's opening line argues against.
- *
- * It matters most on a search, where the entire question is whether the
- * extension read the words you typed. Seeing them here answers that before
- * the scroll starts rather than after it has finished.
- */
-const KIND_WORDS = {
-  search: "Search", group: "Group", page: "Page",
-  profile: "Profile", feed: "Home feed"
-};
-
-function showTarget(target) {
-  const kindEl = el("target-kind");
-  const nameEl = el("target-name");
-  const box = el("target");
-  if (!box) return;
-
-  if (!target) {
-    box.className = "target is-none";
-    kindEl.textContent = "no source";
-    // Says what WOULD work rather than only that this does not.
-    nameEl.textContent = "Open a group, profile or search";
-    return;
-  }
-
-  box.className = "target" + (target.isSearch ? " is-search" : "");
-  kindEl.textContent = KIND_WORDS[target.kind] || target.kind;
-  nameEl.textContent = target.name || "";
-
-  // The search box mirrors the search you are already on, so the field is
-  // both the launcher and the proof the query was understood.
-  const findEl = el("find-q");
-  if (target.isSearch && findEl && !findEl.value.trim()) {
-    findEl.value = target.query || target.name || "";
-  }
-  if (target.isSearch) rememberSearch(target.query || target.name || "");
-}
-
 async function refreshFromPage() {
   const response = await askContentScript("OUTLIER_STATS");
   if (!response || !response.ok) {
@@ -123,8 +80,7 @@ async function refreshFromPage() {
     startBtn.disabled = true;
     scanBtn.disabled = true;
     capturedEl.textContent = "—";
-    showTarget(null);
-    say("Open a Facebook group or search, then press Start.", "warn");
+    say("Open a Facebook group, then press Start.", "warn");
     return;
   }
 
@@ -133,7 +89,6 @@ async function refreshFromPage() {
   scanBtn.disabled = false;
   scrolling = response.scrolling;
   capturedEl.textContent = response.stats.sent || 0;
-  showTarget(response.target);
 
   startBtn.textContent = scrolling ? "Stop auto-scroll" : "Start auto-scroll";
   startBtn.className = scrolling ? "btn stop" : "btn";
@@ -243,127 +198,6 @@ scanBtn.addEventListener("click", async () => {
     return;
   }
   setTimeout(refreshFromPage, 700);
-});
-
-/* ------------------------------------------------------- finding posts
- *
- * Goes to the POSTS tab, deliberately. Facebook's default search lands on Top,
- * which mixes people and pages in with posts and ranks by popularity — the
- * opposite of useful here, since the request nobody has answered yet is the
- * one worth answering.
- *
- * Recent is NOT built into this URL, and that is a decision rather than an
- * omission. Facebook's Recent toggle is an undocumented base64 filters blob;
- * pasting today's value in would work until it quietly stopped, and the
- * failure would be silent — Top results captured, mediocre scores, nothing
- * saying why. The hint below the field asks for the one click instead, and
- * the dashboard notices afterwards if the results look popular rather than
- * fresh.
- */
-/* The words you keep coming back to.
- *
- * One list, not two. "Recent" and "saved" would be separate features with the
- * same contents and a rule about promotion between them — this just keeps
- * what you searched and lets you delete what you do not want back.
- *
- * They run ONE AT A TIME, deliberately. Firing several searches at once is
- * the automation signal that gets a person's own Facebook account
- * checkpointed, and it was turned down on exactly those grounds. The list is
- * a shortcut for a morning's work, not a queue that empties itself.
- */
-const RECENT_KEY = "recentSearches";
-const RECENT_MAX = 12;
-
-function searchUrl(query) {
-  return "https://www.facebook.com/search/posts/?q=" + encodeURIComponent(query);
-}
-
-async function keywords() {
-  const stored = await chrome.storage.local.get([RECENT_KEY]);
-  return stored[RECENT_KEY] || [];
-}
-
-async function rememberSearch(query) {
-  query = (query || "").trim();
-  if (!query) return;
-  const list = (await keywords()).filter(
-    (q) => q.toLowerCase() !== query.toLowerCase());
-  list.unshift(query);
-  const kept = list.slice(0, RECENT_MAX);
-  await chrome.storage.local.set({ [RECENT_KEY]: kept });
-  renderRecent(kept);
-}
-
-async function forgetSearch(query) {
-  const list = (await keywords()).filter(
-    (q) => q.toLowerCase() !== (query || "").toLowerCase());
-  await chrome.storage.local.set({ [RECENT_KEY]: list });
-  renderRecent(list);
-}
-
-function renderRecent(list) {
-  const host = el("recent-searches");
-  if (!host) return;
-  host.textContent = "";
-  (list || []).forEach((query) => {
-    // textContent, never innerHTML: these are the user's own words coming
-    // back out of storage, and a search someone typed is not markup.
-    const chip = document.createElement("span");
-    chip.className = "recent-search";
-
-    const go = document.createElement("button");
-    go.type = "button";
-    go.className = "recent-go";
-    go.textContent = query;
-    go.title = "Search Facebook for this";
-    go.addEventListener("click", () => runSearch(query));
-
-    const drop = document.createElement("button");
-    drop.type = "button";
-    drop.className = "recent-drop";
-    drop.textContent = "×";
-    drop.title = "Remove";
-    drop.addEventListener("click", (event) => {
-      event.stopPropagation();
-      forgetSearch(query);
-    });
-
-    chip.appendChild(go);
-    chip.appendChild(drop);
-    host.appendChild(chip);
-  });
-}
-
-async function runSearch(query) {
-  query = (query || "").trim();
-  if (!query) {
-    say("Type what you're looking for first.", "warn");
-    return;
-  }
-  await rememberSearch(query);
-  const findEl = el("find-q");
-  if (findEl) findEl.value = query;
-
-  // The tab the popup is attached to, so this replaces where you are rather
-  // than piling up windows across a morning of checking.
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) { say("No tab to search in.", "err"); return; }
-  await chrome.tabs.update(tab.id, { url: searchUrl(query) });
-  say("Searching… set Recent, then press Start.", "ok");
-}
-
-const findGo = el("find-go");
-if (findGo) {
-  findGo.addEventListener("click", () => runSearch(el("find-q").value));
-}
-const findInput = el("find-q");
-if (findInput) {
-  findInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") runSearch(findInput.value);
-  });
-}
-chrome.storage.local.get([RECENT_KEY], (stored) => {
-  renderRecent(stored[RECENT_KEY] || []);
 });
 
 toggleEl.addEventListener("change", () => {

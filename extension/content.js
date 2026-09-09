@@ -397,42 +397,6 @@
      * These are the paths a scan genuinely walks through: the photo viewer,
      * reels, watch, stories and permalinks.
      */
-    /* Search results — the Opportunities tab's source.
-     *
-     * A different question from everything above. Those all ask "what does
-     * this group normally do, and what beat it". This one is "who just asked
-     * for the thing I sell", and the answer is very often a post with one
-     * like that no median would ever surface.
-     *
-     * So results captured here are NEVER filed as posts. The kind travels to
-     * the server, the server writes them to a separate table, and none of
-     * them touches a baseline — a result was selected because it contains a
-     * keyword, which makes it a biased sample of whatever group it came from
-     * and the exact opposite of what a median needs.
-     *
-     * Every one of Facebook's search tabs is a /search/ path with the query
-     * in q, so this reads the query rather than the tab. Posts is the useful
-     * one, and it is the person's own choice which they are looking at.
-     */
-    if (/^\/search(\/|$)/.test(location.pathname)) {
-      var query = "";
-      try {
-        query = (new URLSearchParams(location.search).get("q") || "").trim();
-      } catch (e) { query = ""; }
-      if (!query) return null;             // a search page with nothing searched
-
-      return {
-        // Keyed on the words, so re-running the same search updates what it
-        // found last time rather than stacking a second copy of it.
-        fb_id: "search:" + query.toLowerCase().slice(0, 120),
-        kind: "search",
-        name: query,
-        query: query,
-        isSearch: true,
-        url: location.href
-      };
-    }
-
     var reserved = ["watch", "marketplace", "groups", "home.php", "gaming",
                     "events", "notifications", "messages", "profile.php",
                     "photo", "photo.php", "reel", "reels", "stories",
@@ -2574,51 +2538,16 @@
        * attributed to: its own origin on the feed, the page's source elsewhere.
        */
       var onFeed = !!(source && source.isFeed);
-      var onSearch = !!(source && source.isSearch);
       var effectiveSource = source;
-      var foundIn = null;
-      if (onFeed || onSearch) {
-        // Ads are heavier in search results than anywhere else — somebody
-        // searching "need a website" is exactly who gets sold to.
+      if (onFeed) {
         if (isSponsoredOrSuggested(article)) {
           if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
           return;
         }
-        var own = extractPostSource(article, author, bar);
-
-        if (onFeed) {
-          // A feed post files under its own origin or not at all: attributing
-          // it to the wrong group is the one thing that must never happen,
-          // because it lands in that group's median.
-          if (!own) {
-            if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
-            return;
-          }
-          effectiveSource = own;
-        } else {
-          /* A search result's origin is CONTEXT, not filing.
-           *
-           * Nothing here goes into a median, so an unreadable origin costs a
-           * line of context and nothing else — and dropping the post over it
-           * would throw away the request that was the entire point of
-           * searching. The feed's strictness is right there and wrong here,
-           * and the difference is that one of them is scored against a
-           * baseline.
-           */
-          foundIn = own ? own.name : "";
-
-          /* Keyed on the POST, never on the search that found it.
-           *
-           * fb_post_id is built from this below. Falling back to the search
-           * source would put the query in the key, so the same request found
-           * by "needs a website" and again by "web designer" would be two
-           * rows in the list — the same job, twice, and no way to tell.
-           * "post" is a constant, so it dedupes across every search.
-           */
-          effectiveSource = own || {
-            fb_id: "post", kind: "search",
-            name: source.name, url: source.url
-          };
+        effectiveSource = extractPostSource(article, author, bar);
+        if (!effectiveSource) {
+          if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
+          return;
         }
       }
 
@@ -2790,27 +2719,6 @@
           fb_id: effectiveSource.fb_id, kind: effectiveSource.kind,
           name: effectiveSource.name, url: effectiveSource.url
         };
-      }
-
-      if (onSearch) {
-        // Where it was posted, carried as a label and nothing more. It is
-        // shown on the card so a result can be placed; it files nothing.
-        payload.found_in = foundIn || "";
-
-        /* The row says what it is, not just the batch it rode in on.
-         *
-         * Routing is decided by the batch's source, and the batch's source is
-         * read at SEND time. Facebook is a single page app: navigate from a
-         * search to a group with results still queued and — but for
-         * resetForSource flushing them under the old source first — that
-         * batch would arrive labelled "group" and every result in it would be
-         * written as a post in that group's median.
-         *
-         * That ordering is correct today. This is here so the guarantee does
-         * not depend on it staying correct: the server refuses to write any
-         * row carrying this flag as a post, whatever the batch claims to be.
-         */
-        payload.from_search = 1;
       }
 
       if (prior) {
@@ -3135,40 +3043,7 @@
 
   /* ------------------------------------------------------ HUD */
 
-  var hud, hudBody, hudBtn, hudFind, hudKeywords;
-  var renderKeywordChips = function () {};
-
-  /* The saved keyword list, shared with the popup through extension storage.
-   *
-   * One list reachable from both surfaces rather than a copy in each: two
-   * lists that drift apart is worse than one list in the wrong place.
-   */
-  var KEYWORDS_KEY = "recentSearches";
-  var KEYWORDS_MAX = 12;
-
-  function loadKeywords() {
-    try {
-      chrome.storage.local.get([KEYWORDS_KEY], function (state) {
-        renderKeywordChips((state && state[KEYWORDS_KEY]) || []);
-      });
-    } catch (e) { /* orphaned context — the box still works */ }
-  }
-
-  function rememberKeyword(query) {
-    query = (query || "").trim();
-    if (!query) return;
-    try {
-      chrome.storage.local.get([KEYWORDS_KEY], function (state) {
-        var list = ((state && state[KEYWORDS_KEY]) || []).filter(function (q) {
-          return String(q).toLowerCase() !== query.toLowerCase();
-        });
-        list.unshift(query);
-        var kept = list.slice(0, KEYWORDS_MAX);
-        chrome.storage.local.set({ recentSearches: kept });
-        renderKeywordChips(kept);
-      });
-    } catch (e) { /* nothing to save into; the search still runs */ }
-  }
+  var hud, hudBody, hudBtn;
   var HUD_ID = "tallgrass-hud";
 
   function styleEl(el, styles) {
@@ -3450,100 +3325,6 @@
       scrollbarColor: "rgba(52,211,153,0.45) rgba(255,255,255,0.03)"
     });
 
-    /* --- find posts by keyword ---
-     *
-     * On the page, not only in the popup. Searching Facebook for the words you
-     * sell against is a thing you do WHILE you are on Facebook, and having the
-     * control live behind the toolbar icon meant discovering it required
-     * already knowing it was there.
-     *
-     * Goes to the Posts tab. Facebook's default search lands on Top, which
-     * mixes people and pages in with posts and ranks by popularity — backwards
-     * here, since the request nobody has answered yet is the one worth
-     * answering. Recent is deliberately not built into the URL: it is an
-     * undocumented base64 filters blob, and a link that quietly stopped
-     * applying it would hand back Top results with nothing saying so.
-     */
-    var findRow = document.createElement("div");
-    styleEl(findRow, {
-      display: "flex", gap: "0.4em", marginTop: "0.9em", flexShrink: "0"
-    });
-
-    hudFind = document.createElement("input");
-    hudFind.type = "text";
-    hudFind.placeholder = "Find posts about…";
-    styleEl(hudFind, {
-      flex: "1", minWidth: "0", padding: "0.6em 0.7em", borderRadius: "8px",
-      border: "1px solid rgba(110,231,183,0.24)", background: "rgba(6,20,13,0.7)",
-      color: "#eafff3", fontSize: "0.9em", fontFamily: "inherit"
-    });
-
-    var findBtn = document.createElement("button");
-    findBtn.textContent = "Find";
-    styleEl(findBtn, {
-      flex: "none", padding: "0.6em 0.9em", borderRadius: "8px",
-      border: "1px solid rgba(110,231,183,0.24)", cursor: "pointer",
-      background: "transparent", color: "#7fa693", fontSize: "0.9em"
-    });
-
-    function runFind(term) {
-      var query = (term || hudFind.value || "").trim();
-      if (!query) { hudFind.focus(); return; }
-      rememberKeyword(query);
-      // Same origin, so the page can go there itself — no worker round trip.
-      location.assign("https://www.facebook.com/search/posts/?q=" +
-                      encodeURIComponent(query));
-    }
-    findBtn.addEventListener("click", runFind);
-    hudFind.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") { event.preventDefault(); runFind(); }
-    });
-    // Typing in here must not reach Facebook's own shortcuts underneath.
-    hudFind.addEventListener("keyup", function (e) { e.stopPropagation(); });
-
-    findRow.appendChild(hudFind);
-    findRow.appendChild(findBtn);
-
-    /* The words you keep coming back to, shown where the work happens.
-     *
-     * The same list the popup manages — one set of keywords, reachable from
-     * both. Removing one is done in the popup; here they are shortcuts, and a
-     * delete control sitting over Facebook is a misclick waiting to happen.
-     *
-     * They run ONE AT A TIME. Several searches at once is the automation
-     * signal that gets somebody's own account checkpointed, and it was turned
-     * down on those grounds. This is a shortcut for a morning's work, not a
-     * queue that empties itself.
-     */
-    hudKeywords = document.createElement("div");
-    styleEl(hudKeywords, {
-      display: "flex", flexWrap: "wrap", gap: "0.35em",
-      marginTop: "0.5em", flexShrink: "0"
-    });
-
-    renderKeywordChips = function (list) {
-      if (!hudKeywords) return;
-      hudKeywords.textContent = "";
-      (list || []).slice(0, 8).forEach(function (word) {
-        var chip = document.createElement("button");
-        // textContent, never innerHTML — these are the user's own words
-        // coming back out of storage, and a search somebody typed is not
-        // markup. This one renders INSIDE facebook.com.
-        chip.textContent = word;
-        styleEl(chip, {
-          padding: "0.3em 0.7em", borderRadius: "999px", cursor: "pointer",
-          border: "1px solid rgba(110,231,183,0.2)", background: "transparent",
-          color: "#7fa693", fontSize: "0.8em", fontFamily: "inherit",
-          maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
-          whiteSpace: "nowrap"
-        });
-        chip.addEventListener("click", function () { runFind(word); });
-        hudKeywords.appendChild(chip);
-      });
-    };
-
-    loadKeywords();
-
     /* --- buttons --- */
     hudBtn = document.createElement("button");
     styleEl(hudBtn, {
@@ -3622,9 +3403,6 @@
     scroller.appendChild(hudLog);
 
     content.appendChild(scroller);
-    // Above Start: you decide what to look for, then you scan it.
-    content.appendChild(findRow);
-    content.appendChild(hudKeywords);
     content.appendChild(hudBtn);
     content.appendChild(rowBtns);
 
@@ -3967,38 +3745,19 @@
 
     /* What this page is, by its real name.
      *
-     * This asked one question — group or not — and answered "Profile" for
-     * everything else, so a search read as "Profile: needs a website" and the
-     * home feed as "Profile: Home feed". Wrong in a place whose entire job is
-     * telling you the extension understood where you are, and wrong in the
-     * way that costs most: it says the words were read while naming the wrong
-     * thing to have read them.
+     * This asked one question — group or not — and answered "Profile" to
+     * everything else, so the home feed read as "Profile: Home feed" and a
+     * Page as "Profile: <page name>". Wrong in the one place whose job is
+     * telling you the panel understood where you are.
      */
     var source = detectSource();
-    var KINDS = {
-      search: "Search", group: "Group", page: "Page",
-      profile: "Profile", feed: "Home feed"
-    };
+    var KINDS = { group: "Group", page: "Page", profile: "Profile",
+                  feed: "Home feed" };
     hudBody.appendChild(row(
       source ? (KINDS[source.kind] || source.kind) : "Page",
       source ? source.name.slice(0, 24) : "unsupported",
       source ? "#6ee7b7" : "#e07a5f"
     ));
-
-    /* The search you are on, mirrored into the box, so the field is also the
-     * proof the words were understood. Never while it is being typed in.
-     *
-     * `|| ""` is not defensive noise. renderHud runs on a timer against
-     * whatever the page happens to be, and reading .value straight off threw
-     * TypeError on an element that had not been assigned one — which does not
-     * merely skip the prefill, it kills the whole render and freezes every
-     * number in the panel while the scan carries on underneath.
-     */
-    if (hudFind && source && source.isSearch &&
-        document.activeElement !== hudFind &&
-        !(hudFind.value || "").trim()) {
-      hudFind.value = source.query || source.name || "";
-    }
     // Which dashboard this is feeding. Without it you can scan happily into
     // localhost while reading a hosted dashboard and never see your posts.
     /* No "Sending to <address>" row.
@@ -4164,29 +3923,7 @@
       sendResponse({ ok: true });
     }
     if (message.type === "OUTLIER_SCAN")  { scanPosts(); flush(); sendResponse({ ok: true, stats: STATS }); }
-    if (message.type === "OUTLIER_STATS") {
-      /* What this page IS, so the popup can say so before anybody commits to
-       * a scan.
-       *
-       * The popup showed counts, buttons and a version and never once named
-       * what it was pointed at — you pressed Start and found out afterwards.
-       * That is the same silence the file's own opening line argues against,
-       * and it bites hardest on a search, where the whole question is whether
-       * the extension understood the words you typed.
-       */
-      var here = optional(detectSource, null);
-      sendResponse({
-        ok: true,
-        stats: STATS,
-        scrolling: autoScrolling,
-        target: here ? {
-          kind: here.kind,
-          name: here.name,
-          query: here.query || "",
-          isSearch: !!here.isSearch
-        } : null
-      });
-    }
+    if (message.type === "OUTLIER_STATS") { sendResponse({ ok: true, stats: STATS, scrolling: autoScrolling }); }
   });
 
   /* Capture only while a scan is running.
@@ -4268,9 +4005,6 @@
     // is ever in charge, which is the whole correctness of running hidden.
     stepScroll: stepScroll,
     stepScan: stepScan,
-    // The panel redraws on a timer. Exposed so its contents can be asserted
-    // at a known moment instead of by sleeping and hoping.
-    renderHud: renderHud,
     startAutoScroll: startAutoScroll,
     stopAutoScroll: stopAutoScroll,
     scanning: function () { return autoScrolling; },

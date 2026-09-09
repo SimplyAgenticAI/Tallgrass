@@ -79,8 +79,6 @@ echo "--- capture resilience ---"
 python tests/capture.test.py
 echo "--- scoring accuracy rules ---"
 python tests/scoring.test.py
-echo "--- opportunities rank the other way round ---"
-python tests/opportunities.test.py
 echo "--- accounts, keys and sessions ---"
 python tests/auth.test.py
 echo "--- password reset ---"
