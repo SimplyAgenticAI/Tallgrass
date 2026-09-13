@@ -87,6 +87,8 @@ echo "--- entitlement ---"
 python tests/billing.test.py
 echo "--- cross-user health ---"
 python tests/users.test.py
+echo "--- signup-to-paid funnel ---"
+python tests/funnel.test.py
 echo "--- capture health canary ---"
 python tests/health.test.py
 echo "--- app consistency ---"

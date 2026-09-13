@@ -926,6 +926,28 @@
     return true;
   }
 
+  /* Notices Facebook shows only to the person who wrote the post.
+   *
+   * Scanning your own profile, a boosted post carries "Your last boost for this
+   * post is now paused" or "See insights and ads" in the post body, and on a
+   * short or captionless post that notice is the longest block, so it became
+   * the caption. A block made of nothing but these phrases is never writing.
+   * A real caption that merely mentions a boost has other words and survives.
+   */
+  var OWNER_NOTICE_RE = new RegExp(
+    "your (?:last |latest )?boost(?: for this post)? (?:is|was|has been|has) " +
+      "(?:now )?(?:paused|ended|finished|completed|active|running|rejected|" +
+      "declined|not approved|in review|under review|scheduled)" +
+    "|see (?:post )?insights(?: and ads)?|view insights" +
+    "|boost (?:post|again|this post|unavailable)|this post (?:is|was) boosted",
+    "gi");
+
+  function isOwnerNotice(text) {
+    var value = visibleText(text);
+    if (!value.match(OWNER_NOTICE_RE)) return false;
+    return value.replace(OWNER_NOTICE_RE, "").replace(/[\s·|.,:;!?\-–—]+/g, "") === "";
+  }
+
   /* The comment section, wherever it starts.
    *
    * findActionBar is the usual cutoff, but it returns null whenever Facebook
@@ -1346,6 +1368,7 @@
       if (!text || text.length <= best.length) continue;
       if (CHROME_RE.test(text)) continue;
       if (isOnlyChrome(text)) continue;
+      if (isOwnerNotice(text)) continue;
 
       /* A block holding the post's own furniture is the POST, not its caption.
        *
@@ -3978,6 +4001,7 @@
     isSponsoredOrSuggested: isSponsoredOrSuggested,
     looksLikePostChrome: looksLikePostChrome,
     isOnlyChrome: isOnlyChrome,
+    isOwnerNotice: isOwnerNotice,
     findCommentBoundary: findCommentBoundary,
     textFromAlt: textFromAlt,
     sceneFromAlt: sceneFromAlt,

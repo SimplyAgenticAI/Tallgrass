@@ -158,6 +158,32 @@ def main():
           "https://example.com/a-real-link")
 
     print()
+    print("boost and insights notices from your own profile are not captions")
+    paused = post(210)
+    paused["body"] = "Your last boost for this post is now paused"
+    insights = post(211)
+    insights["body"] = "See insights and ads"
+    mentions = post(212)
+    mentions["body"] = "Should I boost this post? It did 3x my usual reach"
+    send([paused, insights, mentions])
+    check("a paused-boost notice is cleared", body_of("p210"), "")
+    check("an insights link is cleared", body_of("p211"), "")
+    check("a caption that talks about boosting survives", body_of("p212"),
+          "Should I boost this post? It did 3x my usual reach")
+
+    # Rows saved before this existed. A re-scan cannot blank them, because an
+    # update only ever replaces the body with a non-empty one.
+    with db.get_db() as conn:
+        conn.execute("UPDATE posts SET body = 'See insights and ads' "
+                     "WHERE fb_post_id = 'p211'")
+    db.set_setting(db.OWNER_NOTICES_REPAIRED_KEY, "")
+    check("stored notices are repaired", db.repair_owner_notices_once(), 1)
+    check("  blanked", body_of("p211"), "")
+    check("  and the writing is still there", body_of("p212"),
+          "Should I boost this post? It did 3x my usual reach")
+    check("the repair runs once", db.repair_owner_notices_once(), 0)
+
+    print()
     print("words read out of a graphic are the author's own")
     graphic = post(205)
     graphic["body"] = "madgz4okPuJ2eku32l0HaoXRzutZH"

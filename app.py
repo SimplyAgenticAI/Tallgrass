@@ -18,6 +18,7 @@ import backup
 import billing
 import db
 import demo_snapshot
+import funnel
 import hooks
 import images
 import mailer
@@ -60,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.2"
+APP_VERSION = "25.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -134,6 +135,15 @@ _repaired_shares = db.repair_poisoned_shares_once()
 if _repaired_shares:
     log.info("repaired %d posts carrying a view count as their share count",
              _repaired_shares)
+
+# Boost/insights notices saved as captions from your own profile. Once.
+_repaired_notices = db.repair_owner_notices_once()
+if _repaired_notices:
+    log.info("blanked %d captions that were only a boost/insights notice",
+             _repaired_notices)
+
+# Captures and pricing views from before the funnel was tracked. Once.
+funnel.backfill_once()
 
 
 def _daily_backup():
@@ -614,6 +624,11 @@ def feed():
     scored = outliers.score_posts(_scoring_rows())
 
     real_count = sum(1 for s in scored if not s["is_demo"])
+
+    # The moment the product has shown them what it is for, on their own posts.
+    if real_count and any(not s["is_demo"] and s["tier"] in ("breakout", "strong")
+                          for s in scored):
+        funnel.record(_uid(), "outlier_seen")
 
     # Everything of this kind, scored or not. Requiring a baseline here is
     # what made the feed useless: hundreds of captured posts sat in the
@@ -1442,6 +1457,20 @@ def capture():
     )
 
 
+@app.route("/go/store")
+def go_store():
+    """The Add to Chrome button, counted on its way out to the store.
+
+    A plain link to the store left no trace, so "never installed" could not be
+    split into "never tried" and "tried and it did not take". A redirect needs
+    no script and still works for a signed-out visitor, who just is not counted.
+    """
+    user = auth.current_user()
+    if user:
+        funnel.record(user["id"], "store_click")
+    return redirect(EXTENSION_STORE_URL)
+
+
 # ---------------------------------------------------------------- ingest API
 
 
@@ -2231,6 +2260,8 @@ def landing():
 @app.route("/pricing")
 def pricing():
     user = auth.current_user()
+    if user:
+        funnel.record(user["id"], "pricing_view")
     return render_template(
         "pricing.html",
         plans=billing.PLANS,
@@ -2269,6 +2300,7 @@ def billing_checkout(interval):
     )
     if error:
         return jsonify({"ok": False, "error": error}), 400
+    funnel.record(user["id"], "checkout")
     return jsonify({"ok": True, "url": url})
 
 
@@ -2318,6 +2350,7 @@ def stripe_webhook():
                 stripe_subscription_id=obj.get("subscription"),
                 subscription_status="active",
             )
+            funnel.record(int(user_id), "paid")
 
     elif kind in ("customer.subscription.updated", "customer.subscription.deleted"):
         user_id = billing.user_id_for_customer(obj.get("customer"))
@@ -2349,6 +2382,7 @@ def api_connect_extension():
     which the page says plainly.
     """
     new_key = auth.rotate_api_key(auth.current_user()["id"])
+    funnel.record(auth.current_user()["id"], "connected")
     return jsonify({"ok": True, "api_key": new_key, "endpoint": request.url_root.rstrip("/")})
 
 
@@ -2390,6 +2424,10 @@ def api_extension_key():
 
     user = auth.current_user()
     presented = request.headers.get("X-Outlier-Key", "").strip()
+
+    # Only the extension sends that header, so reaching here is the extension
+    # installed and talking to a signed-in account.
+    funnel.record(user["id"], "connected")
 
     if presented:
         owner = auth.user_for_api_key(presented)
@@ -2772,6 +2810,10 @@ def api_capture():
     # have paid that stall and the warning would never once have fired.
     _warn_approaching_cap(api_user)
 
+    # Also after the transaction closes, for the same reason.
+    if new_count:
+        funnel.record(api_user["id"], "first_capture")
+
     # Outside the transaction, for the reason given at the failure site.
     if capture_failure:
         db.set_setting(CAPTURE_ERROR_KEY, capture_failure)
@@ -3067,6 +3109,7 @@ def admin():
     return render_template(
         "admin.html",
         health=user_health.report(),
+        funnel=funnel.report(days),
         problem_labels=user_health.PROBLEM_LABELS,
         problem_advice=user_health.PROBLEM_ADVICE,
         traffic=db.traffic_summary(days),

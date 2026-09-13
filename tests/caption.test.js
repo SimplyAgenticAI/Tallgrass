@@ -474,6 +474,47 @@ check("a short run still is too", api.isOnlyChrome("Like Comment Share"), true);
 check("but real writing is not",
       api.isOnlyChrome("Facebook keeps changing the algorithm and it is driving me up the wall"), false);
 
+/* Your own profile.
+ *
+ * Reported: scanning a profile saved "Your last boost for this post is now
+ * paused" and "See insights and ads" where the caption should be. Facebook
+ * shows those only to the post's author, so the operator's own posts were
+ * exactly the ones this broke.
+ */
+console.log();
+console.log("boost and insights notices are never the caption");
+
+["Your last boost for this post is now paused",
+ "See insights and ads",
+ "See insights and ads · Boost again",
+ "Your boost has ended. See insights"].forEach(function (notice) {
+  check("a notice: " + notice, api.isOwnerNotice(notice), true);
+});
+["Should I boost this post? It did 3x my usual reach",
+ "See insights and ads from our Q3 campaign below"].forEach(function (real) {
+  check("real writing: " + real.slice(0, 30), api.isOwnerNotice(real), false);
+});
+
+check("a captionless boosted post has no caption",
+      backgroundPost({ iconOnlyBar: false, caption: "Your last boost for this post is now paused" }), "");
+check("a short caption beats a longer notice", (function () {
+  var D = H.makeDoc();
+  var root = D.el("div");
+  var article = D.el("div");
+  article.setAttribute("role", "article");
+  ["Sunday reset", "Your last boost for this post is now paused", "See insights and ads"]
+    .forEach(function (text) {
+      var el = D.el("div");
+      el.setAttribute("dir", "auto");
+      el.textContent = text;
+      article.appendChild(el);
+    });
+  root.appendChild(article);
+  var a = runScan({ doc: D, root: root }, "/profile.php?id=100");
+  var art = root.querySelectorAll('[role="article"]')[0];
+  return a.extractBody(art, "Jeff Randle", a.findActionBar(art));
+})(), "Sunday reset");
+
 console.log();
 if (FAILURES.length) {
   console.log(FAILURES.length + " FAILURES");

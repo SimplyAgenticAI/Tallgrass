@@ -524,6 +524,57 @@
   </ul>
 </section>
 
+{# Where people stop. Before this, the only two facts on record were "made an
+   account" and "captured a post", so every fix to the funnel was a guess about
+   which step was the wall. See funnel.py. #}
+<section class="glass panel reveal">
+  <h2>Funnel</h2>
+  <p class="sub">
+    {{ funnel.total }} account(s), owner excluded. A step counts anyone who got
+    at least that far, including people who went a way this page doesn't track
+    (an email link, a hand install).
+  </p>
+
+  {% if funnel.leak %}
+  <p class="sa-verdict sa-bad">
+    <b>Biggest leak:</b> {{ funnel.leak.lost }} of {{ funnel.leak.of }} stopped
+    between “{{ funnel.leak.from }}” and “{{ funnel.leak.to }}”.
+  </p>
+  {% endif %}
+
+  <div class="admin-scroll">
+    <table class="sa-table fn-table">
+      <thead>
+        <tr><th>Step</th><th>All</th><th>% of signups</th><th>Lost here</th>
+            <th>Median time</th><th>Joined last {{ funnel.days }}d</th></tr>
+      </thead>
+      <tbody>
+        {% for s in funnel.steps %}
+        {% if loop.previtem and loop.previtem.chain != s.chain %}
+        <tr class="fn-divider"><td colspan="6">Buying — separate from install; anyone can open pricing</td></tr>
+        {% endif %}
+        <tr>
+          <td>
+            {{ s.label }}
+            <span class="fn-bar"><span style="width:{{ s.pct }}%"></span></span>
+          </td>
+          <td class="sa-num">{{ s.count }}</td>
+          <td class="sa-num">{{ s.pct }}%</td>
+          <td class="sa-num {{ 'sa-warn' if s.lost }}">{{ s.lost if s.lost is not none else '' }}</td>
+          <td class="sa-num">{{ s.median or '—' }}</td>
+          <td class="sa-num">{{ s.recent }}{% if s.key != 'signup' %} / {{ funnel.recent_total }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="fine" style="margin-top:10px">
+    Median time is from signup, and only for steps recorded since tracking began
+    in v25.3. Earlier installs, clicks and outlier views weren't recorded, so
+    those older accounts count as reached but have no time.
+  </p>
+</section>
+
 {# Who is silently getting nothing. Per-user diagnostics existed; a view ACROSS
    users did not, so the only experience anyone could see was their own. #}
 <section class="glass panel reveal">
@@ -546,7 +597,7 @@
   <table class="sa-table uh-table">
     <thead>
       <tr><th>Account</th><th>Posts</th><th>Read %</th><th>Scoreable groups</th>
-          <th>Last capture</th><th>Problem</th></tr>
+          <th>Last capture</th><th>Got to</th><th>Problem</th></tr>
     </thead>
     <tbody>
       {% for u in health.users %}
@@ -562,6 +613,7 @@
           {% elif u.days_since_capture == 0 %}today
           {% else %}{{ u.days_since_capture }}d ago{% endif %}
         </td>
+        <td class="fine">{{ funnel.furthest.get(u.id) or '—' }}</td>
         <td>
           {% if u.problem %}
           <span class="uh-flag uh-{{ u.problem }}">{{ problem_labels[u.problem] }}</span>

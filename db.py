@@ -284,6 +284,18 @@ CREATE TABLE IF NOT EXISTS group_candidates (
     UNIQUE(user_id, fb_id)
 );
 
+-- The first time each account reached each step between signing up and paying.
+-- The primary key is the "first time only": later repeats are ignored. first_at
+-- is NULL only for a step recovered from history with no known time. See
+-- funnel.py.
+CREATE TABLE IF NOT EXISTS funnel_events (
+    user_id     INTEGER NOT NULL,
+    step        TEXT NOT NULL,
+    first_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, step),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_posts_source ON posts(source_id);
 CREATE INDEX IF NOT EXISTS idx_posts_captured ON posts(captured_at);
 CREATE INDEX IF NOT EXISTS idx_posts_posted ON posts(posted_at);
@@ -969,6 +981,37 @@ def repair_poisoned_shares_once():
         return 0
 
 
+OWNER_NOTICES_REPAIRED_KEY = "owner_notices_repaired"
+
+
+def repair_owner_notices_once():
+    """Blank stored captions that are only a boost/insights notice. Once.
+
+    Needed at all because a re-scan cannot fix them: an update only replaces
+    the body with a non-empty one, so a notice stays until a scan finds a real
+    caption — and a post with no caption never gives it one. Blanked, never
+    deleted; the post, its numbers and its score are untouched.
+    """
+    if get_setting(OWNER_NOTICES_REPAIRED_KEY, ""):
+        return 0
+    try:
+        fixed = 0
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, body FROM posts WHERE body LIKE '%boost%' "
+                "OR body LIKE '%insights%'").fetchall()
+            for row in rows:
+                if owner_notice(row["body"]):
+                    conn.execute("UPDATE posts SET body = '', body_from_image = 0 "
+                                 "WHERE id = ?", (row["id"],))
+                    fixed += 1
+        set_setting(OWNER_NOTICES_REPAIRED_KEY, "1")
+        return fixed
+    except Exception:                              # noqa: BLE001
+        log.exception("owner-notice repair failed")
+        return 0
+
+
 def users_holding_only_samples(limit=500):
     """Accounts whose entire feed is sample data, oldest first.
 
@@ -1317,6 +1360,27 @@ def _name_parts(conn, user_id, names):
     return parts
 
 
+# Notices Facebook shows only to a post's author — on your own profile, a
+# boosted post carries these where the caption goes. The same phrases the
+# extension skips (isOwnerNotice in content.js); this copy catches every
+# extension build already installed, and rows already stored.
+_OWNER_NOTICE_RE = re.compile(
+    r"your (?:last |latest )?boost(?: for this post)? (?:is|was|has been|has) "
+    r"(?:now )?(?:paused|ended|finished|completed|active|running|rejected|"
+    r"declined|not approved|in review|under review|scheduled)"
+    r"|see (?:post )?insights(?: and ads)?|view insights"
+    r"|boost (?:post|again|this post|unavailable)|this post (?:is|was) boosted",
+    re.IGNORECASE)
+
+
+def owner_notice(body):
+    """Is this body nothing but Facebook's boost/insights notices?"""
+    text = (body or "").strip()
+    if not text or not _OWNER_NOTICE_RE.search(text):
+        return False
+    return re.sub(r"[\s·|.,:;!?\-–—]+", "", _OWNER_NOTICE_RE.sub("", text)) == ""
+
+
 def caption_junk_kind(body, from_image, known_names, repeated):
     """Why this caption is chrome rather than writing, or None if it is real.
 
@@ -1327,9 +1391,13 @@ def caption_junk_kind(body, from_image, known_names, repeated):
     junk was only ever as gone as the last time somebody remembered to clear
     it. Two copies of this logic would drift; there is one.
 
-    Returns "repeated" | "domain" | "token" | "name" | None.
+    Returns "owner" | "repeated" | "domain" | "token" | "name" | None.
     """
     body = (body or "").strip()
+
+    # Before the space rule: these notices are whole sentences.
+    if owner_notice(body):
+        return "owner"
 
     # Anything with a space is writing and is never touched here.
     if not body or " " in body:
@@ -1397,7 +1465,7 @@ def clean_captions(user_id, names=None):
     if user_id is None:
         raise ValueError("clean_captions requires a user_id")
 
-    counts = {"domain": 0, "token": 0, "name": 0, "repeated": 0}
+    counts = {"domain": 0, "token": 0, "name": 0, "repeated": 0, "owner": 0}
     with get_db() as conn:
         known_names = _name_parts(conn, user_id, names)
         # Captions already proven to belong to nobody, by having shown up
@@ -1423,7 +1491,7 @@ def clean_captions(user_id, names=None):
             counts[kind] += 1
 
     counts["total"] = (counts["domain"] + counts["token"]
-                       + counts["name"] + counts["repeated"])
+                       + counts["name"] + counts["repeated"] + counts["owner"])
     return counts
 
 
