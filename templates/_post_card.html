@@ -43,6 +43,9 @@
       </span>
       <span class="dot-sep">·</span>
       <a class="source" href="{{ url_for('group_detail', source_id=post.source_id) }}">{{ post.source_name }}</a>
+      {%- if post.source_member_count %}
+      <span class="audience">({{ post.source_member_count | audience(post.source_kind) }})</span>
+      {%- endif %}
       <span class="dot-sep">·</span>
       {% if post.item_type == 'comment' %}
       {# post_type is stored as "comment" for comments, so rendering both

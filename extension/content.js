@@ -467,6 +467,88 @@
     return null;                          // origin unknown — caller skips it
   }
 
+  /* How many people a group, page or profile reaches.
+   *
+   * Members for a group, followers for a page or a profile, read from the
+   * page's own header and nowhere else. Strict for the same reason every
+   * count here is: a wrong number is worse than none. So a count is taken
+   * only from
+   *
+   *   - a link to THIS source's own members/followers list, reading
+   *     "24K members" or "1,204 followers" and nothing more. The right rail
+   *     lists other groups with their member counts, and those links point
+   *     at other groups, so they fail the path test.
+   *   - for a group, the header line "Public group · 24K members", which
+   *     appears for the group you are standing in and no other.
+   *
+   * Never from inside a post: "we just hit 10K followers" is copy.
+   * Facebook abbreviates, so "24K" is stored as 24,000. Not capped like
+   * parseCount: a Page with 80M followers is real.
+   */
+  var AUDIENCE_RE = /^(\d[\d,.]*\s*[KMB]?)\s+(members?|followers?)$/i;
+  var GROUP_HEADER_RE =
+    /^(?:public|private|visible|hidden)\s+group\s*·\s*(\d[\d,.]*\s*[KMB]?)\s+members?$/i;
+
+  function parseAudience(text) {
+    var match = String(text || "").replace(/,/g, "").match(/^([\d.]+)\s*([KMB])?$/i);
+    if (!match) return 0;
+    var value = parseFloat(match[1]);
+    if (isNaN(value)) return 0;
+    var suffix = (match[2] || "").toUpperCase();
+    if (suffix === "K") value *= 1e3;
+    else if (suffix === "M") value *= 1e6;
+    else if (suffix === "B") value *= 1e9;
+    value = Math.round(value);
+    return value > 0 && value < 5e9 ? value : 0;
+  }
+
+  function readAudience(source) {
+    if (!source || source.isFeed || !source.url) return 0;
+    var word = source.kind === "group" ? "member" : "follower";
+    var base;
+    try {
+      base = new URL(source.url).pathname.replace(/\/+$/, "").toLowerCase();
+    } catch (e) { return 0; }
+    if (!base) return 0;
+
+    var links = document.querySelectorAll('a[href*="' + word + '"]');
+    for (var i = 0; i < links.length; i++) {
+      var link = links[i];
+      if (link.closest && link.closest('[role="article"], [role="complementary"]')) continue;
+      var target;
+      try { target = new URL(link.getAttribute("href"), location.href); }
+      catch (e) { continue; }
+      var path = target.pathname.replace(/\/+$/, "").toLowerCase();
+      // This source's own path, exactly or followed by a slash — so
+      // /groups/cats is not mistaken for /groups/catsofinstagram.
+      if (path !== base && path.indexOf(base + "/") !== 0) continue;
+      if ((path.slice(base.length) + target.search).toLowerCase().indexOf(word) === -1) continue;
+      var text = visibleText(link.innerText || "").replace(/\s+/g, " ").trim();
+      var m = text.match(AUDIENCE_RE);
+      if (!m || m[2].toLowerCase().indexOf(word) !== 0) continue;
+      var n = parseAudience(m[1]);
+      if (n) return n;
+    }
+
+    if (source.kind === "group") {
+      var spans = document.querySelectorAll("span");
+      for (var j = 0; j < spans.length; j++) {
+        var span = spans[j];
+        // The side rail suggests other groups in exactly this format.
+        if (span.closest && span.closest('[role="article"], [role="complementary"]')) continue;
+        var line = visibleText(span.innerText || "").replace(/\s+/g, " ").trim();
+        if (!line || line.length > 60) continue;
+        var g = line.match(GROUP_HEADER_RE);
+        if (g && parseAudience(g[1])) return parseAudience(g[1]);
+      }
+    }
+    return 0;
+  }
+
+  // Once read, kept for the source: the header scrolls out of view long
+  // before a scan ends, and a later batch should still carry the count.
+  var AUDIENCE_BY_SOURCE = {};
+
   /* An ad or an algorithmic suggestion, which must never be captured.
    *
    * Facebook obfuscates the "Sponsored" label to defeat blockers, so this is a
@@ -2819,6 +2901,16 @@
       return;
     }
 
+    // The member or follower count, when this page shows one. A copy, so the
+    // count never leaks into lastKnownSource or the source-change check.
+    if (!source.isFeed && !AUDIENCE_BY_SOURCE[source.fb_id]) {
+      var audience = readAudience(source);
+      if (audience) AUDIENCE_BY_SOURCE[source.fb_id] = audience;
+    }
+    if (AUDIENCE_BY_SOURCE[source.fb_id]) {
+      source = Object.assign({}, source, { member_count: AUDIENCE_BY_SOURCE[source.fb_id] });
+    }
+
     chrome.runtime.sendMessage(
       { type: "OUTLIER_CAPTURE", source: source, posts: batch },
       function (response) {
@@ -4002,6 +4094,8 @@
     looksLikePostChrome: looksLikePostChrome,
     isOnlyChrome: isOnlyChrome,
     isOwnerNotice: isOwnerNotice,
+    readAudience: readAudience,
+    parseAudience: parseAudience,
     findCommentBoundary: findCommentBoundary,
     textFromAlt: textFromAlt,
     sceneFromAlt: sceneFromAlt,

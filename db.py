@@ -665,6 +665,15 @@ def upsert_source(conn, fb_id, kind, name, url=None, member_count=None, user_id=
     # called "𝗖𝗘𝗢 𝗠𝗶𝗻𝗱𝘀𝗲𝘁" is scraped, truncated in the extension, and
     # arrives holding half a character.
     name = clean_text(name, 300)
+    # Members or followers, from the page header. Anything that is not a
+    # plausible positive whole number is no reading at all, so the last good
+    # one is kept rather than overwritten.
+    try:
+        member_count = int(member_count) if member_count is not None else None
+    except (TypeError, ValueError):
+        member_count = None
+    if member_count is not None and not 0 < member_count < 5_000_000_000:
+        member_count = None
     conn.execute(
         """
         INSERT INTO sources (user_id, fb_id, kind, name, url, member_count, last_capture)

@@ -47,6 +47,8 @@ echo "--- extraction ---"
 node tests/extract.test.js
 echo "--- truncation keeps characters whole ---"
 node tests/surrogate.test.js
+echo "--- members and followers ---"
+node tests/audience.test.js
 echo "--- captions ---"
 node tests/caption.test.js
 echo "--- timestamps ---"

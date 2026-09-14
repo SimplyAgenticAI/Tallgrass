@@ -184,6 +184,33 @@ def main():
     check("the repair runs once", db.repair_owner_notices_once(), 0)
 
     print()
+    print("members and followers are stored, and only as a real number")
+
+    def audience_of(fb_id, count):
+        client.post("/api/capture", json={
+            "source": {"fb_id": fb_id, "kind": "page", "name": "Joe's Diner",
+                       "member_count": count},
+            "posts": [post(300 + len(fb_id))]}, headers={"X-Outlier-Key": key})
+        with db.get_db() as conn:
+            return conn.execute("SELECT member_count FROM sources WHERE fb_id = ?",
+                                (fb_id,)).fetchone()["member_count"]
+
+    check("a follower count is stored", audience_of("profile:joes", 12000), 12000)
+    check("a later scan without one keeps it", audience_of("profile:joes", None), 12000)
+    check("text is not a count", audience_of("profile:joes", "24K"), 12000)
+    check("nor is a negative", audience_of("profile:joes", -5), 12000)
+    check("a new reading replaces it", audience_of("profile:joes", 12500), 12500)
+
+    audience = appmod.app.jinja_env.filters["audience"]
+    check("a group reads as members", audience(24812, "group"), "24.8K members")
+    check("a page reads as followers", audience(12000, "page"), "12K followers")
+    check("a profile too", audience(1204, "profile"), "1,204 followers")
+    check("big numbers abbreviate", audience(1260000, "page"), "1.3M followers")
+    check("hundreds of thousands round", audience(310400, "group"), "310K members")
+    check("one is singular", audience(1, "group"), "1 member")
+    check("nothing prints nothing", audience(None, "group"), "")
+
+    print()
     print("words read out of a graphic are the author's own")
     graphic = post(205)
     graphic["body"] = "madgz4okPuJ2eku32l0HaoXRzutZH"

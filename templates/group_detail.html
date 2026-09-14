@@ -9,7 +9,7 @@
     <h1>{{ source.name }}</h1>
     <p class="sub">
       <span class="kind-chip">{{ source.kind }}</span>
-      {% if source.member_count %}{{ "{:,}".format(source.member_count) }} members{% endif %}
+      {% if source.member_count %}{{ source.member_count | audience(source.kind) }}{% endif %}
       {%- if stats %}
         · {{ stats.post_count }} posts
         · <span class="{{ 'warn-tone' if stats.measured_pct < 60 }}">{{ stats.measured_pct }}% readable</span>

@@ -28,6 +28,9 @@
         <a class="detail-source" href="{{ url_for('group_detail', source_id=post.source_id) }}">
           {{ post.source_name }}
         </a>
+        {% if post.source_member_count %}
+        <span class="audience">{{ post.source_member_count | audience(post.source_kind) }}</span>
+        {% endif %}
       </div>
     </div>
 

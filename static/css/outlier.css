@@ -1289,6 +1289,11 @@ select.kind-select option { color: initial; }
 }
 .source-title:hover { color: var(--emerald-bright); }
 
+/* Members or followers, beside wherever a source is named. */
+.audience { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.source-title + .audience { margin: -10px 0 14px; }
+.detail-source + .audience { display: block; margin-top: 2px; }
+
 .source-when {
   font-size: 11px; color: var(--text-faint); margin-top: 12px;
 }

@@ -61,7 +61,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.4"
+APP_VERSION = "25.5"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -373,6 +373,7 @@ def _hydrate(scored_rows):
             """
             SELECT p.*, s.name AS source_name, s.kind AS source_kind,
                    s.fb_id AS source_fb_id, s.url AS source_url,
+                   s.member_count AS source_member_count,
                    a.name AS author_name,
                    (SELECT COUNT(*) FROM saved
                      WHERE saved.post_id = p.id AND saved.user_id = p.user_id) AS is_saved
@@ -420,7 +421,8 @@ def _fetch_posts(source_id=None, limit=None, user_id=None):
 
     sql = """
         SELECT p.*, s.name AS source_name, s.kind AS source_kind,
-               s.fb_id AS source_fb_id, s.url AS source_url, a.name AS author_name,
+               s.fb_id AS source_fb_id, s.url AS source_url,
+               s.member_count AS source_member_count, a.name AS author_name,
                (SELECT COUNT(*) FROM saved
                  WHERE saved.post_id = p.id AND saved.user_id = p.user_id) AS is_saved
         FROM posts p
@@ -1507,6 +1509,30 @@ def _field_scores(limit=90):
     # the score means — so a blade's height and a post's multiple agree.
     middle = weighted[len(weighted) // 2] or 1
     return [round(w / middle, 2) for w in weighted]
+
+
+@app.template_filter("audience")
+def audience_filter(count, kind):
+    """24,812 and a group → "24.8K members"; a page or profile → followers.
+
+    Facebook itself abbreviates, so most stored counts are already rounded,
+    and printing 24,000 would claim a precision nobody measured.
+    """
+    try:
+        count = int(count or 0)
+    except (TypeError, ValueError):
+        return ""
+    if count <= 0:
+        return ""
+    noun = "member" if kind == "group" else "follower"
+    if count >= 1_000_000:
+        figure = ("%.1f" % (count / 1e6)).rstrip("0").rstrip(".") + "M"
+    elif count >= 10_000:
+        figure = "%dK" % round(count / 1e3) if count >= 100_000 else \
+            ("%.1f" % (count / 1e3)).rstrip("0").rstrip(".") + "K"
+    else:
+        figure = "{:,}".format(count)
+    return "%s %s%s" % (figure, noun, "" if count == 1 else "s")
 
 
 @app.context_processor

@@ -39,6 +39,9 @@
     <a class="source-title" href="{{ url_for('group_detail', source_id=source.id) }}">
       {{ source.name }}
     </a>
+    {% if source.member_count %}
+    <div class="audience">{{ source.member_count | audience(source.kind) }}</div>
+    {% endif %}
 
     {# One layout for every source, always the same four figures in the same
        places. The previous version branched into four different bodies with
