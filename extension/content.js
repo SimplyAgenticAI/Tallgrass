@@ -4512,8 +4512,10 @@
           : OPPORTUNITY_RE.test(last) ? "opportunity"
           : /\?\s*$/.test(last) ? "question" : null,
         // The last line, once — so a new message can reopen a chat marked done
-        // on the dashboard, without the line itself ever being sent.
-        last_hash: hashString((fromMe ? "me|" : "them|") + last)
+        // on the dashboard, without the line itself ever being sent. "You: "
+        // is dropped so the list and the open conversation hash the same line
+        // the same way.
+        last_hash: hashString((fromMe ? "me|" : "them|") + last.replace(/^you:\s*/i, ""))
       });
     }
     return threads;
@@ -4702,6 +4704,68 @@
     catch (e) { return false; }
   }
 
+  /* Noticing a reply as it is sent.
+   *
+   * With a chat open, the last message is checked on the panel's tick. When it
+   * changes, that one chat is updated on the dashboard straight away: you
+   * answered, so it moves to Replied; they answered, so it moves back to
+   * Waiting on you. No Done to press, and no re-scan.
+   *
+   * The first look at a chat only records where it stands. Opening a
+   * conversation that ended five days ago is not a reply sent today, and
+   * stamping it with the current time would hide it from Gone quiet.
+   */
+  var LIVE_LAST = {};
+  var LIVE_NOTE = {};
+
+  function watchConversation() {
+    if (!onMessenger() || chatScan) return null;
+    var convo = readConversation();
+    if (!convo || !convo.messages.length) return null;
+    var last = convo.messages[convo.messages.length - 1];
+    if (last.from === "unknown") return null;          // never guessed
+
+    var signature = last.from + "|" + last.text;
+    var before = LIVE_LAST[convo.id];
+    LIVE_LAST[convo.id] = signature;
+    if (before === undefined || before === signature) return null;
+    // Only a message ADDED after the one seen last time counts. A chat still
+    // loading, or the previous chat's messages lingering during a switch,
+    // also changes the last line — but the old last line is not in the
+    // conversation just before it, so that is a fresh look, not a reply.
+    var grew = convo.messages.slice(0, -1).some(function (m) {
+      return m.from + "|" + m.text === before;
+    });
+    if (!grew) return null;
+
+    var thread = {
+      key: "t:" + convo.id,
+      name: convo.name,
+      url: location.origin + location.pathname.replace(/\/*$/, "/"),
+      last_from: last.from,
+      last_at: isoOf(new Date()),
+      unread: false,
+      signal: last.from === "me" ? null
+        : OPPORTUNITY_RE.test(last.text) ? "opportunity"
+        : /\?\s*$/.test(last.text) ? "question" : null,
+      last_hash: hashString(signature)
+    };
+    // Your message went out, so a draft for this chat has been used.
+    if (last.from === "me" && MSG_DRAFT && MSG_DRAFT.threadId === convo.id) MSG_DRAFT = null;
+
+    chrome.runtime.sendMessage({ type: "OUTLIER_THREADS", body: { threads: [thread] } },
+      function (response) {
+        void chrome.runtime.lastError;
+        if (!response || !response.ok) return;
+        var first = String(convo.name || "them").split(" ")[0];
+        LIVE_NOTE[convo.id] = last.from === "me"
+          ? "✓ Saw your reply — moved to Replied in Tallgrass."
+          : "New message from " + first + " — back in Waiting on you.";
+        renderHud();
+      });
+    return thread;
+  }
+
   var MSG_DRAFT = null;          // { threadId, busy | error | text, note }
   var lastChatScan = "";
 
@@ -4781,7 +4845,7 @@
               : "Read " + r.read + " chats" + (stopped ? " (stopped early)" : "") + ": " +
                 r.waiting + " waiting on you" +
                 (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
-                ", " + r.quiet + " gone quiet. See Messages on the dashboard.";
+                ", " + r.replied + " replied, " + r.quiet + " gone quiet. See Messages on the dashboard.";
             renderHud();
           });
         });
@@ -4792,6 +4856,7 @@
 
     var id = currentThreadId();
     if (!id) return true;
+    if (LIVE_NOTE[id]) body.appendChild(hudNote(LIVE_NOTE[id]));
     var draft = MSG_DRAFT && MSG_DRAFT.threadId === id ? MSG_DRAFT : null;
     body.appendChild(button(draft && draft.text ? "Another message" : "✨ Suggest a message",
                             suggestMessage));
@@ -5215,6 +5280,8 @@
     if (!autoScrolling) { countPostsOnScreen(); renderHud(); }
     // Quick respond links on an open post. Never allowed to break the tick.
     try { if (!autoScrolling) injectQuickRespond(); } catch (e) { /* page changed underneath */ }
+    // A reply sent in an open Messenger chat moves it on the dashboard.
+    try { if (!autoScrolling) watchConversation(); } catch (e) { /* page changed underneath */ }
   }, 2500);
 
   // Exposed for debugging against live Facebook: select a post in devtools and
@@ -5282,6 +5349,7 @@
     chatTarget: function () { return chatTarget; },
     setChatScrollWait: function (ms) { CHAT_SCROLL_WAIT = ms; },
     readConversation: readConversation,
+    watchConversation: watchConversation,
     chatTime: chatTime,
     saveMessengerReport: saveMessengerReport,
     ownReplyButton: ownReplyButton,

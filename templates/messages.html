@@ -1,18 +1,20 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Messages{% endblock %}
 
-{% macro thread_row(t, quiet=False) %}
+{% macro thread_row(t, stage="waiting") %}
 <li class="cm-item" id="t{{ t.id }}">
   <div class="cm-main">
     {% if t.signal == 'opportunity' %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
     {% elif t.signal == 'question' %}<span class="cm-chip cm-chip-unknown">Question</span>
-    {% elif quiet %}<span class="cm-chip">Gone quiet</span>
+    {% elif stage == "quiet" %}<span class="cm-chip">Gone quiet</span>
+    {% elif stage == "replied" %}<span class="cm-chip cm-chip-answered">Replied</span>
     {% else %}<span class="cm-chip">Waiting</span>{% endif %}
     {% if t.unread %}<span class="uh-tag">unread</span>{% endif %}
     <b class="cm-author">{{ t.name or "Unnamed chat" }}</b>
     <p class="fine" style="margin:4px 0 0">
-      {% if quiet %}You messaged last{% else %}They messaged last{% endif %}
+      {% if stage == "replied" %}You replied{% elif stage == "quiet" %}You messaged last{% else %}They messaged last{% endif %}
       {%- if t.last_at %}, about {{ t.last_at | ago }}{% endif %}.
+      {%- if stage == "replied" %} Waiting on them.{% endif %}
       {% if t.status == 'done' %} Marked done.{% endif %}
     </p>
   </div>
@@ -34,10 +36,12 @@
   <div>
     <h1>Messages</h1>
     <p class="sub">
-      Messenger chats where someone is waiting on you, and conversations that
-      went quiet after your last message.
-      {% if inbox.waiting or inbox.quiet %}
+      Messenger chats where someone is waiting on you, ones you've answered,
+      and conversations that went quiet after your last message. Chats move
+      between these on their own as you and they reply.
+      {% if inbox.waiting or inbox.replied or inbox.quiet %}
         <b>{{ inbox.waiting|length }}</b> waiting{% if inbox.opportunities %}, {{ inbox.opportunities }} that look like opportunities{% endif %}
+        · <b>{{ inbox.replied|length }}</b> replied
         · <b>{{ inbox.quiet|length }}</b> gone quiet.
       {% endif %}
     </p>
@@ -46,11 +50,13 @@
 
 <div class="glass panel cm-post">
   <p class="fine" style="margin:0">
-    <b>How it works.</b> On <b>facebook.com/messages</b>, press <b>Find unanswered
-    chats</b> in the {{ app_name }} panel — it reads the chat list you can see, so
-    scroll the list first to include older chats. Then open any chat and press
-    <b>✨ Suggest a message</b>: the next message is written into Messenger's box
-    for you to edit and send. {{ app_name }} never sends a message.
+    <b>How it works.</b> On <b>facebook.com/messages</b>, pick how many chats to
+    read and press <b>Find unanswered chats</b> in the {{ app_name }} panel. Then
+    open any chat and press <b>✨ Suggest a message</b>: the next message is
+    written into Messenger's box for you to edit and send. {{ app_name }} never
+    sends a message. When you send one with the chat open, {{ app_name }} sees it
+    and moves the chat to <b>Replied</b> by itself — no Done needed. Replies sent
+    elsewhere, like your phone, are picked up the next time you find chats.
   </p>
   <p class="fine" style="margin:8px 0 0">
     <b>What is kept:</b> who each chat is with, its link, who spoke last and
@@ -59,7 +65,7 @@
   </p>
 </div>
 
-{% if not inbox.waiting and not inbox.quiet %}
+{% if not inbox.waiting and not inbox.replied and not inbox.quiet %}
 <div class="glass empty-panel">
   {% include "_empty_mark.html" %}
   <p>Nothing here yet. Open facebook.com/messages and press <b>Find unanswered chats</b> in the {{ app_name }} panel.</p>
@@ -78,6 +84,20 @@
 </section>
 {% endif %}
 
+{% if inbox.replied %}
+<section class="glass panel cm-post">
+  <header class="cm-post-head">
+    <div>
+      <div class="cm-post-title">Replied — waiting on them</div>
+      <div class="fine">You answered. If nothing comes back in {{ inbox.quiet_days }} days, it moves to Gone quiet.</div>
+    </div>
+  </header>
+  <ul class="cm-list">
+    {% for t in inbox.replied %}{{ thread_row(t, stage="replied") }}{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {% if inbox.quiet %}
 <section class="glass panel cm-post">
   <header class="cm-post-head">
@@ -87,12 +107,12 @@
     </div>
   </header>
   <ul class="cm-list">
-    {% for t in inbox.quiet %}{{ thread_row(t, quiet=True) }}{% endfor %}
+    {% for t in inbox.quiet %}{{ thread_row(t, stage="quiet") }}{% endfor %}
   </ul>
 </section>
 {% endif %}
 
-{% if inbox.waiting or inbox.quiet %}
+{% if inbox.waiting or inbox.replied or inbox.quiet %}
 <form method="post" action="{{ url_for('messages_forget') }}" style="margin-top:12px">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="filter" type="submit">Forget all chats</button>

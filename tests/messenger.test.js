@@ -115,6 +115,36 @@ check("who said what",
 check("what was said", convo.messages[0].text, "Hi! Saw your post about websites");
 check("nobody left unplaced", convo.unknown, 0);
 
+console.log();
+console.log("noticing a reply as it is sent");
+var sent = [];
+chrome.runtime.sendMessage = function (m, cb) { sent.push(m); if (cb) cb({ ok: true }); };
+check("the first look only records where the chat stands", api.watchConversation(), null);
+check("  and sends nothing", sent.length, 0);
+check("nothing new, nothing sent", api.watchConversation(), null);
+
+messageRow("You sent", "It's [price] for the full package — want details?", null);
+var moved = api.watchConversation();
+check("your reply is noticed", moved && moved.last_from, "me");
+check("  sent to the dashboard as that one chat", [sent.length, sent[0].type, sent[0].body.threads.length],
+      [1, "OUTLIER_THREADS", 1]);
+check("  keyed like the chat list", sent[0].body.threads[0].key, "t:1001");
+check("  stamped now", Math.abs(Date.parse(moved.last_at + "Z") - Date.now()) < 5000, true);
+check("  with no words in it", JSON.stringify(sent[0].body).indexOf("full package"), -1);
+check("  and only once", api.watchConversation(), null);
+
+messageRow("Jane Doe", "Yes please! Can we book a call?", null);
+var back = api.watchConversation();
+check("their answer is noticed too", back && back.last_from, "them");
+check("  and read as an opportunity", back && back.signal, "opportunity");
+
+// A different conversation's messages replacing these (a chat switch, or a
+// chat still loading) changes the last line without anything being sent.
+grid.children = [];
+messageRow("Tom Hanks", "Haha love it", null);
+check("a replaced conversation is a fresh look, not a reply", api.watchConversation(), null);
+check("  nothing sent for it", sent.length, 2);
+
 /* A list like Facebook's: 120 chats, ten rows rendered at a time, the rest
  * unmounted until scrolled to. Reading it once finds ten. */
 function virtualInbox(total) {

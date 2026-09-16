@@ -5,8 +5,13 @@ see, each saying who the chat is with, the last line and when — and sends a
 summary of each here. Two lists come out of it:
 
   waiting   they spoke last. Someone is waiting on an answer.
+  replied   you spoke last, recently. Nothing to do yet — the ball is theirs.
   quiet     you spoke last, QUIET_DAYS or more ago, and nothing came back.
             A conversation worth bringing back to life.
+
+A chat moves between them on its own: answering it moves it to replied, time
+moves it to quiet, and their next message moves it back to waiting. Nobody has
+to press Done for any of that — Done is only for a chat to set aside.
 
 What is kept is the least that makes those lists work, by design: who the
 chat is with, its link, who spoke last, roughly when, whether the last message
@@ -85,8 +90,8 @@ def save_threads(user_id, payload):
             saved += 1
 
     lists = inbox(user_id)
-    return {"saved": saved, "waiting": len(lists["waiting"]), "quiet": len(lists["quiet"]),
-            "opportunities": lists["opportunities"]}
+    return {"saved": saved, "waiting": len(lists["waiting"]), "replied": len(lists["replied"]),
+            "quiet": len(lists["quiet"]), "opportunities": lists["opportunities"]}
 
 
 def inbox(user_id, show_done=False):
@@ -96,22 +101,27 @@ def inbox(user_id, show_done=False):
 
     cutoff = (datetime.now(timezone.utc).replace(tzinfo=None)
               - timedelta(days=QUIET_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
-    waiting, quiet = [], []
+    waiting, replied, quiet = [], [], []
     for row in rows:
         if row["status"] == "done" and not show_done:
             continue
         if row["last_from"] == "them":
             waiting.append(row)
-        # Only once it has actually been quiet a while, and only when the time
-        # was readable — a chat with no known time could be from a minute ago.
+        # Quiet only once it has actually been quiet a while, and only when the
+        # time was readable — a chat with no known time could be from a minute
+        # ago, so it waits under replied rather than being called quiet.
         elif row["last_from"] == "me" and row["last_at"] and row["last_at"] <= cutoff:
             quiet.append(row)
+        elif row["last_from"] == "me":
+            replied.append(row)
 
     waiting.sort(key=lambda r: r["last_at"] or "", reverse=True)
     waiting.sort(key=lambda r: (r["signal"] != "opportunity", not r["unread"]))
+    replied.sort(key=lambda r: r["last_at"] or "", reverse=True)
     quiet.sort(key=lambda r: r["last_at"] or "", reverse=True)
     return {
         "waiting": waiting,
+        "replied": replied,
         "quiet": quiet,
         "opportunities": sum(1 for r in waiting if r["signal"] == "opportunity"),
         "quiet_days": QUIET_DAYS,

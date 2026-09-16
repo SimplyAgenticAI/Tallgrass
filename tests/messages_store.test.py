@@ -84,7 +84,24 @@ def main():
     check("gone quiet: only after a few days", [t["name"] for t in inbox["quiet"]], ["Mark Twain"])
     check("a chat with no readable time is never called quiet",
           "No Time" in [t["name"] for t in inbox["quiet"]], False)
-    check("the response counts them", (body["waiting"], body["quiet"], body["opportunities"]), (2, 1, 1))
+    check("replied: you spoke last, recently, or at a time nobody could read",
+          sorted(t["name"] for t in inbox["replied"]), ["No Time", "Sara Lee"])
+    check("the response counts them",
+          (body["waiting"], body["replied"], body["quiet"], body["opportunities"]), (2, 2, 1, 1))
+
+    print()
+    print("a chat moves on its own")
+    live = {"threads": [{"key": "t:4", "name": "Tom Hanks", "last_from": "me",
+                         "last_at": ago(0), "last_hash": "me-reply"}]}
+    save(live)
+    lists = messages.inbox(1)
+    check("answering it moves it to replied, no Done needed",
+          ("Tom Hanks" in [t["name"] for t in lists["replied"]],
+           "Tom Hanks" in [t["name"] for t in lists["waiting"]]), (True, False))
+    live["threads"][0].update(last_from="them", last_hash="their-answer")
+    save(live)
+    check("their answer moves it back to waiting",
+          "Tom Hanks" in [t["name"] for t in messages.inbox(1)["waiting"]], True)
 
     print()
     print("done holds until the chat moves")
@@ -139,7 +156,8 @@ def main():
     print()
     print("the page")
     html = me.get("/messages").get_data(as_text=True)
-    check("renders both lists", "Waiting on you" in html and "Gone quiet" in html, True)
+    check("renders all three lists",
+          all(s in html for s in ("Waiting on you", "Replied — waiting on them", "Gone quiet")), True)
     check("marks the opportunity", "Opportunity" in html, True)
     check("links to the chat", "https://www.facebook.com/messages/t/1/" in html, True)
     check("nav has Messages", ">Messages</a>" in html, True)
