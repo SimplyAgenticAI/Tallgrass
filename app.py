@@ -64,7 +64,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "26.7"
+APP_VERSION = "26.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1103,6 +1103,14 @@ def api_brand():
     return jsonify({"ok": True, "has_brand": sage.has_brand()})
 
 
+@app.route("/api/reply-kit", methods=["POST"])
+@auth.login_required
+def api_reply_kit():
+    """Save the facts reply and message drafts may use instead of [blanks]."""
+    sage.set_kit(request.get_json(silent=True) or {})
+    return jsonify({"ok": True, "has_kit": bool(sage.kit_summary())})
+
+
 @app.route("/settings")
 @auth.login_required
 def settings():
@@ -1122,6 +1130,7 @@ def settings():
         anthropic_model=sage.ANTHROPIC_MODEL,
         openai_model=sage.OPENAI_MODEL,
         brand=sage.get_brand(),
+        kit=sage.get_kit(),
         # The same link the emails carry. A plain link rather than a toggle
         # calling an endpoint: it reuses the one page that already does this
         # job, including the undo, and adds no JavaScript to a page whose

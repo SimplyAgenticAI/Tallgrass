@@ -173,7 +173,7 @@ def main():
 
     def fake_draft(post_title, author, comment, replies=None, instructions=""):
         asked.append({"title": post_title, "author": author, "comment": comment,
-                      "replies": replies})
+                      "replies": replies, "instructions": instructions})
         return "Thanks %s! Sending you a message now." % (author or "").split(" ")[0], None
 
     appmod.replies.draft_reply = fake_draft
@@ -213,6 +213,41 @@ def main():
     check("an unsaved comment is drafted from what the page sent",
           (result.get("reply"), asked[-1]["title"], asked[-1]["comment"]),
           ("Thanks Ana! Sending you a message now.", "Fresh post", "Book a call?"))
+
+    print()
+    print("drafts use your reply kit, your own voice, and a tone")
+    check("the kit saves", me.post("/api/reply-kit", json={
+        "booking": "https://cal.example/intro", "pricing": "Websites from $1,500"},
+        headers={"X-CSRF-Token": csrf}).get_json().get("has_kit"), True)
+    save({"post": {"key": "p:1"}, "comments": [
+        {"key": "c:111", "author": "Jane Doe", "text": "How much?", "verdict": "answered"},
+        {"key": "c:777", "parent_key": "c:111", "author": "Jeff Randle", "mine": True,
+         "text": "Hey Jane! Shot you a message with the details just now."}]})
+    import replies as replies_mod
+    import sage as sage_mod
+    from flask import g
+    with appmod.app.test_request_context():
+        g.user = {"id": 1, "email": "me@example.com"}
+        prompt = replies_mod._prompt("New website packages", "Mark Twain", "Logos too?", [], "")
+        check("the kit is in the prompt", "Websites from $1,500" in prompt and "cal.example/intro" in prompt, True)
+        check("  as facts to use instead of a blank", "instead of a [blank]" in prompt, True)
+        check("your own past reply is there as a voice example",
+              "Shot you a message with the details" in prompt, True)
+        check("  but never a draft", "Sending you a message now" in prompt, False)
+        check("another account's kit is its own",
+              sage_mod.get_kit()["pricing"], "Websites from $1,500")
+    with appmod.app.test_request_context():
+        g.user = {"id": 2, "email": "other@example.com"}
+        check("  (the other account has none)", sage_mod.kit_summary(), "")
+
+    me.post("/comments/%d/draft" % jane["id"],
+            json={"instructions": "Rewrite this draft and make it noticeably shorter"},
+            headers={"X-CSRF-Token": csrf})
+    check("a tone reaches the draft as the user's direction",
+          asked[-1]["instructions"], "Rewrite this draft and make it noticeably shorter")
+    settings_html = me.get("/settings").get_data(as_text=True)
+    check("Settings shows the reply kit, filled in",
+          "Your reply kit" in settings_html and "Websites from $1,500" in settings_html, True)
 
     print()
     print("the page")

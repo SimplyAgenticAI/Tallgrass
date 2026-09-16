@@ -146,6 +146,39 @@ def has_brand():
     return any(get_brand().values())
 
 
+# The reply kit: facts replies are allowed to use.
+#
+# Every draft was told never to invent a price, a booking link or a service
+# area, which is right — so every draft that needed one came back with a
+# [price] blank for the owner to fill. These are the owner's own answers, given
+# once, and a draft may use exactly these and nothing beyond them.
+KIT_FIELDS = ("booking", "pricing", "area", "next_step", "faq")
+
+KIT_LABELS = {
+    "booking": "Booking or contact link",
+    "pricing": "Prices or price ranges",
+    "area": "Where you work / ship",
+    "next_step": "How you like people to take the next step",
+    "faq": "Answers to questions you get a lot",
+}
+
+
+def get_kit():
+    return {f: get_setting("kit_" + f, "") for f in KIT_FIELDS}
+
+
+def set_kit(data):
+    for f in KIT_FIELDS:
+        if f in data:
+            set_setting("kit_" + f, (data.get(f) or "").strip()[:1500])
+
+
+def kit_summary():
+    """The kit as labelled lines, or '' when nothing is filled in."""
+    kit = get_kit()
+    return "\n".join("%s: %s" % (KIT_LABELS[f], kit[f]) for f in KIT_FIELDS if kit[f])
+
+
 def brand_summary():
     """A compact, human-readable brand blurb, or '' when nothing is set."""
     brand = get_brand()

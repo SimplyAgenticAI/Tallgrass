@@ -133,6 +133,44 @@
   <div class="msg-line" id="brand-msg"></div>
 </section>
 
+<section class="glass panel reveal" id="reply-kit">
+  <h2>Your reply kit</h2>
+  <p class="sub">
+    The answers you give people again and again. Suggested replies and messages
+    use these, exactly as written, instead of leaving a <b>[price]</b> blank for
+    you to fill — and never go beyond them. Everything is optional.
+  </p>
+  <div class="brand-form">
+    <label class="brand-field">
+      <span>Booking or contact link</span>
+      <input type="text" id="kit-booking" value="{{ kit.booking }}"
+             placeholder="e.g. https://calendly.com/you/intro-call">
+    </label>
+    <label class="brand-field">
+      <span>Prices or price ranges</span>
+      <textarea id="kit-pricing" rows="2"
+                placeholder="e.g. Websites start at $1,500; logos from $300">{{ kit.pricing }}</textarea>
+    </label>
+    <label class="brand-field">
+      <span>Where you work / ship</span>
+      <input type="text" id="kit-area" value="{{ kit.area }}"
+             placeholder="e.g. Anywhere in the US; local installs in Ohio only">
+    </label>
+    <label class="brand-field">
+      <span>How you like people to take the next step</span>
+      <textarea id="kit-next_step" rows="2"
+                placeholder="e.g. Book a free 15-minute call, or message me the details">{{ kit.next_step }}</textarea>
+    </label>
+    <label class="brand-field">
+      <span>Answers to questions you get a lot</span>
+      <textarea id="kit-faq" rows="4"
+                placeholder="e.g. Turnaround is 2–3 weeks. Yes, I do rush jobs for +25%.">{{ kit.faq }}</textarea>
+    </label>
+  </div>
+  <button class="btn btn-primary" id="save-kit">Save reply kit</button>
+  <div class="msg-line" id="kit-msg"></div>
+</section>
+
 <section class="settings-grid">
   <div class="glass panel reveal">
     <h2>Sample data</h2>

@@ -2221,6 +2221,32 @@
     });
   }
 
+  /* ------------------------------------------------------------- reply kit */
+
+  var saveKit = document.getElementById("save-kit");
+  if (saveKit) {
+    var kitMsg = document.getElementById("kit-msg");
+    saveKit.addEventListener("click", function () {
+      var payload = {};
+      ["booking", "pricing", "area", "next_step", "faq"].forEach(function (field) {
+        var el = document.getElementById("kit-" + field);
+        payload[field] = el ? el.value.trim() : "";
+      });
+      kitMsg.className = "msg-line";
+      kitMsg.textContent = "Saving…";
+      post("/api/reply-kit", payload)
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Save failed");
+          kitMsg.className = "msg-line ok";
+          kitMsg.textContent = "Saved. Suggested replies and messages will use this now.";
+        })
+        .catch(function (error) {
+          kitMsg.className = "msg-line error";
+          kitMsg.textContent = error.message;
+        });
+    });
+  }
+
   /* --------------------------------------------------------- brand profile */
 
   var saveBrand = document.getElementById("save-brand");
@@ -2760,8 +2786,27 @@
   (function () {
     if (!document.querySelector("[data-suggest]")) return;
 
+    // The same four reshapes the extension offers, sent with the current draft.
+    var TONES = {
+      "Shorter": "make it noticeably shorter",
+      "Warmer": "make it warmer and friendlier",
+      "More direct": "make it more direct and to the point",
+      "Ask a question": "end it with one easy question that invites a reply"
+    };
+
     document.addEventListener("click", function (event) {
+      var toneButton = event.target.closest("[data-tone]");
       var ask = event.target.closest("[data-suggest]");
+      var instructions = "";
+      if (toneButton) {
+        var draftFor = toneButton.getAttribute("data-tone-for");
+        var current = document.querySelector('[data-draft-for="' + draftFor + '"] .cm-draft-text');
+        var words = current && current.textContent.trim();
+        if (!words) return;
+        instructions = "Rewrite this draft and " + TONES[toneButton.getAttribute("data-tone")] +
+                       ", keeping what it says: \"" + words + "\"";
+        ask = document.querySelector('[data-suggest="' + draftFor + '"]');
+      }
       if (ask) {
         var id = ask.getAttribute("data-suggest");
         var box = document.querySelector('[data-draft-for="' + id + '"]');
@@ -2771,7 +2816,7 @@
         box.classList.remove("is-error");
         text.textContent = "✨ Writing a reply…";
         ask.disabled = true;
-        post("/comments/" + id + "/draft", {}).then(function (data) {
+        post("/comments/" + id + "/draft", { instructions: instructions }).then(function (data) {
           if (data && data.ok) {
             text.textContent = data.reply;
             ask.textContent = "Another reply";

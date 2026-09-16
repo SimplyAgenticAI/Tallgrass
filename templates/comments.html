@@ -86,6 +86,9 @@
           <p class="cm-draft-text">{{ c.draft or '' }}</p>
           <div class="cm-draft-actions">
             <button class="filter" type="button" data-draft-copy>Copy</button>
+            {% for tone in ["Shorter", "Warmer", "More direct", "Ask a question"] %}
+            <button class="filter" type="button" data-tone="{{ tone }}" data-tone-for="{{ c.id }}">{{ tone }}</button>
+            {% endfor %}
             <span class="fine">{{ app_name }} never posts. Copy it, then reply on Facebook.</span>
           </div>
         </div>

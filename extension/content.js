@@ -4348,12 +4348,34 @@
     return null;
   }
 
-  function suggestReply(key) {
+  /* One tap to reshape a draft instead of starting over.
+   *
+   * The server has always taken the user's own direction for a draft, and it
+   * outranks the defaults; nothing offered a way to give one. Each tone sends
+   * the current draft back with what to change about it.
+   */
+  var TONES = [
+    ["Shorter", "make it noticeably shorter"],
+    ["Warmer", "make it warmer and friendlier"],
+    ["More direct", "make it more direct and to the point"],
+    ["Ask a question", "end it with one easy question that invites a reply"]
+  ];
+
+  function toneInstruction(tone, previous) {
+    var how = "";
+    TONES.forEach(function (t) { if (t[0] === tone) how = t[1]; });
+    if (!how || !previous) return "";
+    return "Rewrite this draft and " + how + ", keeping what it says: \"" + previous + "\"";
+  }
+
+  function suggestReply(key, tone) {
+    var previous = tone && DRAFTS[key] && DRAFTS[key].text;
     var payload = commentPayload();
     var c = null;
     payload.read.threads.forEach(function (t) { if (t.key === key) c = t; });
     if (!c) return;
-    DRAFTS[key] = { busy: true };
+    var placed = DRAFTS[key] && DRAFTS[key].placed;
+    DRAFTS[key] = { busy: true, placed: placed };
     renderDraftCard(key);
 
     // Saved first, so the draft is also kept on the Comments page.
@@ -4364,15 +4386,16 @@
         body: {
           post: payload.body.post,
           comment: { key: c.key, author: c.author, text: c.text },
-          replies: c.replies.map(function (rep) { return { author: rep.author, text: rep.text }; })
+          replies: c.replies.map(function (rep) { return { author: rep.author, text: rep.text }; }),
+          instructions: toneInstruction(tone, previous)
         }
       }, function (response) {
         if (chrome.runtime.lastError || !response) {
-          DRAFTS[key] = { error: "The extension was asleep — press Try again." };
+          DRAFTS[key] = { placed: placed, error: "The extension was asleep — press Try again." };
         } else if (!response.ok) {
-          DRAFTS[key] = { error: response.error || "Could not draft a reply." };
+          DRAFTS[key] = { placed: placed, error: response.error || "Could not draft a reply." };
         } else {
-          DRAFTS[key] = { text: response.reply };
+          DRAFTS[key] = { placed: placed, text: response.reply };
         }
         renderDraftCard(key);
         if (DRAFTS[key].text) putInReplyBox(key);
@@ -4433,6 +4456,14 @@
     }
     card.appendChild(text);
     card.appendChild(actions);
+    if (state.text) {
+      var tones = document.createElement("div");
+      styleEl(tones, { marginTop: "4px", fontSize: "12px" });
+      TONES.forEach(function (t) {
+        tones.appendChild(cardButton(t[0], function () { suggestReply(key, t[0]); }));
+      });
+      card.appendChild(tones);
+    }
     var note = document.createElement("div");
     note.textContent = state.note ||
       (state.text ? "Tallgrass never posts — read it, edit it, then send it yourself." : "");
@@ -4465,7 +4496,7 @@
     (function attempt() {
       var box = findReplyBox(c);
       if (box) {
-        insertDraft(box, c, state.text);
+        if (insertDraft(box, c, state.text, state.placed)) state.placed = state.text;
         state.note = "In the reply box. Read it, edit it, then send it yourself.";
         renderDraftCard(key);
         return;
@@ -4476,22 +4507,28 @@
     })();
   }
 
-  function insertDraft(box, c, text) {
+  function insertDraft(box, c, text, placed) {
     if (box.focus) box.focus();
     var out = text;
+    var existing = visibleText(box.innerText || "").replace(/\s+/g, " ").trim();
+    // The box still ends with the draft put there last time, untouched: a new
+    // draft replaces the lot rather than being typed after it. Edited, and the
+    // user's words stay.
+    var norm = String(placed || "").replace(/\s+/g, " ").trim();
+    var replace = !!norm && existing.slice(-norm.length) === norm;
     // Facebook often starts a reply with the commenter's name already tagged.
     // Don't greet them twice.
     var first = String(c.author || "").split(" ")[0];
-    var existing = visibleText(box.innerText || "").trim();
-    if (existing && first && existing.toLowerCase().indexOf(first.toLowerCase()) !== -1) {
+    if (!replace && existing && first && existing.toLowerCase().indexOf(first.toLowerCase()) !== -1) {
       out = " " + text.replace(new RegExp("^" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
                                           "[,!.:]?\\s*", "i"), "");
     }
     try {
-      // Caret to the end, so a tag Facebook put in first is kept.
+      // Caret to the end, so a tag Facebook put in first is kept — or the
+      // whole box selected, when the old draft is being replaced.
       var range = document.createRange();
       range.selectNodeContents(box);
-      range.collapse(false);
+      if (!replace) range.collapse(false);
       var selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -4872,12 +4909,22 @@
     return boxes.length ? boxes[boxes.length - 1] : null;
   }
 
-  function typeInto(box, text) {
+  /* `replacing` is the draft put in the box last time. While the box still
+   * holds exactly that, the new draft replaces it — "Another" and the tone
+   * buttons used to type the new draft after the old one. Once the user has
+   * edited it, their words are kept and the draft goes after them. */
+  function boxHolds(box, text) {
+    var inBox = visibleText(box.innerText || "").replace(/\s+/g, " ").trim();
+    return !!text && inBox === String(text).replace(/\s+/g, " ").trim();
+  }
+
+  function typeInto(box, text, replacing) {
     if (box.focus) box.focus();
+    var replace = boxHolds(box, replacing);
     try {
       var range = document.createRange();
       range.selectNodeContents(box);
-      range.collapse(false);
+      if (!replace) range.collapse(false);
       var selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -4992,10 +5039,13 @@
   var MSG_DRAFT = null;          // { threadId, busy | error | text, note }
   var lastChatScan = "";
 
-  function suggestMessage() {
+  function suggestMessage(tone) {
+    if (typeof tone !== "string") tone = "";      // a click handler passes the event
     var convo = readConversation();
     if (!convo) return;
-    MSG_DRAFT = { threadId: convo.id, busy: true };
+    var previous = tone && MSG_DRAFT && MSG_DRAFT.threadId === convo.id ? MSG_DRAFT.text : "";
+    var placed = MSG_DRAFT && MSG_DRAFT.threadId === convo.id ? MSG_DRAFT.placed : "";
+    MSG_DRAFT = { threadId: convo.id, busy: true, placed: placed };
     renderHud();
     if (!convo.messages.length) {
       MSG_DRAFT = { threadId: convo.id, error: "Couldn't read this conversation yet — scroll it a little and try again." };
@@ -5003,16 +5053,19 @@
     }
     chrome.runtime.sendMessage({
       type: "OUTLIER_MESSAGE_DRAFT",
-      body: { name: convo.name, messages: convo.messages }
+      body: { name: convo.name, messages: convo.messages,
+              instructions: toneInstruction(tone, previous) }
     }, function (response) {
       if (chrome.runtime.lastError || !response) {
-        MSG_DRAFT = { threadId: convo.id, error: "The extension was asleep — press again." };
+        MSG_DRAFT = { threadId: convo.id, placed: placed, error: "The extension was asleep — press again." };
       } else if (!response.ok) {
-        MSG_DRAFT = { threadId: convo.id, error: response.error || "Could not draft a message." };
+        MSG_DRAFT = { threadId: convo.id, placed: placed, error: response.error || "Could not draft a message." };
       } else {
-        MSG_DRAFT = { threadId: convo.id, text: response.reply };
+        MSG_DRAFT = { threadId: convo.id, text: response.reply, placed: placed };
         var box = messageBox();
-        MSG_DRAFT.note = box && typeInto(box, response.reply)
+        var typed = box && typeInto(box, response.reply, placed);
+        if (typed) MSG_DRAFT.placed = response.reply;
+        MSG_DRAFT.note = typed
           ? "In the message box. Read it, edit it, then send it yourself."
           : "Couldn't reach the message box — use Copy, then paste it in.";
       }
@@ -5104,9 +5157,24 @@
                         padding: "0.5em 0.6em", borderRadius: "7px",
                         background: "rgba(52,211,153,0.10)" });
         body.appendChild(text);
+        // Reshape it: shorter, warmer, more direct, or ending on a question.
+        var toneRow = document.createElement("div");
+        styleEl(toneRow, { display: "flex", flexWrap: "wrap", gap: "0.3em", marginTop: "0.45em" });
+        TONES.forEach(function (t) {
+          var chip = document.createElement("button");
+          chip.textContent = t[0];
+          styleEl(chip, { flex: "1 1 45%", padding: "0.35em", borderRadius: "6px", cursor: "pointer",
+                          fontSize: "0.85em", border: "1px solid rgba(110,231,183,0.25)",
+                          background: "transparent", color: "#7fa693" });
+          chip.addEventListener("click", function () { suggestMessage(t[0]); });
+          toneRow.appendChild(chip);
+        });
+        body.appendChild(toneRow);
         body.appendChild(button("Put in message box", function () {
           var box = messageBox();
-          draft.note = box && typeInto(box, draft.text)
+          var typed = box && typeInto(box, draft.text, draft.placed);
+          if (typed) draft.placed = draft.text;
+          draft.note = typed
             ? "In the message box. Read it, edit it, then send it yourself."
             : "Couldn't reach the message box — use Copy.";
           renderHud();

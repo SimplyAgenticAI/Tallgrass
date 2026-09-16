@@ -250,6 +250,20 @@ def context_for(user_id, comment_id=None, post_key=None, comment_key=None):
     return found
 
 
+def recent_own_replies(user_id, limit=5):
+    """A few of the owner's own replies, newest first, as examples of their voice.
+
+    Only what they actually posted — replies and comments by them saved from
+    their own posts — never a draft, which is the model's writing, not theirs.
+    """
+    with db.get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT body FROM post_comments "
+            "WHERE user_id = ? AND is_mine = 1 AND LENGTH(body) >= 15 "
+            "ORDER BY seen_at DESC LIMIT ?", (user_id, int(limit))).fetchall()
+    return [r["body"] for r in rows]
+
+
 def store_draft(user_id, comment_id, text):
     with db.get_db() as conn:
         conn.execute(
