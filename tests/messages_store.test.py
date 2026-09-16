@@ -90,6 +90,21 @@ def main():
           (body["waiting"], body["replied"], body["quiet"], body["opportunities"]), (2, 2, 1, 1))
 
     print()
+    print("a rescan never doubles anything")
+
+    def rows():
+        with db.get_db() as conn:
+            return conn.execute("SELECT COUNT(*) FROM message_threads WHERE user_id = 1").fetchone()[0]
+
+    save(chats())
+    save(chats())
+    check("the same chat list three times is five chats", rows(), 5)
+    live_update = {"threads": [{"key": "t:1", "name": "Jane Doe", "last_from": "them",
+                                "last_at": ago(0), "last_hash": "h1"}]}
+    save(live_update)
+    check("the open-chat watcher updates the same chat, not a new one", rows(), 5)
+
+    print()
     print("a chat moves on its own")
     live = {"threads": [{"key": "t:4", "name": "Tom Hanks", "last_from": "me",
                          "last_at": ago(0), "last_hash": "me-reply"}]}

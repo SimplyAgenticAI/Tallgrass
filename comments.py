@@ -20,6 +20,8 @@ Two rules:
 Scoped to one owner throughout, like everything else that touches captures.
 """
 
+import re
+
 import db
 
 VERDICTS = ("unanswered", "unknown", "answered", "yours")
@@ -54,6 +56,26 @@ def save_thread(user_id, payload):
     counts = {v: 0 for v in VERDICTS}
     new = 0
     with db.get_db() as conn:
+        # The same post, reached another way.
+        #
+        # A post opened from a profile, from its own link or from a photo can
+        # each carry a different address, and the post is keyed on its address
+        # — so one post could be filed twice with the same comments under both.
+        # Facebook's comment ids are unique across Facebook, so a read whose
+        # comments are already stored under another post IS that post.
+        facebook_ids = [_text(i.get("key"), 200) for i in items
+                        if isinstance(i, dict) and str(i.get("key") or "").startswith("c:")][:500]
+        if facebook_ids:
+            known = conn.execute(
+                "SELECT p.post_key FROM post_comments c "
+                "JOIN comment_posts p ON p.id = c.post_id "
+                "WHERE c.user_id = ? AND c.comment_key IN (%s) "
+                "GROUP BY p.id ORDER BY COUNT(*) DESC LIMIT 1"
+                % ",".join("?" * len(facebook_ids)),
+                [user_id] + facebook_ids).fetchone()
+            if known:
+                key = known["post_key"]
+
         conn.execute(
             """
             INSERT INTO comment_posts (user_id, post_key, url, title, more_comments, read_at)
@@ -70,13 +92,24 @@ def save_thread(user_id, payload):
             "SELECT id FROM comment_posts WHERE user_id = ? AND post_key = ?",
             (user_id, key)).fetchone()["id"]
 
+        resolved = {}               # key as sent -> key as stored
         for position, item in enumerate(items):
             if not isinstance(item, dict):
                 continue
             comment_key = _text(item.get("key"), 200)
             if not comment_key:
                 continue
+            author = _text(item.get("author"), 200)
+            body = _text(item.get("text"), 5000)
+            # A comment with no Facebook id is keyed on its author and words,
+            # so the same comment read cut short ("… See more") and then in
+            # full would be two. It is matched to the one already stored.
+            if not comment_key.startswith("c:"):
+                comment_key = _stored_twin(conn, user_id, post_id, author, body) or comment_key
+            resolved[_text(item.get("key"), 200)] = comment_key
             parent = _text(item.get("parent_key"), 200) or None
+            if parent:
+                parent = resolved.get(parent, parent)
             verdict = item.get("verdict") if parent is None else None
             if parent is None and verdict not in VERDICTS:
                 verdict = "unknown"         # never assume unanswered
@@ -95,7 +128,11 @@ def save_thread(user_id, payload):
                 ON CONFLICT(user_id, post_id, comment_key) DO UPDATE SET
                     parent_key     = excluded.parent_key,
                     author         = COALESCE(NULLIF(excluded.author, ''), post_comments.author),
-                    body           = COALESCE(NULLIF(excluded.body, ''), post_comments.body),
+                    -- The fuller reading wins: a later read cut short by
+                    -- "See more" must not replace words already stored.
+                    body           = CASE WHEN LENGTH(COALESCE(excluded.body, ''))
+                                               >= LENGTH(COALESCE(post_comments.body, ''))
+                                          THEN excluded.body ELSE post_comments.body END,
                     url            = COALESCE(excluded.url, post_comments.url),
                     is_mine        = excluded.is_mine,
                     verdict        = excluded.verdict,
@@ -103,12 +140,43 @@ def save_thread(user_id, payload):
                     position       = excluded.position,
                     seen_at        = CURRENT_TIMESTAMP
                 """,
-                (user_id, post_id, comment_key, parent,
-                 _text(item.get("author"), 200), _text(item.get("text"), 5000),
+                (user_id, post_id, comment_key, parent, author, body,
                  _text(item.get("url"), 500) or None, int(bool(item.get("mine"))),
                  verdict, _count(item.get("hidden_replies")), position))
 
     return {"post_id": post_id, "comments": len(items), "new": new, "verdicts": counts}
+
+
+_SEE_MORE = re.compile(r"(?:\s*(?:…|\.\.\.)\s*)?(?:see more)?\s*$", re.IGNORECASE)
+
+
+def _comparable(body):
+    return _SEE_MORE.sub("", (body or "").strip()).strip().lower()
+
+
+def _stored_twin(conn, user_id, post_id, author, body):
+    """The key of this comment if it is already stored under another key.
+
+    Same post, same author, and the same words — or one reading being the
+    start of the other, which is what a "See more" cut looks like. The prefix
+    match needs twenty characters, so "Yes" and "Yes please" stay two comments.
+    """
+    words = _comparable(body)
+    if not author or not words:
+        return None
+    for row in conn.execute(
+            "SELECT comment_key, body FROM post_comments "
+            "WHERE user_id = ? AND post_id = ? AND author = ?",
+            (user_id, post_id, author)):
+        other = _comparable(row["body"])
+        if not other:
+            continue
+        if other == words:
+            return row["comment_key"]
+        shorter = min(len(other), len(words))
+        if shorter >= 20 and (other.startswith(words) or words.startswith(other)):
+            return row["comment_key"]
+    return None
 
 
 def threads_for(user_id, show_done=False):

@@ -111,6 +111,48 @@ def main():
                ).get_json()["verdicts"]["unknown"], 1)
 
     print()
+    print("a rescan never doubles anything")
+
+    def counts():
+        with db.get_db() as conn:
+            return (conn.execute("SELECT COUNT(*) FROM comment_posts WHERE user_id = 1").fetchone()[0],
+                    conn.execute("SELECT COUNT(*) FROM post_comments WHERE user_id = 1").fetchone()[0])
+
+    before = counts()
+    save(thread())
+    save(thread())
+    check("the same read three times is the same rows", counts(), before)
+
+    # The same post opened another way: a different address, the same comments.
+    elsewhere = thread()
+    elsewhere["post"] = {"key": "p:photo-98765", "url": "https://www.facebook.com/photo/?fbid=98765"}
+    body = save(elsewhere).get_json()
+    check("a post reached by another address is the same post", counts(), before)
+    check("  and nothing in it is new", body["new"], 0)
+
+    # A comment Facebook gave no id, read cut short and then in full.
+    cut_short = {"post": {"key": "p:1"}, "comments": [
+        {"key": "h:aaa", "author": "Lee Chan", "verdict": "unanswered",
+         "text": "Do you ship to Canada and how long does it usually … See more"}]}
+    in_full = {"post": {"key": "p:1"}, "comments": [
+        {"key": "h:bbb", "author": "Lee Chan", "verdict": "unanswered",
+         "text": "Do you ship to Canada and how long does it usually take to arrive?"}]}
+    save(cut_short)
+    after_first = counts()
+    check("a comment read cut short, then in full, is one comment",
+          (save(in_full).get_json()["new"], counts()), (0, after_first))
+    save(cut_short)
+    with db.get_db() as conn:
+        stored = conn.execute("SELECT body FROM post_comments WHERE author = 'Lee Chan'").fetchall()
+    check("  keeping the full words, even after another short read",
+          [r["body"] for r in stored],
+          ["Do you ship to Canada and how long does it usually take to arrive?"])
+    two = {"post": {"key": "p:1"}, "comments": [
+        {"key": "h:y1", "author": "Ana Ruiz", "text": "Yes", "verdict": "unanswered"},
+        {"key": "h:y2", "author": "Ana Ruiz", "text": "Yes please", "verdict": "unanswered"}]}
+    check("but two short comments that start alike stay two", save(two).get_json()["new"], 2)
+
+    print()
     print("yours only")
     other = appmod.app.test_client()
     sign_up(other, "other@example.com", "willow")
