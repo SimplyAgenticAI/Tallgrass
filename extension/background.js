@@ -151,6 +151,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     openDashboard(message.path || "/").then(sendResponse);
     return true;
   }
+
+  if (message.type === "OUTLIER_OPEN_FACEBOOK") {
+    openFacebook(message.url).then(sendResponse, (error) =>
+      sendResponse({ ok: false, error: String((error && error.message) || error) }));
+    return true;
+  }
 });
 
 
@@ -322,6 +328,72 @@ async function handleCapture(message) {
              " — " + reason + " (tried 3 times)"
     };
   }
+}
+
+/* The one tab the dashboard's Facebook links open in.
+ *
+ * Remembered by id. When that tab still exists and is still on Facebook it is
+ * pointed at the new address and brought forward; otherwise a tab is opened
+ * and remembered in its place. Other Facebook tabs are never touched — the one
+ * you are reading in stays where it is.
+ *
+ * Nor is the remembered tab taken over while it is running a scan: navigating
+ * it would end the scan, so a scanning tab is left alone and a new one opened.
+ */
+const FACEBOOK_TAB_KEY = "facebookTabId";
+const FACEBOOK_HOST_RE = /^(?:www|web|m)\.facebook\.com$/;
+
+function tabIsScanning(tabId) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+    setTimeout(() => done(false), 700);
+    try {
+      chrome.tabs.sendMessage(tabId, { type: "OUTLIER_STATS" }, (response) => {
+        void chrome.runtime.lastError;
+        done(!!(response && response.scrolling));
+      });
+    } catch (error) {
+      done(false);
+    }
+  });
+}
+
+async function openFacebook(url) {
+  let target;
+  try {
+    target = new URL(url);
+  } catch (error) {
+    return { ok: false, error: "Not an address" };
+  }
+  if (target.protocol !== "https:" || !FACEBOOK_HOST_RE.test(target.hostname)) {
+    return { ok: false, error: "Only Facebook addresses open here" };
+  }
+
+  const area = chrome.storage.session || chrome.storage.local;
+  const stored = await area.get(FACEBOOK_TAB_KEY);
+  const tabId = stored[FACEBOOK_TAB_KEY];
+
+  if (typeof tabId === "number") {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      let onFacebook = false;
+      try { onFacebook = FACEBOOK_HOST_RE.test(new URL(tab.url || tab.pendingUrl || "").hostname); }
+      catch (error) { onFacebook = false; }
+      if (onFacebook && !(await tabIsScanning(tabId))) {
+        await chrome.tabs.update(tabId, { url: target.href, active: true });
+        try { await chrome.windows.update(tab.windowId, { focused: true }); }
+        catch (error) { /* single-window setups */ }
+        return { ok: true, reused: true };
+      }
+    } catch (error) {
+      // Closed since: fall through and open one.
+    }
+  }
+
+  const created = await chrome.tabs.create({ url: target.href });
+  await area.set({ [FACEBOOK_TAB_KEY]: created.id });
+  return { ok: true, reused: false };
 }
 
 /* One request pressed by hand — saving a post's comments, or asking for a reply

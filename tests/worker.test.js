@@ -308,6 +308,71 @@ Promise.resolve()
       check("and nothing was activated", noTab.updatedTab === undefined, true);
     });
   })
+  /* Every "Open on Facebook" on the dashboard was a new tab, and a session of
+   * answering comments and chats left dozens. The worker now keeps one tab for
+   * those links and reuses it — but never someone's other Facebook tab, never
+   * a tab mid-scan, and never for an address that is not Facebook. */
+  .then(function () {
+    console.log();
+    console.log("Facebook links reuse one tab");
+
+    var world = makeWorld();
+    var tabs = {};
+    var created = 0;
+    chrome.tabs.create = function (props) {
+      created++;
+      var id = 100 + created;
+      tabs[id] = { id: id, windowId: 5, url: props.url };
+      world.createdTab = props;
+      return Promise.resolve({ id: id });
+    };
+    chrome.tabs.get = function (id) {
+      return tabs[id] ? Promise.resolve(tabs[id]) : Promise.reject(new Error("No tab with id " + id));
+    };
+    chrome.tabs.update = function (id, props) {
+      world.updatedTab = { id: id, props: props };
+      if (tabs[id] && props.url) tabs[id].url = props.url;
+      return Promise.resolve();
+    };
+    var scanning = {};
+    chrome.tabs.sendMessage = function (id, message, cb) { cb({ ok: true, scrolling: !!scanning[id] }); };
+
+    delete require.cache[require.resolve(SRC)];
+    require(SRC);
+    function open(url) {
+      return new Promise(function (resolve) {
+        world.onMessage({ type: "OUTLIER_OPEN_FACEBOOK", url: url }, null, resolve);
+      });
+    }
+
+    return open("https://www.facebook.com/messages/t/1/").then(function (r) {
+      check("the first link opens a tab", [r.ok, r.reused, created], [true, false, 1]);
+      return open("https://www.facebook.com/me/posts/2?comment_id=3");
+    }).then(function (r) {
+      check("the next link reuses it", [r.reused, created], [true, 1]);
+      check("  pointed at the new address, in front",
+            [world.updatedTab.id, world.updatedTab.props.url, world.updatedTab.props.active],
+            [101, "https://www.facebook.com/me/posts/2?comment_id=3", true]);
+      return open("https://evil.test/phish");
+    }).then(function (r) {
+      check("an address that is not Facebook is refused", [r.ok, created], [false, 1]);
+      return open("http://www.facebook.com/insecure");
+    }).then(function (r) {
+      check("  and so is plain http", r.ok, false);
+      tabs[101].url = "https://www.google.com/";
+      return open("https://www.facebook.com/messages/t/4/");
+    }).then(function (r) {
+      check("a tab you took elsewhere is left alone", [r.reused, created], [false, 2]);
+      scanning[102] = true;
+      return open("https://www.facebook.com/messages/t/5/");
+    }).then(function (r) {
+      check("a tab running a scan is never navigated away", [r.reused, created], [false, 3]);
+      delete tabs[103];
+      return open("https://www.facebook.com/messages/t/6/");
+    }).then(function (r) {
+      check("a closed tab is replaced", [r.ok, r.reused, created], [true, false, 4]);
+    });
+  })
   .then(function () {
     console.log();
     console.log("a hidden tab's scan is stepped from here, and stops when it does");

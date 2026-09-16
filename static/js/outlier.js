@@ -2711,6 +2711,46 @@
     });
   })();
 
+  /* ------------------------------------------- one tab for Facebook links
+   *
+   * Every link out to Facebook opened a new tab, so working through comments
+   * and chats buried the browser in them. When the extension is installed and
+   * says it can, a plain click hands the address to it instead, and it reuses
+   * the one tab it keeps for Facebook. A ctrl-, cmd-, shift- or middle-click
+   * still opens a new tab, because that is somebody asking for one.
+   *
+   * Decided at click time, not after: a new tab opened once the extension has
+   * failed to answer would be blocked as a popup. So if it ever does fail, the
+   * next click simply goes back to the ordinary link.
+   */
+  (function () {
+    var canOpen = false;
+    var FACEBOOK_HOST = /^(?:www|web|m)\.facebook\.com$/;
+
+    window.addEventListener("outlier:extension-present", function (event) {
+      canOpen = !!(event.detail && event.detail.canOpenFacebook);
+    });
+    window.addEventListener("outlier:open-facebook-result", function (event) {
+      if (!(event.detail && event.detail.ok)) canOpen = false;
+    });
+    // No ping of its own: the extension announces itself as each page loads,
+    // after this script has run, and the Extension page's own ping can mint a
+    // key when it hears back — a second one could mint two.
+
+    document.addEventListener("click", function (event) {
+      if (!canOpen || event.defaultPrevented) return;
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      var link = event.target.closest && event.target.closest('a[href][target="_blank"]');
+      if (!link) return;
+      var host = "";
+      try { host = new URL(link.href).hostname; } catch (e) { return; }
+      if (!FACEBOOK_HOST.test(host)) return;
+
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent("outlier:open-facebook", { detail: { url: link.href } }));
+    });
+  })();
+
   /* ------------------------------------------------ comments: suggest a reply
    *
    * The same draft the extension writes on Facebook, asked for from the

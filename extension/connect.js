@@ -27,7 +27,10 @@
         detail: {
           version: chrome.runtime.getManifest().version,
           connected: connected,
-          endpoint: endpoint
+          endpoint: endpoint,
+          // The page checks this before taking over a Facebook link, so a
+          // build without the handler below keeps ordinary links.
+          canOpenFacebook: true
         }
       }));
     });
@@ -54,6 +57,27 @@
         detail: failed
           ? { ok: false, error: failed.message }
           : { ok: true, endpoint: endpoint }
+      }));
+    });
+  });
+
+  /* Open a Facebook link in the one tab Tallgrass uses for Facebook.
+   *
+   * Every "Open on Facebook" was a new tab, and a session of working through
+   * comments and chats left dozens. A named link target cannot fix it:
+   * Facebook's pages cut the tie to the tab that opened them, so the name is
+   * never found again. The extension can find the tab itself.
+   *
+   * Only Facebook addresses are passed on — the background checks again — so
+   * the page cannot use this to steer a tab anywhere else.
+   */
+  window.addEventListener("outlier:open-facebook", function (event) {
+    var url = String((event && event.detail && event.detail.url) || "");
+    chrome.runtime.sendMessage({ type: "OUTLIER_OPEN_FACEBOOK", url: url }, function (response) {
+      var failed = chrome.runtime.lastError;
+      window.dispatchEvent(new CustomEvent("outlier:open-facebook-result", {
+        detail: failed || !response ? { ok: false, error: failed ? failed.message : "no answer" }
+                                    : response
       }));
     });
   });
