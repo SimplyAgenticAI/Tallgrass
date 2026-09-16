@@ -4532,8 +4532,9 @@
    */
   var CHAT_TARGETS = [25, 50, 100, 250];
   var chatTarget = 50;
-  var CHAT_SCROLL_WAIT = 800;
-  var CHAT_STALLS = 4;
+  var CHAT_POLL = 300;          // how often a wait checks for new chats
+  var CHAT_WAIT_MAX = 6000;     // how long one scroll waits for Facebook to load
+  var CHAT_STALLS = 2;          // full waits with nothing new before it is the end
   var chatScan = null;
 
   try {
@@ -4562,9 +4563,34 @@
     return null;
   }
 
+  // The chat rows in the list, in page order — not links inside an open chat.
+  function chatRowLinks() {
+    var links = document.querySelectorAll('a[href*="/messages/t/"], a[href*="/messages/e2ee/t/"]');
+    var out = [];
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].closest && links[i].closest('[role="main"] [role="row"], [role="main"] [role="article"]')) continue;
+      out.push(links[i]);
+    }
+    return out;
+  }
+
+  /* Reported: asked for 250, it "scanned way too fast" and imported some.
+   *
+   * Two things in the first version would do exactly that. It found the list
+   * by guessing which box scrolls, and when no box qualified it read one
+   * screen and finished — no scroll at all. And it waited a fixed 0.8 seconds
+   * between scrolls, calling the inbox finished after four of those with
+   * nothing new, which is shorter than Facebook can take to load older chats.
+   *
+   * Now it scrolls by bringing the last chat row into view, which moves
+   * whichever element really scrolls, and only falls back to the guessed box
+   * if that moved nothing. After each scroll it waits for new chats to appear
+   * — checking every 0.3 seconds, up to 6 — and moves on as soon as they do.
+   * Only two full waits with nothing new end it. And it always says why it
+   * stopped, so a short count is never a mystery again.
+   */
   function scanChats(target, progress, done) {
-    var state = chatScan = { found: {}, order: [], stalls: 0, stopped: false };
-    var scroller = chatListScroller();
+    var state = chatScan = { found: {}, order: [], stalls: 0, stopped: false, scrolls: 0 };
 
     function collect() {
       var added = 0;
@@ -4577,27 +4603,66 @@
       return added;
     }
 
-    function finish() {
+    function finish(reason) {
       chatScan = null;
-      if (scroller) scroller.scrollTop = 0;
+      var rows = chatRowLinks();
+      try { if (rows[0] && rows[0].scrollIntoView) rows[0].scrollIntoView({ block: "start" }); } catch (e) {}
+      var box = chatListScroller();
+      if (box) box.scrollTop = 0;
       done(state.order.slice(0, target).map(function (k) { return state.found[k]; }),
-           state.stopped);
+           state.stopped, reason, state.scrolls);
+    }
+
+    // Scroll the list on by one screen. Returns whether anything moved.
+    function scrollOn() {
+      var rows = chatRowLinks();
+      if (!rows.length) return null;
+      var box = chatListScroller();
+      var before = box ? box.scrollTop : null;
+      var last = rows[rows.length - 1];
+      try { if (last.scrollIntoView) last.scrollIntoView({ block: "start" }); } catch (e) {}
+      if (box && box.scrollTop !== before) return true;
+      if (box) {
+        box.scrollTop = before + Math.max(200, box.clientHeight * 0.8);
+        return box.scrollTop !== before;
+      }
+      // No box to measure: the row itself moving to the top is the evidence.
+      return !!last.scrollIntoView;
+    }
+
+    function waitForMore(then) {
+      var waited = 0;
+      (function poll() {
+        if (state.stopped) return then(0);
+        var added = collect();
+        if (added) {
+          progress(Math.min(state.order.length, target));
+          return then(added);
+        }
+        if (waited >= CHAT_WAIT_MAX) return then(0);
+        waited += CHAT_POLL;
+        setTimeout(poll, CHAT_POLL);
+      })();
     }
 
     (function step() {
-      if (state.stopped) return finish();
-      var added = collect();
+      if (state.stopped) return finish("stopped by you");
+      collect();
       progress(Math.min(state.order.length, target));
-      if (state.order.length >= target || !scroller) return finish();
+      if (state.order.length >= target) return finish("reached " + target);
 
-      var before = scroller.scrollTop;
-      scroller.scrollTop = before + Math.max(200, scroller.clientHeight * 0.8);
-      var moved = scroller.scrollTop !== before;
-      // At the bottom with nothing new: give Facebook a few waits to load
-      // older chats before calling it the end of the inbox.
-      state.stalls = (added || moved) ? 0 : state.stalls + 1;
-      if (state.stalls >= CHAT_STALLS) return finish();
-      setTimeout(step, CHAT_SCROLL_WAIT);
+      var moved = scrollOn();
+      if (moved === null) return finish("couldn't find the chat list on this page");
+      state.scrolls++;
+      waitForMore(function (added) {
+        state.stalls = added ? 0 : state.stalls + 1;
+        if (state.stalls >= CHAT_STALLS) {
+          return finish(moved
+            ? "the list stopped growing — that's as far back as Facebook would load"
+            : "the list wouldn't scroll any further");
+        }
+        step();
+      });
     })();
   }
 
@@ -4877,15 +4942,17 @@
         scanChats(target, function (count) {
           lastChatScan = "Reading chats… " + count + " of " + target;
           renderHud();
-        }, function (threads, stopped) {
+        }, function (threads, stopped, reason, scrolls) {
+          var why = " Stopped: " + reason + " (" + scrolls + " scroll" + (scrolls === 1 ? "" : "s") + ").";
           lastChatScan = "Saving " + threads.length + " chats…";
           renderHud();
           sendChatList(threads, function (r) {
-            lastChatScan = !r.ok ? (r.error || "Could not save the chats.")
-              : "Read " + r.read + " chats" + (stopped ? " (stopped early)" : "") + ": " +
+            lastChatScan = !r.ok ? (r.error || "Could not save the chats.") + why
+              : "Read " + r.read + " of " + target + " chats: " +
                 r.waiting + " waiting on you" +
                 (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
-                ", " + r.replied + " replied, " + r.quiet + " gone quiet. See Messages on the dashboard.";
+                ", " + r.replied + " replied, " + r.quiet + " gone quiet." + why +
+                " See Messages on the dashboard.";
             renderHud();
           });
         });
@@ -5398,7 +5465,7 @@
     readChatList: readChatList,
     scanChats: scanChats,
     chatTarget: function () { return chatTarget; },
-    setChatScrollWait: function (ms) { CHAT_SCROLL_WAIT = ms; },
+    setChatScrollWait: function (poll, max) { CHAT_POLL = poll; CHAT_WAIT_MAX = max === undefined ? poll * 3 : max; },
     readConversation: readConversation,
     watchConversation: watchConversation,
     liveSeen: function (id) { return LIVE_SEEN[id] || null; },

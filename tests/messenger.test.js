@@ -157,20 +157,38 @@ check("a failed save is shown in the panel",
 
 /* A list like Facebook's: 120 chats, ten rows rendered at a time, the rest
  * unmounted until scrolled to. Reading it once finds ten. */
-function virtualInbox(total) {
+/* opts.noBox: no element that measures as scrollable — the case where the
+ *   first version read one screen and quit. Rows scroll the list themselves.
+ * opts.lazy: Facebook loads older chats in batches of 20, a while after the
+ *   list reaches the bottom of what it has. */
+function virtualInbox(total, opts) {
+  opts = opts || {};
   var VD = H.makeDoc();
   var vroot = VD.el("div");
   var scroller = VD.el("div");
   vroot.appendChild(scroller);
   var top = 0;
-  scroller.clientHeight = 500;
-  scroller.scrollHeight = total * 50;
+  var loaded = opts.lazy ? 20 : total;
+  if (!opts.noBox) {
+    scroller.clientHeight = 500;
+    Object.defineProperty(scroller, "scrollHeight", { get: function () { return loaded * 50; } });
+  }
+  function moveTo(v) {
+    top = Math.max(0, Math.min(v, loaded * 50 - 500));
+    if (opts.lazy && top >= loaded * 50 - 500 && loaded < total) {
+      setTimeout(function () { loaded = Math.min(total, loaded + 20); render(); }, 15);
+    }
+    render();
+  }
   function render() {
     scroller.children = [];
     var first = Math.floor(top / 50);
-    for (var i = first; i < Math.min(total, first + 10); i++) {
+    for (var i = first; i < Math.min(loaded, first + 10); i++) {
       var a = VD.el("a");
       a.setAttribute("href", "/messages/t/" + (5000 + i) + "/");
+      if (opts.noBox) {
+        (function (index) { a.scrollIntoView = function () { moveTo(index * 50); }; })(i);
+      }
       scroller.appendChild(a);
       var n = VD.el("span"); n.textContent = "Person " + i; a.appendChild(n);
       var l = VD.el("span"); l.textContent = (i % 3 ? "You: ok" : "Is this still available?"); a.appendChild(l);
@@ -179,36 +197,55 @@ function virtualInbox(total) {
   }
   Object.defineProperty(scroller, "scrollTop", {
     get: function () { return top; },
-    set: function (v) { top = Math.max(0, Math.min(v, scroller.scrollHeight - scroller.clientHeight)); render(); }
+    set: function (v) { moveTo(v); }
   });
   render();
   return { doc: VD, root: vroot, scroller: scroller };
 }
 
-function scanTest(total, target, then) {
-  var inbox = virtualInbox(total);
+function scanTest(total, target, opts, then) {
+  var inbox = virtualInbox(total, opts);
   var vapi = runScan({ doc: inbox.doc, root: inbox.root }, "/messages/");
-  vapi.setChatScrollWait(1);
+  vapi.setChatScrollWait(1, opts.lazy ? 200 : 3);
   check("one screen shows only ten", vapi.readChatList().length, 10);
   var seen = [];
-  vapi.scanChats(target, function (n) { seen.push(n); }, function (threads, stopped) {
-    then(threads, stopped, seen, inbox);
+  vapi.scanChats(target, function (n) { seen.push(n); }, function (threads, stopped, reason, scrolls) {
+    then(threads, stopped, seen, inbox, reason, scrolls);
   });
 }
 
 console.log();
 console.log("reading more than one screen");
-scanTest(120, 50, function (threads, stopped, progress, inbox) {
+scanTest(120, 50, {}, function (threads, stopped, progress, inbox, reason) {
   check("scrolls until it has as many as asked", threads.length, 50);
   check("  each chat once", Object.keys(threads.reduce(function (a, t) { a[t.key] = 1; return a; }, {})).length, 50);
   check("  in list order, from the top", [threads[0].name, threads[49].name], ["Person 0", "Person 49"]);
   check("  reporting progress as it goes", progress[progress.length - 1], 50);
   check("  and returns the list to the top", inbox.scroller.scrollTop, 0);
   check("  not stopped", stopped, false);
+  check("  and says why it finished", reason, "reached 50");
 
-  scanTest(120, 250, function (threads2) {
+  scanTest(120, 250, {}, function (threads2, s2, p2, i2, reason2) {
     check("an inbox smaller than asked is read to its end", threads2.length, 120);
-    finishTests();
+    check("  and says it hit the end", /stopped growing|wouldn't scroll/.test(reason2), true);
+
+    console.log();
+    console.log("the reported failure: no box that measures as scrollable");
+    scanTest(120, 100, { noBox: true }, function (threads3, s3, p3, i3, reason3, scrolls3) {
+      check("it still scrolls, by bringing the last row into view", threads3.length, 100);
+      check("  in order, nothing skipped",
+            threads3.map(function (t) { return t.name; }).slice(0, 3).concat([threads3[99].name]),
+            ["Person 0", "Person 1", "Person 2", "Person 99"]);
+      check("  and it took real scrolls, not one read", scrolls3 >= 10, true);
+
+      console.log();
+      console.log("Facebook slow to load older chats");
+      scanTest(100, 250, { lazy: true }, function (threads4, s4, p4, i4, reason4) {
+        check("it waits for each batch instead of quitting at the first pause", threads4.length, 100);
+        check("  and ends only when no more come", /stopped growing|wouldn't scroll/.test(reason4), true);
+        finishTests();
+      });
+    });
   });
 });
 
