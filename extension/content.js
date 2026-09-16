@@ -3854,6 +3854,249 @@
     renderHud();
   }
 
+  /* ------------------------------------------------ comment threads (Phase 0)
+   *
+   * Who commented on a post, and whether you answered them.
+   *
+   * This is the foundation for drafting replies to the comments you missed,
+   * and it is proved before anything is built on it: reading Facebook's markup
+   * is where this product has always failed, and a reply tool that calls an
+   * answered comment "unanswered" makes you look careless in public. So for
+   * now this only reads and reports.
+   *
+   * The structure it relies on is the one signal already trusted elsewhere in
+   * this file: every comment is div[role="article"] labelled "Comment by <name>
+   * <when>", and a reply "Reply by <name> to <name>'s comment <when>".
+   * Replies are assigned to a comment by document order — everything between
+   * one top-level comment and the next — which holds whether Facebook nests a
+   * reply inside its comment or renders it as a sibling after it.
+   *
+   * "Unanswered" is only ever said when it is known. A comment with replies
+   * still folded away behind "View 3 replies" is UNKNOWN, never unanswered.
+   */
+  var COMMENT_AGE_RE = new RegExp(
+    "\\s+(?:(?:about\\s+)?(?:\\d+|an?)\\s+(?:second|minute|hour|day|week|month|year)s?\\s+ago" +
+    "|just now|yesterday|\\d+\\s*[smhdwy])$", "i");
+  var REPLY_TOGGLE_RE =
+    /^(?:(?:view|see)\s+(?:all\s+|previous\s+)?(?:\d+\s+)?(?:more\s+)?repl(?:y|ies)|\d+\s+repl(?:y|ies))$/i;
+  var MORE_COMMENTS_RE =
+    /^(?:view|see)\s+(?:all\s+|previous\s+|more\s+|\d+\s+more\s+|\d+\s+previous\s+)?comments?$/i;
+
+  function parseCommentLabel(label) {
+    var m = String(label || "").trim().replace(/\s+/g, " ").match(/^(comment|reply) by (.+)$/i);
+    if (!m) return null;
+    var rest = m[2].replace(COMMENT_AGE_RE, "");
+    var to = null;
+    var t = rest.match(/^(.+?)\s+to\s+(.+?)['’]s?\s+(?:comment|reply)$/i);
+    if (t) { rest = t[1]; to = t[2].replace(/['’]$/, ""); }
+    return { kind: m[1].toLowerCase(), author: rest.trim(), to: to };
+  }
+
+  /* Who "you" are, for this thread.
+   *
+   * The comment box under an open post says "Comment as Jeff Randle", which
+   * is the account that would be replying — the most direct statement of it
+   * on the page, and right beside the comments. The names learned from the
+   * banner are added to it. Full names only: that set also holds first names
+   * on their own, and "Jeff" replying is not proof that YOU replied.
+   */
+  var COMMENT_AS_RE = /^comment as (.+)$/i;
+  var lastCommentReport = "";     // the HUD's one-line result of the last report
+
+  function myNamesIn(scope) {
+    var names = Object.create(null);
+    var nodes = scope.querySelectorAll("[aria-label], [placeholder], span, div");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var candidates = [el.getAttribute("aria-label"), el.getAttribute("placeholder")];
+      if (!(el.children && el.children.length)) candidates.push(el.innerText);
+      for (var c = 0; c < candidates.length; c++) {
+        var raw = visibleText(candidates[c] || "").replace(/\s+/g, " ").trim();
+        if (!raw || raw.length > 60) continue;
+        var m = raw.match(COMMENT_AS_RE);
+        if (m) names[m[1].replace(/[….]+$/, "").trim().toLowerCase()] = "composer";
+      }
+    }
+    Object.keys(viewerNames()).forEach(function (n) {
+      if (n.indexOf(" ") !== -1 && !names[n]) names[n] = "banner";
+    });
+    return names;
+  }
+
+  // The post that is open, if one is: the dialog that actually holds comments.
+  // Facebook keeps other dialogs mounted, so the first one is not necessarily it.
+  function openPostDialog() {
+    var dialogs = document.querySelectorAll('[role="dialog"]');
+    for (var i = 0; i < dialogs.length; i++) {
+      var inner = dialogs[i].querySelectorAll('div[role="article"]');
+      for (var j = 0; j < inner.length; j++) {
+        if (parseCommentLabel(inner[j].getAttribute("aria-label"))) return dialogs[i];
+      }
+    }
+    return null;
+  }
+
+  function commentText(article, author) {
+    var blocks = article.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+    for (var i = 0; i < blocks.length; i++) {
+      var el = blocks[i];
+      var owner = el.closest ? el.closest('div[role="article"]') : null;
+      if (owner && owner !== article) continue;          // a nested reply's text
+      var text = visibleText(el.innerText || "").replace(/\s+/g, " ").trim();
+      if (!text || text === author || CHROME_RE.test(text) || isOnlyChrome(text)) continue;
+      // The badges Facebook pins beside a commenter's name.
+      if (/^(author|top fan|admin|moderator|group expert|rising contributor|follow)$/i.test(text)) continue;
+      return text;
+    }
+    return "";
+  }
+
+  function readCommentThread() {
+    var dialog = openPostDialog();
+    var scope = dialog || document;
+    var myNames = myNamesIn(scope);
+    var articles = scope.querySelectorAll('div[role="article"]');
+    var comments = [];
+    for (var i = 0; i < articles.length; i++) {
+      var parsed = parseCommentLabel(articles[i].getAttribute("aria-label"));
+      if (!parsed) continue;
+      var parentComment = articles[i].parentElement && articles[i].parentElement.closest
+        ? articles[i].parentElement.closest('div[role="article"]') : null;
+      comments.push({
+        el: articles[i],
+        label: articles[i].getAttribute("aria-label"),
+        kind: parsed.kind === "reply" || (parentComment && parseCommentLabel(
+          parentComment.getAttribute("aria-label"))) ? "reply" : "comment",
+        author: parsed.author,
+        to: parsed.to,
+        mine: !!myNames[parsed.author.replace(/\s+/g, " ").toLowerCase()],
+        text: commentText(articles[i], parsed.author),
+        hiddenReplies: 0,
+        replies: []
+      });
+    }
+
+    // Folded replies and folded comments, each assigned to the comment it
+    // follows. Leaf text only, so a wrapper holding the words does not count
+    // twice.
+    var moreComments = 0;
+    var toggles = scope.querySelectorAll('div[role="button"], span[role="button"], span');
+    for (var j = 0; j < toggles.length; j++) {
+      var node = toggles[j];
+      if (node.children && node.children.length) continue;
+      var label = visibleText(node.innerText || "").replace(/\s+/g, " ").trim();
+      if (!label || label.length > 40) continue;
+      if (MORE_COMMENTS_RE.test(label)) { moreComments++; continue; }
+      if (!REPLY_TOGGLE_RE.test(label)) continue;
+      var owner = null;
+      for (var k = 0; k < comments.length; k++) {
+        if (comments[k].el === node || comments[k].el.contains(node) ||
+            comments[k].el.compareDocumentPosition(node) & 4) owner = comments[k];
+      }
+      if (owner) owner.hiddenReplies++;
+    }
+
+    // Each reply belongs to the nearest top-level comment before it.
+    var threads = [];
+    var current = null;
+    comments.forEach(function (c) {
+      if (c.kind === "comment") { current = c; threads.push(c); }
+      else if (current) { current.replies.push(c); current.hiddenReplies += c.hiddenReplies; }
+    });
+
+    threads.forEach(function (c) {
+      if (c.mine) c.verdict = "yours";
+      else if (c.replies.some(function (r) { return r.mine; })) c.verdict = "answered";
+      else if (c.hiddenReplies) c.verdict = "unknown";
+      else c.verdict = "unanswered";
+    });
+
+    return {
+      scope: dialog ? "post dialog" : "page",
+      viewer: Object.keys(myNames),
+      viewerFrom: myNames,
+      comments: comments,
+      threads: threads,
+      moreComments: moreComments
+    };
+  }
+
+  function saveCommentReport() {
+    var lines = [];
+    var version = "?";
+    try { version = chrome.runtime.getManifest().version; } catch (e) {}
+    var r = readCommentThread();
+    var nl = String.fromCharCode(10);
+
+    lines.push("TALLGRASS COMMENT REPORT");
+    lines.push("version  : " + version);
+    lines.push("url      : " + location.pathname);
+    lines.push("read from: " + r.scope);
+    lines.push("you are  : " + (r.viewer.length ? JSON.stringify(r.viewerFrom)
+      : "NOT DETECTED  <- every verdict below is unreliable"));
+    lines.push("comments : " + r.threads.length + " top-level, " +
+      (r.comments.length - r.threads.length) + " replies");
+    if (r.moreComments) {
+      lines.push("WARNING  : " + r.moreComments + " 'View more comments' control(s) still on the " +
+        "page. Expand them and save again, or some comments are missing.");
+    }
+    var tally = { answered: 0, unanswered: 0, unknown: 0, yours: 0 };
+    r.threads.forEach(function (c) { tally[c.verdict]++; });
+    lines.push("verdicts : " + JSON.stringify(tally));
+    lines.push("");
+    lines.push("Check each line against what you see on Facebook. Anything wrong is");
+    lines.push("the thing to fix before replies can be drafted.");
+    lines.push("");
+
+    r.threads.forEach(function (c, n) {
+      lines.push((n + 1) + ". " + c.verdict.toUpperCase() + "  —  " + (c.author || "NO AUTHOR READ") +
+        (c.mine ? " (you)" : ""));
+      lines.push("   says : " + (c.text ? JSON.stringify(c.text.slice(0, 100)) : "NO TEXT READ"));
+      if (c.hiddenReplies) lines.push("   folded replies: " + c.hiddenReplies);
+      c.replies.forEach(function (rep) {
+        lines.push("   ↳ " + (rep.author || "NO AUTHOR READ") + (rep.mine ? " (you)" : "") +
+          (rep.to ? " → to " + rep.to : "") + ": " +
+          (rep.text ? JSON.stringify(rep.text.slice(0, 80)) : "NO TEXT READ"));
+      });
+      lines.push("");
+    });
+
+    // The raw shape, so a wrong verdict can be fixed from the real markup
+    // rather than from a guess about it.
+    lines.push("--- raw labels, in page order ---");
+    r.comments.forEach(function (c) { lines.push("  " + JSON.stringify(c.label)); });
+    lines.push("");
+    [r.comments.filter(function (c) { return c.kind === "comment"; })[0],
+     r.comments.filter(function (c) { return c.kind === "reply"; })[0]].forEach(function (c) {
+      if (!c) return;
+      lines.push("--- first " + c.kind + ": ancestors ---");
+      var up = c.el;
+      for (var a = 0; a < 8 && up.parentElement; a++) {
+        up = up.parentElement;
+        lines.push("  " + up.tagName + " role=" + (up.getAttribute("role") || "-") +
+          " label=" + JSON.stringify((up.getAttribute("aria-label") || "").slice(0, 60)));
+      }
+      lines.push("--- first " + c.kind + ": markup ---");
+      lines.push((c.el.outerHTML || "").slice(0, 15000));
+      lines.push("");
+    });
+
+    var text = lines.join(nl);
+    try {
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      link.download = "tallgrass-comment-report.txt";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      logLine("Saved tallgrass-comment-report.txt to Downloads");
+    } catch (e) {
+      console.log(text);
+    }
+    return { threads: r.threads.length, verdicts: tally, moreComments: r.moreComments,
+             viewerFound: r.viewer.length > 0 };
+  }
+
   function renderHud() {
     if (!hud) return;
     hudBody.textContent = "";
@@ -3968,6 +4211,39 @@
       hudBody.appendChild(ideas);
     }
 
+    /* Reading an open post's comments (testing, Phase 0 of reply drafting).
+     *
+     * Offered only while a post with comments is open — which is where you
+     * are when you want it, and not in the way of a scan the rest of the time.
+     */
+    if (!autoScrolling && openPostDialog()) {
+      var readComments = document.createElement("button");
+      readComments.textContent = "Save comment report";
+      styleEl(readComments, {
+        width: "100%", marginTop: "0.65em", padding: "0.7em", borderRadius: "8px",
+        border: "1px solid rgba(110,231,183,0.4)", cursor: "pointer",
+        background: "rgba(52,211,153,0.14)", color: "#6ee7b7",
+        fontSize: "0.95em", fontWeight: "650"
+      });
+      readComments.addEventListener("click", function () {
+        var r = saveCommentReport();
+        var v = r.verdicts;
+        lastCommentReport = r.threads + " comments: " + v.unanswered + " unanswered, " +
+          v.answered + " answered, " + v.unknown + " unclear, " + v.yours + " yours." +
+          (r.viewerFound ? "" : " Your name was not detected.") +
+          (r.moreComments ? " Some comments are still folded — expand and save again." : "") +
+          " Saved to Downloads.";
+        renderHud();
+      });
+      hudBody.appendChild(readComments);
+      if (lastCommentReport) {
+        var said = document.createElement("div");
+        said.textContent = lastCommentReport;
+        styleEl(said, { marginTop: "0.4em", fontSize: "0.88em", color: "#9fc3b1" });
+        hudBody.appendChild(said);
+      }
+    }
+
     if (STATS.lastError) {
       var err = document.createElement("div");
       err.textContent = STATS.lastError;
@@ -4039,6 +4315,10 @@
     }
     if (message.type === "OUTLIER_SCAN")  { scanPosts(); flush(); sendResponse({ ok: true, stats: STATS }); }
     if (message.type === "OUTLIER_STATS") { sendResponse({ ok: true, stats: STATS, scrolling: autoScrolling }); }
+    if (message.type === "OUTLIER_COMMENT_REPORT") {
+      try { sendResponse(Object.assign({ ok: true }, saveCommentReport())); }
+      catch (e) { sendResponse({ ok: false, error: String(e && e.message || e) }); }
+    }
   });
 
   /* Capture only while a scan is running.
@@ -4130,6 +4410,9 @@
     // product. Run __outlier.savePageReport() if the extractors need
     // debugging against a real page.
     savePageReport: savePageReport,
+    readCommentThread: readCommentThread,
+    parseCommentLabel: parseCommentLabel,
+    saveCommentReport: saveCommentReport,
     // A function, not the object: STATS is reassigned when the source
     // changes, so a captured reference goes stale and reads as all zeros.
     stats: function () { return STATS; },

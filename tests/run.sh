@@ -49,6 +49,8 @@ echo "--- truncation keeps characters whole ---"
 node tests/surrogate.test.js
 echo "--- members and followers ---"
 node tests/audience.test.js
+echo "--- comment threads and who answered ---"
+node tests/comments.test.js
 echo "--- captions ---"
 node tests/caption.test.js
 echo "--- timestamps ---"

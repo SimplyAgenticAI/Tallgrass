@@ -1,0 +1,156 @@
+/* Who commented, and did you answer them.
+ *
+ * Phase 0 of reply drafting: the thread has to read right before anything is
+ * drafted from it. A reply tool that calls an answered comment "unanswered"
+ * makes you look careless in public, so these tests are mostly about the ways
+ * that could happen — a different Jeff replying, replies nested inside their
+ * comment instead of after it, and replies folded away out of sight.
+ *
+ * The real-page check is the comment report saved from the popup; this pins
+ * the logic so the fixes that report prompts cannot quietly undo each other.
+ *
+ * Run: node tests/comments.test.js
+ */
+var H = require("./harness");
+var runScan = H.runScan;
+
+var FAILURES = [];
+
+function check(name, got, want) {
+  var ok = JSON.stringify(got) === JSON.stringify(want);
+  console.log((ok ? "  ok   " : " FAIL  ") + name +
+    (ok ? "" : "   got " + JSON.stringify(got) + ", want " + JSON.stringify(want)));
+  if (!ok) { FAILURES.push(name); }
+}
+
+var api = runScan(H.buildPage([]), "/groups/1/");
+
+console.log("labels");
+check("a comment", api.parseCommentLabel("Comment by Jane Doe 2 days ago"),
+      { kind: "comment", author: "Jane Doe", to: null });
+check("a reply names who it answers",
+      api.parseCommentLabel("Reply by Jeff Randle to Jane Doe's comment 1 day ago"),
+      { kind: "reply", author: "Jeff Randle", to: "Jane Doe" });
+check("a curly apostrophe",
+      api.parseCommentLabel("Reply by Jeff Randle to Jane Doe’s comment 3h"),
+      { kind: "reply", author: "Jeff Randle", to: "Jane Doe" });
+check("no age at all", api.parseCommentLabel("Comment by Ana Ruiz"),
+      { kind: "comment", author: "Ana Ruiz", to: null });
+check("a post is not a comment", api.parseCommentLabel("Jane Doe's post"), null);
+
+// Built strictly top-down: the harness orders elements by when they were
+// attached, so a child attached before its parent would read as coming first.
+var D = H.makeDoc();
+var root = D.el("div");
+
+function add(parent, tag, attrs, text) {
+  var e = D.el(tag);
+  parent.appendChild(e);
+  Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+  if (text) e.textContent = text;
+  return e;
+}
+
+function comment(parent, label, author, says) {
+  var a = add(parent, "div", { role: "article", "aria-label": label });
+  add(a, "div", { dir: "auto" }, author);
+  add(a, "div", { dir: "auto" }, says);
+  add(a, "div", { role: "button" }, "Reply");
+  return a;
+}
+
+var banner = add(root, "div", { role: "banner" });
+add(banner, "a", { "aria-label": "Jeff Randle" });
+
+var dialog = add(root, "div", { role: "dialog" });
+add(dialog, "div", { dir: "auto" }, "New website packages are live this week");
+
+comment(dialog, "Comment by Jane Doe 2 days ago", "Jane Doe", "How much for the website package?");
+comment(dialog, "Reply by Jeff Randle to Jane Doe's comment 1 day ago", "Jeff Randle", "Sent you a DM!");
+
+comment(dialog, "Comment by Mark Twain 3 hours ago", "Mark Twain", "Do you do logos too?");
+
+comment(dialog, "Comment by Sara Lee 5h", "Sara Lee", "Great post");
+add(dialog, "span", { role: "button" }, "View 2 replies");
+
+comment(dialog, "Comment by Jeff Randle 1 hour ago", "Jeff Randle", "Thanks everyone");
+
+comment(dialog, "Comment by Tom Hanks 2 days ago", "Tom Hanks", "Is this still available?");
+comment(dialog, "Reply by Jeff Smith to Tom Hanks's comment 1 day ago", "Jeff Smith", "Following");
+
+// The nested shape: the reply lives inside its comment.
+var nested = comment(dialog, "Comment by Ana Ruiz 1 day ago", "Ana Ruiz", "Can I book a call?");
+comment(nested, "Reply by Jeff Randle to Ana Ruiz's comment 20 hours ago", "Jeff Randle", "Yes, link sent");
+
+var badge = comment(dialog, "Comment by Lee Chan 4 days ago", "Lee Chan", "");
+// "Top fan" sits where the text would be, and must not be read as the comment.
+badge.children[1].textContent = "Top fan";
+add(badge, "div", { dir: "auto" }, "Where are you based?");
+
+add(dialog, "span", { role: "button" }, "View more comments");
+
+// Noise outside the post dialog, which must be ignored.
+comment(root, "Comment by Someone Else 1 day ago", "Someone Else", "Not this post");
+
+api = runScan({ doc: D, root: root }, "/jeffrandle");
+api.resetViewerNames();
+var r = api.readCommentThread();
+
+function verdictOf(author) {
+  return r.threads.filter(function (c) { return c.author === author; })
+    .map(function (c) { return c.verdict; })[0];
+}
+
+console.log();
+console.log("a real thread");
+check("reads from the open post, not the page", r.scope, "post dialog");
+check("knows who you are", r.viewer, ["jeff randle"]);
+check("top-level comments", r.threads.length, 7);
+check("replies are not top-level", r.comments.length - r.threads.length, 3);
+check("your reply answers it", verdictOf("Jane Doe"), "answered");
+check("no reply is unanswered", verdictOf("Mark Twain"), "unanswered");
+check("folded replies are unknown, never unanswered", verdictOf("Sara Lee"), "unknown");
+check("your own comment is yours", verdictOf("Jeff Randle"), "yours");
+check("a different Jeff is not you", verdictOf("Tom Hanks"), "unanswered");
+check("a reply nested inside its comment still counts", verdictOf("Ana Ruiz"), "answered");
+check("the comment text is read", r.threads[0].text, "How much for the website package?");
+check("a badge is not the comment",
+      r.threads.filter(function (c) { return c.author === "Lee Chan"; })[0].text,
+      "Where are you based?");
+check("folded comments are flagged", r.moreComments, 1);
+check("nothing outside the dialog",
+      r.comments.some(function (c) { return c.author === "Someone Else"; }), false);
+
+console.log();
+console.log("you, from the comment box, with no name in the banner");
+// The shape of a real post dialog: Facebook keeps another dialog mounted
+// first, the banner carries only "Your profile", and the one thing on the
+// page that names you is the composer under the post.
+D = H.makeDoc();
+root = D.el("div");
+var bare = add(root, "div", { role: "banner" });
+add(bare, "a", { "aria-label": "Your profile" });
+add(root, "div", { role: "dialog" }, "Notifications");
+var post = add(root, "div", { role: "dialog" });
+comment(post, "Comment by Jeff Randle 1w", "Jeff Randle", "Some seasons of building feel like progress.");
+comment(post, "Comment by Daniel Medina 2w", "Daniel Medina", "quack!");
+add(post, "span", { role: "button" }, "View 1 reply");
+comment(post, "Comment by Chris M Utter 2w", "Chris M Utter", "I can vouch for both the guys in this image.");
+add(post, "div", {}, "Comment as Jeff Randle");
+
+api = runScan({ doc: D, root: root }, "/TheLucidMage89");
+api.resetViewerNames();
+r = api.readCommentThread();
+check("the post dialog, not the first dialog", r.scope, "post dialog");
+check("named by the comment box", r.viewerFrom, { "jeff randle": "composer" });
+check("so your comment is yours", verdictOf("Jeff Randle"), "yours");
+check("a folded reply is unclear", verdictOf("Daniel Medina"), "unknown");
+check("and an unreplied comment is unanswered", verdictOf("Chris M Utter"), "unanswered");
+
+console.log();
+if (FAILURES.length) {
+  console.log(FAILURES.length + " FAILURES");
+  process.exit(1);
+}
+console.log("threads read the way you would read them");
+process.exit(0);
