@@ -49,6 +49,8 @@ echo "--- truncation keeps characters whole ---"
 node tests/surrogate.test.js
 echo "--- members and followers ---"
 node tests/audience.test.js
+echo "--- posts to scan, from the panel ---"
+node tests/limits.test.js
 echo "--- comment threads and who answered ---"
 node tests/comments.test.js
 echo "--- messenger chats and conversations ---"

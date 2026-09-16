@@ -5174,30 +5174,8 @@
         if (chatScan) chatScan.stopped = true;
       }));
     } else {
-      // How many chats to read. Buttons rather than a dropdown: the panel
-      // redraws every few seconds, which would close an open dropdown.
-      var picker = document.createElement("div");
-      styleEl(picker, { display: "flex", alignItems: "center", gap: "0.35em",
-                        marginTop: "0.65em", fontSize: "0.88em", color: "#9fc3b1" });
-      var label = document.createElement("span");
-      label.textContent = "Chats to read:";
-      styleEl(label, { marginRight: "0.2em" });
-      picker.appendChild(label);
-      CHAT_TARGETS.forEach(function (n) {
-        var choice = document.createElement("button");
-        choice.textContent = String(n);
-        var on = n === chatTarget;
-        styleEl(choice, {
-          flex: "1", padding: "0.35em 0", borderRadius: "6px", cursor: "pointer",
-          fontSize: "0.95em", fontWeight: on ? "700" : "500",
-          border: "1px solid " + (on ? "rgba(110,231,183,0.7)" : "rgba(110,231,183,0.2)"),
-          background: on ? "rgba(52,211,153,0.22)" : "transparent",
-          color: on ? "#6ee7b7" : "#7fa693"
-        });
-        choice.addEventListener("click", function () { setChatTarget(n); renderHud(); });
-        picker.appendChild(choice);
-      });
-      body.appendChild(picker);
+      body.appendChild(hudPicker("Chats to read:", CHAT_TARGETS, chatTarget,
+                                 function (n) { setChatTarget(n); }));
 
       body.appendChild(button("Find unanswered chats", function () {
         var target = chatTarget;
@@ -5280,6 +5258,50 @@
       }
     }
     return true;
+  }
+
+  /* A row of numbers to pick one from — how many chats, how many posts.
+   * Buttons rather than a dropdown: the panel redraws every few seconds, which
+   * would close a dropdown while it was open. */
+  function hudPicker(labelText, options, current, onPick) {
+    var picker = document.createElement("div");
+    styleEl(picker, { display: "flex", alignItems: "center", gap: "0.35em",
+                      marginTop: "0.65em", fontSize: "0.88em", color: "#9fc3b1" });
+    var label = document.createElement("span");
+    label.textContent = labelText;
+    styleEl(label, { marginRight: "0.2em", whiteSpace: "nowrap" });
+    picker.appendChild(label);
+    options.forEach(function (n) {
+      var choice = document.createElement("button");
+      choice.textContent = String(n);
+      var on = n === current;
+      styleEl(choice, {
+        flex: "1", padding: "0.35em 0", borderRadius: "6px", cursor: "pointer",
+        fontSize: "0.95em", fontWeight: on ? "700" : "500",
+        border: "1px solid " + (on ? "rgba(110,231,183,0.7)" : "rgba(110,231,183,0.2)"),
+        background: on ? "rgba(52,211,153,0.22)" : "transparent",
+        color: on ? "#6ee7b7" : "#7fa693"
+      });
+      choice.addEventListener("click", function () { onPick(n); renderHud(); });
+      picker.appendChild(choice);
+    });
+    return picker;
+  }
+
+  /* How many posts a group, page or profile scan stops at, from the panel.
+   *
+   * The limit always existed, but only as a slider in the toolbar popup that
+   * most people never open — the panel just showed "0 / 200" with no way to
+   * change the 200. Same setting as that slider (maxPosts, with the time
+   * ceiling scaled the same way), so the two always agree, and a change
+   * applies to a scan already running.
+   */
+  var POST_TARGETS = [50, 100, 200, 500];
+
+  function setPostTarget(n) {
+    maxPosts = n;
+    maxMinutes = Math.max(5, Math.round(n / 20));
+    try { chrome.storage.local.set({ maxPosts: n, maxMinutes: maxMinutes }); } catch (e) {}
   }
 
   function hudButton(label, onClick) {
@@ -5447,6 +5469,11 @@
       SEEN.size + " / " + maxPosts,
       SEEN.size >= maxPosts ? "#6ee7b7" : null
     ));
+    // The number after the slash, changeable right here. Not on Messenger,
+    // which has its own picker for chats.
+    if (!onMessenger()) {
+      hudBody.appendChild(hudPicker("Posts to scan:", POST_TARGETS, maxPosts, setPostTarget));
+    }
     hudBody.appendChild(row("Sent to dashboard", String(STATS.sent)));
     hudBody.appendChild(row("New (not duplicates)", String(STATS.added), "#6ee7b7"));
 
@@ -5754,6 +5781,8 @@
     commentPayload: function () { return commentPayload().body; },
     injectQuickRespond: injectQuickRespond,
     perf: function () { return PERF; },
+    setPostTarget: setPostTarget,
+    postLimits: function () { return { maxPosts: maxPosts, maxMinutes: maxMinutes }; },
     expandThread: expandThread,
     saveComments: sendComments,
     watchComments: watchComments,
