@@ -19,6 +19,7 @@ import billing
 import db
 import comments
 import messages
+import reply_samples
 import today
 import demo_snapshot
 import funnel
@@ -65,7 +66,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "26.9"
+APP_VERSION = "27.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1490,13 +1491,37 @@ def go_store():
 # ---------------------------------------------------------------- today
 
 
+def _ai_meter():
+    """How much of the monthly AI allowance is used, when one applies.
+
+    Only on the shared key: somebody on their own key has no allowance, and
+    the owner is never metered. Shown where drafts are made, so the limit is
+    something people can see coming rather than an error mid-reply.
+    """
+    user = auth.current_user()
+    if not user or billing.is_admin(user):
+        return None
+    try:
+        if sage.get_config().get("key_source") != "environment":
+            return None
+        pro = billing.is_pro(user)
+        cap = billing.AI_LIMITS["pro" if pro else "free"]
+        used = db.ai_calls_this_month(user["id"])
+    except Exception:                                  # noqa: BLE001
+        return None
+    return {"used": used, "cap": cap, "left": max(0, cap - used), "pro": pro,
+            "pro_cap": billing.AI_LIMITS["pro"]}
+
+
 @app.route("/today")
 @auth.login_required
 def today_page():
     """Everyone waiting on an answer — comments and chats — in one queue."""
+    reply_samples.seed_once(_uid())
     return render_template(
         "today.html",
         queue=today.queue(_uid()),
+        ai_meter=_ai_meter(),
         version=APP_VERSION,
         active="today",
     )
@@ -1510,9 +1535,11 @@ def today_page():
 def comments_page():
     """Comments on your own posts, the ones you have not answered first."""
     show_done = request.args.get("done") == "1"
+    reply_samples.seed_once(_uid())
     data = comments.threads_for(_uid(), show_done=show_done)
     return render_template(
         "comments.html",
+        ai_meter=_ai_meter(),
         posts=data["posts"],
         totals=data["totals"],
         show_done=show_done,
@@ -1637,8 +1664,10 @@ def _api_user():
 @auth.login_required
 def messages_page():
     """Messenger chats waiting on an answer, and ones that went quiet."""
+    reply_samples.seed_once(_uid())
     return render_template(
         "messages.html",
+        ai_meter=_ai_meter(),
         inbox=messages.inbox(_uid()),
         version=APP_VERSION,
         active="messages",
@@ -1970,6 +1999,9 @@ def register():
                 if not claimed:
                     try:
                         seed_demo_data(user["id"])
+                        # And example comments and chats, so Today, Comments
+                        # and Messages show what they are for from the start.
+                        reply_samples.seed_once(user["id"])
                     except Exception:         # noqa: BLE001
                         # Sample data is a courtesy. Failing to write it must
                         # never cost somebody the account they just made.

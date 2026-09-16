@@ -1,0 +1,14 @@
+{# How much of the monthly AI allowance is left, where drafts are made.
+   Only rendered when an allowance applies (shared key, not the owner). #}
+{% if ai_meter %}
+<p class="fine ai-meter{{ ' is-out' if not ai_meter.left }}">
+  ✨ {{ ai_meter.used }} of {{ ai_meter.cap }} AI drafts used this month.
+  {% if not ai_meter.left %}
+    You've reached this month's allowance —
+    {% if not ai_meter.pro %}<a href="{{ url_for('pricing') }}">upgrade for {{ ai_meter.pro_cap }}</a>, or{% endif %}
+    add your own AI key in <a href="{{ url_for('settings') }}">Settings</a> for no limit.
+  {% elif not ai_meter.pro and ai_meter.left <= 10 %}
+    {{ ai_meter.left }} left — <a href="{{ url_for('pricing') }}">Pro includes {{ ai_meter.pro_cap }}</a>.
+  {% endif %}
+</p>
+{% endif %}

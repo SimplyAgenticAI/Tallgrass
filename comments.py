@@ -56,6 +56,9 @@ def save_thread(user_id, payload):
     counts = {v: 0 for v in VERDICTS}
     new = 0
     with db.get_db() as conn:
+        # The first real save replaces the examples, in this same transaction.
+        import reply_samples
+        reply_samples.clear_comment_samples(conn, user_id)
         # The same post, reached another way.
         #
         # A post opened from a profile, from its own link or from a photo can
@@ -258,9 +261,11 @@ def recent_own_replies(user_id, limit=5):
     """
     with db.get_db() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT body FROM post_comments "
-            "WHERE user_id = ? AND is_mine = 1 AND LENGTH(body) >= 15 "
-            "ORDER BY seen_at DESC LIMIT ?", (user_id, int(limit))).fetchall()
+            "SELECT DISTINCT c.body FROM post_comments c "
+            "JOIN comment_posts p ON p.id = c.post_id "
+            "WHERE c.user_id = ? AND c.is_mine = 1 AND LENGTH(c.body) >= 15 "
+            "AND p.is_demo = 0 "              # an example reply is not their voice
+            "ORDER BY c.seen_at DESC LIMIT ?", (user_id, int(limit))).fetchall()
     return [r["body"] for r in rows]
 
 

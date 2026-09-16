@@ -26,13 +26,16 @@
   </div>
 </section>
 
+{% include "_ai_meter.html" %}
+{% if posts|selectattr("is_demo")|list %}{% include "_sample_note.html" %}{% endif %}
+
 {% if not posts %}
 <div class="glass empty-panel">
   {% include "_empty_mark.html" %}
   <p>
-    No comments saved yet. On Facebook, open one of your posts, click every
-    <b>View replies</b> so the whole thread shows, then press
-    <b>Save comments to {{ app_name }}</b> in the {{ app_name }} panel.
+    No comments saved yet. On Facebook, open one of your posts and press
+    <b>Save comments to {{ app_name }}</b> in the {{ app_name }} panel — it opens
+    every folded comment and reply for you first.
   </p>
   <a class="btn btn-primary" href="{{ url_for('capture') }}">Get the extension</a>
 </div>
@@ -42,7 +45,7 @@
 <section class="glass panel cm-post">
   <header class="cm-post-head">
     <div>
-      <div class="cm-post-title">{{ post.title or "Your post" }}</div>
+      <div class="cm-post-title">{{ post.title or "Your post" }}{% if post.is_demo %} <span class="demo-chip">sample</span>{% endif %}</div>
       <div class="fine">
         Read {{ (post.read_at or '')[:16] }} UTC
         {%- if post.counts.unanswered %} · <span class="sa-warn">{{ post.counts.unanswered }} unanswered</span>{% endif %}

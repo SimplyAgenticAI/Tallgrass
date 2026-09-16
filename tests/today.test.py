@@ -53,9 +53,10 @@ def main():
         csrf = s.get("csrf_token")
     headers = {"X-Outlier-Key": key}
 
-    print("an empty queue")
-    check("the page renders with nobody waiting", "Nobody is waiting on you" in
-          me.get("/today").get_data(as_text=True), True)
+    print("a new account")
+    first = me.get("/today").get_data(as_text=True)
+    check("the page shows labelled examples", "These are examples" in first, True)
+    check("  and no red count for them", 'class="nav-count"' in first, False)
 
     body = me.post("/api/comments", headers=headers, json={
         "post": {"key": "p:1", "title": "New website packages"},
@@ -107,8 +108,10 @@ def main():
     other = appmod.app.test_client()
     other.post("/register", data={"email": "o@example.com", "password": "a-long-enough-pass",
                                   "password_confirm": "a-long-enough-pass", "username": "willow"})
-    check("another account's Today is empty",
-          "Nobody is waiting on you" in other.get("/today").get_data(as_text=True), True)
+    theirs = other.get("/today").get_data(as_text=True)
+    check("another account sees only its own examples, none of mine",
+          ("These are examples" in theirs, "Jane Doe" in theirs, "Lee Chan" in theirs),
+          (True, False, False))
 
     shutil.rmtree(tmp, ignore_errors=True)
     print()

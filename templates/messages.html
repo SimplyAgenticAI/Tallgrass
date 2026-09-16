@@ -11,6 +11,7 @@
     {% else %}<span class="cm-chip">Waiting</span>{% endif %}
     {% if t.unread %}<span class="uh-tag">unread</span>{% endif %}
     <b class="cm-author">{{ t.name or "Unnamed chat" }}</b>
+    {% if t.is_demo %}<span class="demo-chip">sample</span>{% endif %}
     <p class="fine" style="margin:4px 0 0">
       {% if stage == "replied" %}You replied{% elif stage == "quiet" %}You messaged last{% else %}They messaged last{% endif %}
       {%- if t.last_at %}, about {{ t.last_at | ago }}{% endif %}.
@@ -47,6 +48,9 @@
     </p>
   </div>
 </section>
+
+{% include "_ai_meter.html" %}
+{% if (inbox.waiting + inbox.replied + inbox.quiet)|selectattr("is_demo")|list %}{% include "_sample_note.html" %}{% endif %}
 
 <div class="glass panel cm-post">
   <p class="fine" style="margin:0">

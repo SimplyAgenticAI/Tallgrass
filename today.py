@@ -27,14 +27,14 @@ def queue(user_id):
         comment_rows = conn.execute(
             """
             SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft,
-                   c.first_seen_at, p.title AS post_title, p.url AS post_url
+                   c.first_seen_at, p.title AS post_title, p.url AS post_url, p.is_demo
             FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
             WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
               AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown')
             """, (user_id,)).fetchall()
         chat_rows = conn.execute(
             """
-            SELECT id, name, url, last_at, signal, unread FROM message_threads
+            SELECT id, name, url, last_at, signal, unread, is_demo FROM message_threads
             WHERE user_id = ? AND status = 'open' AND last_from = 'them'
             """, (user_id,)).fetchall()
 
@@ -51,6 +51,7 @@ def queue(user_id):
             "verdict": r["verdict"],
             "hidden_replies": r["hidden_replies"],
             "draft": r["draft"],
+            "sample": bool(r["is_demo"]),
             "opportunity": bool(OPPORTUNITY_RE.search(r["body"] or "")),
             "question": (r["body"] or "").rstrip().endswith("?"),
         })
@@ -64,6 +65,7 @@ def queue(user_id):
             "url": r["url"],
             "when": (r["last_at"] or "").replace("T", " "),
             "unread": bool(r["unread"]),
+            "sample": bool(r["is_demo"]),
             "opportunity": r["signal"] == "opportunity",
             "question": r["signal"] == "question",
         })
@@ -75,17 +77,23 @@ def queue(user_id):
         "comments": sum(1 for i in items if i["kind"] == "comment"),
         "messages": sum(1 for i in items if i["kind"] == "message"),
         "opportunities": sum(1 for i in items if i["opportunity"]),
+        "samples": any(i["sample"] for i in items),
     }
 
 
 def waiting_count(user_id):
-    """How many people are waiting on an answer. Cheap: two counts."""
+    """How many people are waiting on an answer. Cheap: two counts.
+
+    Examples are never counted: this is the number on a red badge, and it
+    should only ever mean somebody real is waiting.
+    """
     with db.get_db() as conn:
         comments = conn.execute(
-            "SELECT COUNT(*) FROM post_comments WHERE user_id = ? AND parent_key IS NULL "
-            "AND status = 'open' AND is_mine = 0 AND verdict IN ('unanswered', 'unknown')",
+            "SELECT COUNT(*) FROM post_comments c JOIN comment_posts p ON p.id = c.post_id "
+            "WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open' "
+            "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0",
             (user_id,)).fetchone()[0]
         chats = conn.execute(
             "SELECT COUNT(*) FROM message_threads WHERE user_id = ? AND status = 'open' "
-            "AND last_from = 'them'", (user_id,)).fetchone()[0]
+            "AND last_from = 'them' AND is_demo = 0", (user_id,)).fetchone()[0]
     return comments + chats

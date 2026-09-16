@@ -485,6 +485,12 @@ def _migrate(conn):
 
     # The last reply drafted for a comment, so a draft asked for on Facebook is
     # still there on the Comments page. Added after the table first shipped.
+    # Sample rows, so a new account's Comments, Messages and Today show what
+    # they are for. Removed the moment real ones are saved. See reply_samples.py.
+    for table in ("comment_posts", "message_threads"):
+        if "is_demo" not in _columns(conn, table):
+            conn.execute("ALTER TABLE %s ADD COLUMN is_demo INTEGER DEFAULT 0" % table)
+
     comment_cols = _columns(conn, "post_comments")
     if "draft" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")

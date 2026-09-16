@@ -23,6 +23,9 @@
   {% endif %}
 </section>
 
+{% include "_ai_meter.html" %}
+{% if queue.samples %}{% include "_sample_note.html" %}{% endif %}
+
 {% if not queue.entries %}
 <div class="glass empty-panel">
   {% include "_empty_mark.html" %}
@@ -46,6 +49,7 @@
         {% if item.opportunity %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
         {% elif item.question %}<span class="cm-chip cm-chip-unknown">Question</span>{% endif %}
         <span class="cm-chip">{{ 'Comment' if item.kind == 'comment' else 'Message' }}</span>
+        {% if item.sample %}<span class="demo-chip">sample</span>{% endif %}
         {% if item.unread %}<span class="uh-tag">unread</span>{% endif %}
         <b class="cm-author">{{ item.who }}</b>
         {% if item.kind == 'comment' %}

@@ -55,6 +55,9 @@ def save_threads(user_id, payload):
 
     saved = 0
     with db.get_db() as conn:
+        # The first real save replaces the examples, in this same transaction.
+        import reply_samples
+        reply_samples.clear_thread_samples(conn, user_id)
         for row in rows:
             if not isinstance(row, dict):
                 continue

@@ -1289,6 +1289,12 @@ select.kind-select option { color: initial; }
 }
 .source-title:hover { color: var(--emerald-bright); }
 
+/* The monthly AI allowance, where drafts are made. */
+.ai-meter { margin: -6px 0 14px; }
+.ai-meter.is-out { color: var(--ember); }
+.ai-meter a { color: var(--emerald-bright); }
+.sample-note { border-color: rgba(52, 211, 153, 0.3); }
+
 /* How many people are waiting, beside Today in the navigation. */
 .nav-count {
   display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 3px;
