@@ -176,6 +176,42 @@ check("verdicts travel", body.comments.map(function (c) { return c.verdict; }),
       ["answered", undefined, "unanswered"]);
 
 console.log();
+console.log("a comment's link is the post, never the commenter's profile");
+// Reported: Open went to the person who commented. Facebook tags the name
+// link with comment_id too (base64 "comment:POST_COMMENT"), and it comes first.
+D = H.makeDoc();
+root = D.el("div");
+post = add(root, "div", { role: "dialog" });
+add(post, "div", { dir: "auto" }, "Some seasons of building feel like progress");
+var dana = add(post, "div", { role: "article", "aria-label": "Comment by Dana Brooks 2h" });
+add(dana, "a", { href: "https://www.facebook.com/dana.brooks?comment_id=" +
+                       Buffer.from("comment:98765_4444").toString("base64") }, "Dana Brooks");
+add(dana, "div", { dir: "auto" }, "Dana Brooks");
+add(dana, "div", { dir: "auto" }, "How much is it?");
+add(dana, "a", { href: "/jeffrandle/posts/pfbid02abc?comment_id=4444" }, "2h");
+var danaReply = add(dana, "div", { role: "article", "aria-label": "Reply by Sam Lee to Dana Brooks's comment 1h" });
+add(danaReply, "a", { href: "https://www.facebook.com/sam.lee?comment_id=" +
+                            Buffer.from("comment:98765_4444").toString("base64") }, "Sam Lee");
+add(danaReply, "div", { dir: "auto" }, "Sam Lee");
+add(danaReply, "div", { dir: "auto" }, "Following");
+var lone = add(post, "div", { role: "article", "aria-label": "Comment by Only Profile 1h" });
+add(lone, "a", { href: "https://www.facebook.com/only.profile?comment_id=" +
+                       Buffer.from("comment:98765_5555").toString("base64") }, "Only Profile");
+add(lone, "div", { dir: "auto" }, "Only Profile");
+add(lone, "div", { dir: "auto" }, "Nice one");
+
+api = runScan({ doc: D, root: root }, "/jeffrandle");
+api.resetViewerNames();
+body = api.commentPayload();
+function sent(author) { return body.comments.filter(function (c) { return c.author === author; })[0]; }
+check("the link is the comment on the post", sent("Dana Brooks").url,
+      "https://www.facebook.com/jeffrandle/posts/pfbid02abc?comment_id=4444");
+check("  and the post's link is the post", body.post.url, "https://www.facebook.com/jeffrandle/posts/pfbid02abc");
+check("the id is read even from the profile's encoded one", sent("Only Profile").key, "c:5555");
+check("  but that profile is never used as its link", sent("Only Profile").url, "");
+check("a reply never takes its parent's id", sent("Sam Lee").key === "c:4444", false);
+
+console.log();
 console.log("quick respond on Facebook");
 D = H.makeDoc();
 root = D.el("div");

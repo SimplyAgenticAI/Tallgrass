@@ -34,6 +34,19 @@ def _text(value, limit):
     return db.clean_text(str(value), limit) if value else ""
 
 
+# A link that opens a POST (and, with comment_id, that comment in it). Anything
+# else — above all the commenter's profile, which Facebook also tags with
+# comment_id — is not a link to the comment, and is never used as one.
+_POST_LINK_RE = re.compile(
+    r"^https://(?:www|web|m)\.facebook\.com/.*(?:/posts/|/permalink|story_fbid=|[?&]fbid=|/videos/|/reel/|/photo)")
+
+
+def post_link(url):
+    url = (url or "").strip()
+    probe = re.sub(r"[?&](?:reply_)?comment_id=[^&#]*", "", url)
+    return url if _POST_LINK_RE.search(probe) else None
+
+
 def _count(value):
     try:
         return max(0, min(int(value or 0), 100000))
@@ -89,7 +102,7 @@ def save_thread(user_id, payload):
                 more_comments = excluded.more_comments,
                 read_at       = CURRENT_TIMESTAMP
             """,
-            (user_id, key, _text(post.get("url"), 500) or None,
+            (user_id, key, post_link(_text(post.get("url"), 500)),
              _text(post.get("title"), 300), int(bool(post.get("more_comments")))))
         post_id = conn.execute(
             "SELECT id FROM comment_posts WHERE user_id = ? AND post_key = ?",
@@ -109,6 +122,21 @@ def save_thread(user_id, payload):
             # full would be two. It is matched to the one already stored.
             if not comment_key.startswith("c:"):
                 comment_key = _stored_twin(conn, user_id, post_id, author, body) or comment_key
+            elif not conn.execute(
+                    "SELECT 1 FROM post_comments WHERE user_id = ? AND post_id = ? AND comment_key = ?",
+                    (user_id, post_id, comment_key)).fetchone():
+                # A Facebook id for a comment already stored under its words —
+                # the extension could not read the id before, and now can.
+                # Its stored identity is upgraded in place, replies' pointers
+                # with it, rather than the comment being stored a second time.
+                twin = _stored_twin(conn, user_id, post_id, author, body)
+                if twin and not twin.startswith("c:"):
+                    conn.execute("UPDATE post_comments SET comment_key = ? "
+                                 "WHERE user_id = ? AND post_id = ? AND comment_key = ?",
+                                 (comment_key, user_id, post_id, twin))
+                    conn.execute("UPDATE post_comments SET parent_key = ? "
+                                 "WHERE user_id = ? AND post_id = ? AND parent_key = ?",
+                                 (comment_key, user_id, post_id, twin))
             resolved[_text(item.get("key"), 200)] = comment_key
             parent = _text(item.get("parent_key"), 200) or None
             if parent:
@@ -144,7 +172,7 @@ def save_thread(user_id, payload):
                     seen_at        = CURRENT_TIMESTAMP
                 """,
                 (user_id, post_id, comment_key, parent, author, body,
-                 _text(item.get("url"), 500) or None, int(bool(item.get("mine"))),
+                 post_link(_text(item.get("url"), 500)), int(bool(item.get("mine"))),
                  verdict, _count(item.get("hidden_replies")), position))
 
     return {"post_id": post_id, "comments": len(items), "new": new, "verdicts": counts}
@@ -191,6 +219,13 @@ def threads_for(user_id, show_done=False):
         rows = [dict(r) for r in conn.execute(
             "SELECT * FROM post_comments WHERE user_id = ? ORDER BY post_id, position",
             (user_id,))]
+
+    # Links saved before only post links were kept may be profiles; those are
+    # dropped here, so Open falls back to the post instead of the commenter.
+    for p in posts:
+        p["url"] = post_link(p["url"])
+    for row in rows:
+        row["url"] = post_link(row["url"])
 
     by_post = {p["id"]: p for p in posts}
     for p in posts:

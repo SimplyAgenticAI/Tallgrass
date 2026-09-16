@@ -10,6 +10,7 @@ Read-only over the two stores. Done and drafting still go through them.
 
 import re
 
+import comments
 import db
 
 # The same signals the extension looks for in a chat's last line, applied to
@@ -46,7 +47,8 @@ def queue(user_id):
             "who": r["author"] or "Someone",
             "text": r["body"] or "",
             "where": r["post_title"] or "Your post",
-            "url": r["url"] or r["post_url"],
+            # Only ever a link to the post — never the commenter's profile.
+            "url": comments.post_link(r["url"]) or comments.post_link(r["post_url"]),
             "when": r["first_seen_at"],
             "verdict": r["verdict"],
             "hidden_replies": r["hidden_replies"],

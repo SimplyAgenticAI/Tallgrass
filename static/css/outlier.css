@@ -184,6 +184,37 @@ body {
 .topnav a.active { color: var(--emerald-bright); }
 .topnav a.active::after { transform: scaleX(1); }
 
+/* The More and account menus. <details>, styled to sit in the row like links. */
+.nav-menu { position: relative; }
+.nav-menu > summary { list-style: none; cursor: pointer; }
+.nav-menu > summary::-webkit-details-marker { display: none; }
+.topnav .nav-menu > summary {
+  color: var(--text-muted); font-size: 14px; font-weight: 500; padding: 4px 0;
+  transition: color 0.18s var(--ease);
+}
+.topnav .nav-menu > summary::after { content: " ▾"; font-size: 11px; opacity: 0.7; }
+.topnav .nav-menu > summary:hover, .topnav .nav-menu[open] > summary { color: var(--text); }
+.topnav .nav-menu > summary.active { color: var(--emerald-bright); }
+.nav-menu-panel {
+  position: absolute; top: calc(100% + 10px); left: -12px; z-index: 60;
+  min-width: 190px; padding: 6px; display: flex; flex-direction: column;
+  border-radius: var(--r-lg); background: var(--glass-solid);
+  border: 1px solid var(--border-lit); box-shadow: var(--shadow-float);
+  animation: sh-pop 0.18s var(--ease) both;
+}
+.nav-menu-right { left: auto; right: 0; }
+.nav-menu-panel a {
+  padding: 8px 12px; border-radius: var(--r-md); font-size: 14px;
+  color: var(--text-muted); text-decoration: none;
+}
+.nav-menu-panel a::after { display: none; }
+.nav-menu-panel a:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.nav-menu-panel a.active { color: var(--emerald-bright); }
+.nav-menu-note {
+  padding: 6px 12px 8px; margin-bottom: 4px; font-size: 12px; color: var(--text-faint);
+  border-bottom: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .version-pill {
   font-size: 11px; color: var(--text-faint);

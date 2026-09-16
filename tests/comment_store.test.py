@@ -250,6 +250,40 @@ def main():
           "Your reply kit" in settings_html and "Websites from $1,500" in settings_html, True)
 
     print()
+    print("Open goes to the post, never the commenter")
+    profile = "https://www.facebook.com/dana.brooks?comment_id=Y29tbWVudDo5ODc2NV80NDQ0"
+    save({"post": {"key": "p:links", "url": "https://www.facebook.com/me/posts/77"},
+          "comments": [{"key": "c:4444", "author": "Dana Brooks", "text": "How much?",
+                        "verdict": "unanswered", "url": profile}]})
+    with db.get_db() as conn:
+        stored = conn.execute("SELECT url FROM post_comments WHERE comment_key = 'c:4444'").fetchone()["url"]
+    check("a profile link sent by an older extension is not stored as the comment's link", stored, None)
+    with db.get_db() as conn:
+        conn.execute("UPDATE post_comments SET url = ? WHERE comment_key = 'c:4444'", (profile,))
+    dana = [t for p in comments.threads_for(1)["posts"] for t in p["threads"] if t["author"] == "Dana Brooks"][0]
+    check("one already stored is not offered as its link", dana["url"], None)
+    html = me.get("/comments").get_data(as_text=True)
+    check("  so the page's Open falls back to the post", profile in html, False)
+    check("  which is there", "https://www.facebook.com/me/posts/77" in html, True)
+    check("a real post link is kept",
+          comments.post_link("https://www.facebook.com/me/posts/77?comment_id=4444"),
+          "https://www.facebook.com/me/posts/77?comment_id=4444")
+
+    print()
+    print("a comment that gains its Facebook id is not stored twice")
+    save({"post": {"key": "p:links"}, "comments": [
+        {"key": "h:kim", "author": "Kim Park", "text": "Do you deliver to Austin?", "verdict": "unanswered"},
+        {"key": "h:kimr", "parent_key": "h:kim", "author": "Jeff Randle", "text": "We do!", "mine": True}]})
+    save({"post": {"key": "p:links"}, "comments": [
+        {"key": "c:9999", "author": "Kim Park", "text": "Do you deliver to Austin?", "verdict": "answered"}]})
+    with db.get_db() as conn:
+        kims = conn.execute("SELECT comment_key FROM post_comments WHERE author = 'Kim Park'").fetchall()
+        reply_parent = conn.execute(
+            "SELECT parent_key FROM post_comments WHERE comment_key = 'h:kimr'").fetchone()["parent_key"]
+    check("one comment, now under its Facebook id", [r["comment_key"] for r in kims], ["c:9999"])
+    check("  and its reply still points at it", reply_parent, "c:9999")
+
+    print()
     print("the page")
     html = me.get("/comments").get_data(as_text=True)
     check("renders", "Unanswered" in html or "Check replies" in html, True)
@@ -257,6 +291,16 @@ def main():
     check("says a reply is folded", "tell if you answered" in html, True)
     check("nav says Extension, not Capture", ">Extension</a>" in html and ">Capture</a>" not in html, True)
     check("nav has Comments", ">Comments</a>" in html, True)
+    nav = html.split('<nav class="topnav">', 1)[1].split("</nav>", 1)[0]
+    in_view = nav.split("<details", 1)[0]
+    check("five links in view: Today, Feed, Groups, Write, Sage",
+          [label for label in ("Today", "Feed", "Groups", "Write", "Sage", "Library", "Comments", "Settings")
+           if ">" + label in in_view], ["Today", "Feed", "Groups", "Write", "Sage"])
+    check("  Comments, Messages, Library and Playbook under More",
+          all(">" + l + "</a>" in nav for l in ("Comments", "Messages", "Library", "Playbook")), True)
+    account_menu = html.split("account-menu", 1)[1].split("</details>", 1)[0]
+    check("  Extension, Settings, Health and Feedback in the account menu",
+          all(">" + l + "</a>" in account_menu for l in ("Account", "Extension", "Settings", "Health", "Feedback")), True)
     check("the extension page still lives at /capture",
           me.get("/capture").status_code, 200)
 

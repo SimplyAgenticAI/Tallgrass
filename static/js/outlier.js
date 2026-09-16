@@ -2737,6 +2737,26 @@
     });
   })();
 
+  /* ------------------------------------------------------ navigation menus
+   *
+   * The More and account menus are <details>, so they open with no script at
+   * all. This only closes them the way a menu is expected to close: a click
+   * anywhere else, Escape, or opening the other one.
+   */
+  (function () {
+    var menus = document.querySelectorAll("details.nav-menu");
+    if (!menus.length) return;
+    document.addEventListener("click", function (event) {
+      Array.prototype.forEach.call(menus, function (menu) {
+        if (menu.open && !menu.contains(event.target)) menu.open = false;
+      });
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      Array.prototype.forEach.call(menus, function (menu) { menu.open = false; });
+    });
+  })();
+
   /* ------------------------------------------- one tab for Facebook links
    *
    * Every link out to Facebook opened a new tab, so working through comments

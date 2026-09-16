@@ -4075,24 +4075,66 @@
    * reads, edits and re-ordering. Only when no such link is on the page does
    * identity fall back to author and text.
    */
-  function commentLink(c) {
+  var POST_URL_RE = /\/posts\/|\/permalink|story_fbid=|[?&]fbid=|\/videos\/|\/reel\/|\/photo/;
+
+  /* Reported: Open on a saved comment went to the commenter's profile.
+   *
+   * Facebook puts comment_id on the commenter's NAME link as well as on the
+   * comment's timestamp, and the name comes first — so the first link carrying
+   * comment_id was a profile. Only a link to the post itself is a comment's
+   * link now: the timestamp, which opens the post at that comment. The id is
+   * still read from any of them, since it identifies the comment wherever it
+   * appears; the profile link carries it base64-encoded as "comment:POST_ID".
+   */
+  function ownCommentLinks(c) {
     var links = c.el.querySelectorAll('a[href*="comment_id="]');
+    var out = [];
     for (var i = 0; i < links.length; i++) {
       var owner = links[i].closest ? links[i].closest('div[role="article"]') : null;
       if (owner && owner !== c.el) continue;
-      return absolute(links[i].getAttribute("href") || "");
+      out.push(absolute(links[i].getAttribute("href") || ""));
     }
+    return out;
+  }
+
+  function commentLink(c) {
+    var links = ownCommentLinks(c);
+    for (var i = 0; i < links.length; i++) {
+      if (POST_URL_RE.test(links[i].split("?")[0] + "?" + (links[i].split("?")[1] || "").replace(/comment_id=[^&]*/g, ""))) {
+        return links[i];
+      }
+    }
+    return "";
+  }
+
+  // Facebook's id for the comment, from any of its links: a plain number, or
+  // base64 of "comment:POSTID_COMMENTID".
+  function commentIdFrom(url, replyOnly) {
+    var m = url.match(/[?&]reply_comment_id=([^&#]+)/) ||
+            (replyOnly ? null : url.match(/[?&]comment_id=([^&#]+)/));
+    if (!m) return "";
+    var raw = decodeURIComponent(m[1]);
+    if (/^\d+$/.test(raw)) return raw;
+    try {
+      var decoded = atob(raw);
+      var parts = decoded.match(/^comment:\d+_(\d+)$/);
+      if (parts) return parts[1];
+    } catch (e) { /* not base64 */ }
     return "";
   }
 
   function commentKey(c) {
     c.url = commentLink(c);
-    var m = c.url.match(/[?&]reply_comment_id=(\d+)/) || c.url.match(/[?&]comment_id=(\d+)/);
-    if (m) return "c:" + m[1];
+    var links = ownCommentLinks(c);
+    // A reply's links can carry its PARENT's comment_id, which would give the
+    // reply its parent's identity — so a reply takes only reply_comment_id,
+    // and is keyed on its words when it has none.
+    for (var i = 0; i < links.length; i++) {
+      var id = commentIdFrom(links[i], c.kind === "reply");
+      if (id) return "c:" + id;
+    }
     return "h:" + hashString((c.author || "") + "|" + (c.text || ""));
   }
-
-  var POST_URL_RE = /\/posts\/|\/permalink|story_fbid=|[?&]fbid=|\/videos\/|\/reel\/|\/photo/;
 
   // Which post this is. The address bar usually names it once a post is open;
   // otherwise a comment's link does, with the comment part taken off.
@@ -4109,7 +4151,8 @@
       }
     }
     if (!url && r.threads[0] && r.threads[0].url) {
-      url = r.threads[0].url.replace(/[?&](reply_)?comment_id=\d+/g, "");
+      // Only ever a post-shaped link now (see commentLink), never a profile.
+      url = r.threads[0].url.replace(/[?&](reply_)?comment_id=[^&#]*/g, "");
     }
     var m = url.match(/(?:posts|permalink|videos|reel)\/([\w]+)/) ||
             url.match(/story_fbid=([\w]+)/) || url.match(/[?&]fbid=(\d+)/);

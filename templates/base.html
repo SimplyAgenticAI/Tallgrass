@@ -32,24 +32,28 @@
     <span class="brand-text"><span class="brand-name">{{ app_name }}</span><span class="brand-parent">{{ app_parent }}</span></span>
   </a>
 
+  {# Five things used daily, then two menus.
+     Fourteen links across the top had become a row nobody could scan. What
+     is used every session stays in view; the rest is one click away, grouped
+     by what it is — more of the work in More, the setup and account in the
+     avatar's menu. Menus are <details>, so they open without script; a
+     little script only closes them on an outside click or Escape. #}
   <nav class="topnav">
-    <a href="{{ url_for('feed') }}" class="{{ 'active' if active == 'feed' }}">Feed</a>
     <a href="{{ url_for('today_page') }}" class="{{ 'active' if active == 'today' }}">Today
       {%- if waiting_count %} <span class="nav-count" title="{{ waiting_count }} waiting on an answer">{{ waiting_count }}</span>{% endif %}</a>
+    <a href="{{ url_for('feed') }}" class="{{ 'active' if active == 'feed' }}">Feed</a>
     <a href="{{ url_for('groups') }}" class="{{ 'active' if active == 'groups' }}">Groups</a>
-    <a href="{{ url_for('library') }}" class="{{ 'active' if active == 'library' }}">Library</a>
     <a href="{{ url_for('write_page') }}" class="{{ 'active' if active == 'write' }}">Write</a>
     <a href="{{ url_for('sage_page') }}" class="{{ 'active' if active == 'sage' }}">Sage</a>
-    <a href="{{ url_for('playbook') }}" class="{{ 'active' if active == 'playbook' }}">Playbook</a>
-    <a href="{{ url_for('comments_page') }}" class="{{ 'active' if active == 'comments' }}">Comments</a>
-    <a href="{{ url_for('messages_page') }}" class="{{ 'active' if active == 'messages' }}">Messages</a>
-    <a href="{{ url_for('capture') }}" class="{{ 'active' if active == 'capture' }}">Extension</a>
-    <a href="{{ url_for('diagnostics') }}" class="{{ 'active' if active == 'diagnostics' }}">Health</a>
-    <a href="{{ url_for('settings') }}" class="{{ 'active' if active == 'settings' }}">Settings</a>
-    <a href="{{ url_for('feedback_board') }}" class="{{ 'active' if active == 'feedback' }}">Feedback</a>
-    {% if user and user.is_admin %}
-    <a href="{{ url_for('admin') }}" class="{{ 'active' if active == 'admin' }}">Admin</a>
-    {% endif %}
+    <details class="nav-menu">
+      <summary class="{{ 'active' if active in ('comments', 'messages', 'library', 'playbook') }}">More</summary>
+      <div class="nav-menu-panel">
+        <a href="{{ url_for('comments_page') }}" class="{{ 'active' if active == 'comments' }}">Comments</a>
+        <a href="{{ url_for('messages_page') }}" class="{{ 'active' if active == 'messages' }}">Messages</a>
+        <a href="{{ url_for('library') }}" class="{{ 'active' if active == 'library' }}">Library</a>
+        <a href="{{ url_for('playbook') }}" class="{{ 'active' if active == 'playbook' }}">Playbook</a>
+      </div>
+    </details>
   </nav>
 
   <div class="topbar-right">
@@ -78,10 +82,23 @@
       </div>
     </div>
     {% endif %}
-    <a class="account-link {{ 'active' if active == 'account' }}"
-       href="{{ url_for('account') }}" title="{{ user.email if user }}">
-      <span class="avatar-initial">{{ (user.email[0] if user else '?')|upper }}</span>
-    </a>
+    <details class="nav-menu account-menu">
+      <summary class="account-link {{ 'active' if active in ('account', 'capture', 'settings', 'diagnostics', 'feedback', 'admin') }}"
+               title="{{ user.email if user }}" aria-label="Account menu">
+        <span class="avatar-initial">{{ (user.email[0] if user else '?')|upper }}</span>
+      </summary>
+      <div class="nav-menu-panel nav-menu-right">
+        {% if user %}<div class="nav-menu-note">{{ user.email }}</div>{% endif %}
+        <a href="{{ url_for('account') }}" class="{{ 'active' if active == 'account' }}">Account</a>
+        <a href="{{ url_for('capture') }}" class="{{ 'active' if active == 'capture' }}">Extension</a>
+        <a href="{{ url_for('settings') }}" class="{{ 'active' if active == 'settings' }}">Settings</a>
+        <a href="{{ url_for('diagnostics') }}" class="{{ 'active' if active == 'diagnostics' }}">Health</a>
+        <a href="{{ url_for('feedback_board') }}" class="{{ 'active' if active == 'feedback' }}">Feedback</a>
+        {% if user and user.is_admin %}
+        <a href="{{ url_for('admin') }}" class="{{ 'active' if active == 'admin' }}">Admin</a>
+        {% endif %}
+      </div>
+    </details>
     <span class="version-pill">v{{ version }}</span>
   </div>
 </header>
