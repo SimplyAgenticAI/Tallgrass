@@ -155,6 +155,40 @@ def threads_for(user_id, show_done=False):
     return {"posts": posts, "totals": totals}
 
 
+def context_for(user_id, comment_id=None, post_key=None, comment_key=None):
+    """What a draft needs to know about one stored comment, or None.
+
+    Found by row id (the Comments page) or by the extension's keys (Facebook).
+    """
+    with db.get_db() as conn:
+        if comment_id is not None:
+            row = conn.execute(
+                "SELECT c.*, p.title AS post_title FROM post_comments c "
+                "JOIN comment_posts p ON p.id = c.post_id "
+                "WHERE c.id = ? AND c.user_id = ?", (int(comment_id), user_id)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT c.*, p.title AS post_title FROM post_comments c "
+                "JOIN comment_posts p ON p.id = c.post_id "
+                "WHERE p.user_id = ? AND p.post_key = ? AND c.comment_key = ?",
+                (user_id, post_key or "", comment_key or "")).fetchone()
+        if not row:
+            return None
+        found = dict(row)
+        found["replies"] = [dict(r) for r in conn.execute(
+            "SELECT author, body AS text FROM post_comments "
+            "WHERE post_id = ? AND user_id = ? AND parent_key = ? ORDER BY position",
+            (found["post_id"], user_id, found["comment_key"]))]
+    return found
+
+
+def store_draft(user_id, comment_id, text):
+    with db.get_db() as conn:
+        conn.execute(
+            "UPDATE post_comments SET draft = ?, drafted_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND user_id = ?", (_text(text, 2000), int(comment_id), user_id))
+
+
 def set_status(user_id, comment_id, status):
     if status not in STATUSES:
         raise ValueError("status must be open or done")

@@ -458,6 +458,14 @@ def _migrate(conn):
     # for as long as those are kept, which is the only copy of that data now.
     conn.execute("DROP TABLE IF EXISTS opportunities")
 
+    # The last reply drafted for a comment, so a draft asked for on Facebook is
+    # still there on the Comments page. Added after the table first shipped.
+    comment_cols = _columns(conn, "post_comments")
+    if "draft" not in comment_cols:
+        conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")
+    if "drafted_at" not in comment_cols:
+        conn.execute("ALTER TABLE post_comments ADD COLUMN drafted_at TEXT")
+
     post_cols = _columns(conn, "posts")
 
     if "item_type" not in post_cols:

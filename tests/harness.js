@@ -25,6 +25,16 @@ function makeDoc() {
     e.appendChild = function (c) {
       c.parentElement = e; e.children.push(c); all.push(c); return c;
     };
+    // Placed among its siblings, and in document order right after `ref` —
+    // injected controls must not read as coming at the end of the page.
+    e.insertBefore = function (c, ref) {
+      var at = ref ? e.children.indexOf(ref) : -1;
+      c.parentElement = e;
+      if (at < 0) { e.children.push(c); all.push(c); return c; }
+      e.children.splice(at, 0, c);
+      all.splice(all.indexOf(ref), 0, c);
+      return c;
+    };
     e.addEventListener = function () {};
     e.click = function () { e.clicked += 1; if (e.onClick) e.onClick(); };
     Object.defineProperty(e, "textContent", {

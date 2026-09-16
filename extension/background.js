@@ -120,7 +120,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "OUTLIER_COMMENTS") {
-    handleComments(message).then(sendResponse);
+    postToDashboard("/api/comments", message.body).then(sendResponse);
+    return true;
+  }
+
+  // A reply draft for one comment. Returned to the page to be put in
+  // Facebook's reply box — never sent anywhere else, never posted.
+  if (message.type === "OUTLIER_DRAFT") {
+    postToDashboard("/api/comments/draft", message.body).then(sendResponse);
     return true;
   }
 
@@ -306,21 +313,20 @@ async function handleCapture(message) {
   }
 }
 
-/* An open post's comments, saved to the dashboard.
- *
- * One request pressed by hand, so none of capture's batching or retry loop:
- * the same key recovery, and a plain answer either way. Saving twice is safe —
- * the server updates a thread it has already seen.
+/* One request pressed by hand — saving a post's comments, or asking for a reply
+ * draft. None of capture's batching or retry loop: the same key recovery, and
+ * a plain answer either way. Saving twice is safe; the server updates a thread
+ * it has already seen.
  */
-async function handleComments(message) {
+async function postToDashboard(path, body) {
   const endpoint = await getEndpoint();
   if (!(await hasHostPermission(endpoint))) {
     return { ok: false, error: "No Chrome permission for " + endpoint + " — re-save it in the popup" };
   }
-  const send = (key) => fetch(`${endpoint}/api/comments`, {
+  const send = (key) => fetch(endpoint + path, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Outlier-Key": key },
-    body: JSON.stringify(message.body)
+    body: JSON.stringify(body)
   });
   try {
     const apiKey = await getApiKey();

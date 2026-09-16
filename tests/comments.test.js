@@ -176,6 +176,38 @@ check("verdicts travel", body.comments.map(function (c) { return c.verdict; }),
       ["answered", undefined, "unanswered"]);
 
 console.log();
+console.log("quick respond on Facebook");
+D = H.makeDoc();
+root = D.el("div");
+post = add(root, "div", { role: "dialog" });
+comment(post, "Comment by Jeff Randle 1w", "Jeff Randle", "Thanks for all the support");
+var ana = comment(post, "Comment by Ana Ruiz 1 day ago", "Ana Ruiz", "Can I book a call?");
+comment(ana, "Reply by Tom Hanks to Ana Ruiz's comment 20 hours ago", "Tom Hanks", "Me too");
+comment(post, "Comment by Mark Twain 3h", "Mark Twain", "Logos too?");
+add(post, "div", {}, "Comment as Jeff Randle");
+
+api = runScan({ doc: D, root: root }, "/jeffrandle/posts/pfbid02abc");
+api.resetViewerNames();
+
+var anaEl = post.children[1];
+var ownReply = api.ownReplyButton(anaEl);
+check("a comment's own Reply, not the reply's under it",
+      ownReply && ownReply.parentElement === anaEl, true);
+
+check("links added beside other people's comments", api.injectQuickRespond(), 2);
+function suggestLinks() {
+  return root.querySelectorAll('[data-tallgrass-suggest]').map(function (el) {
+    var owner = el.closest('div[role="article"]');
+    return owner.getAttribute("aria-label").split(" ").slice(2, 4).join(" ");
+  });
+}
+check("  on Ana and Mark, never on your own comment", suggestLinks(), ["Ana Ruiz", "Mark Twain"]);
+check("  and never twice", api.injectQuickRespond(), 0);
+check("the link does not change how the thread reads",
+      api.readCommentThread().threads.map(function (c) { return c.verdict; }),
+      ["yours", "unanswered", "unanswered"]);
+
+console.log();
 if (FAILURES.length) {
   console.log(FAILURES.length + " FAILURES");
   process.exit(1);

@@ -9,7 +9,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from flask import (Flask, Response, jsonify, redirect, render_template, request,
+from flask import (Flask, Response, g, jsonify, redirect, render_template, request,
                    send_file, session, stream_with_context, url_for)
 from werkzeug.exceptions import HTTPException
 
@@ -26,6 +26,7 @@ import mailer
 import outliers
 import outreach
 import remix
+import replies
 import sage
 from demo_data import refresh_sample_accounts, seed_demo_data
 
@@ -62,7 +63,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.7"
+APP_VERSION = "25.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -180,7 +181,7 @@ app.config.update(
 
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
 # need permissive CORS. Everything else is same-origin.
-INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments")
+INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1530,6 +1531,67 @@ def api_comments():
     return jsonify({"ok": True, **result})
 
 
+def _draft_for(ctx, instructions="", comment_id=None):
+    """Draft one reply, metered like every other generation. Returns a response."""
+    blocked = _ai_gate("reply")
+    if blocked:
+        return blocked
+    text, error = replies.draft_reply(
+        ctx.get("post_title"), ctx.get("author"), ctx.get("body") or ctx.get("text"),
+        replies=ctx.get("replies"), instructions=instructions)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    if comment_id is not None:
+        comments.store_draft(_uid(), comment_id, text)
+    return jsonify({"ok": True, "reply": text})
+
+
+@app.route("/comments/<int:comment_id>/draft", methods=["POST"])
+@auth.login_required
+def comment_draft(comment_id):
+    """A reply drafted from the Comments page."""
+    ctx = comments.context_for(_uid(), comment_id=comment_id)
+    if not ctx:
+        return jsonify({"ok": False, "error": "Comment not found"}), 404
+    body = request.get_json(silent=True) or {}
+    return _draft_for(ctx, body.get("instructions", ""), comment_id=comment_id)
+
+
+@app.route("/api/comments/draft", methods=["POST", "OPTIONS"])
+def api_comment_draft():
+    """A reply drafted on Facebook, for the extension to put in the reply box.
+
+    Tallgrass never posts it. The extension only fills Facebook's own box, and
+    the user presses Enter — drafts only, by design.
+
+    The comment is looked up by the extension's keys when it has been saved, so
+    the draft is kept on the Comments page too; otherwise the text the
+    extension sends is used as it is.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = auth.user_for_api_key(request.headers.get("X-Outlier-Key", "").strip())
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    # Everything downstream (AI key, brand voice, metering) reads the signed-in
+    # user; for this request that is the key's owner.
+    g.user = api_user
+
+    body = request.get_json(silent=True) or {}
+    sent = body.get("comment") or {}
+    ctx = comments.context_for(api_user["id"], post_key=(body.get("post") or {}).get("key"),
+                               comment_key=sent.get("key"))
+    if not ctx:
+        ctx = {
+            "post_title": (body.get("post") or {}).get("title"),
+            "author": sent.get("author"),
+            "text": sent.get("text"),
+            "replies": [r for r in (body.get("replies") or []) if isinstance(r, dict)],
+        }
+    return _draft_for(ctx, body.get("instructions", ""),
+                      comment_id=ctx.get("id"))
+
+
 # ---------------------------------------------------------------- ingest API
 
 
@@ -1624,7 +1686,7 @@ def inject_globals():
 # Endpoints that legitimately have no CSRF token: the extension authenticates
 # with an API key or its own header, and Stripe signs its webhooks.
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
-               "/api/extension/key", "/api/comments"}
+               "/api/extension/key", "/api/comments", "/api/comments/draft"}
 
 
 @app.before_request

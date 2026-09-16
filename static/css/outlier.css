@@ -1320,7 +1320,15 @@ button.filter { font: inherit; cursor: pointer; }
 .cm-replies { list-style: none; margin: 8px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--border); font-size: 13px; color: var(--text-muted); }
 .cm-replies li { margin: 4px 0; }
 .cm-replies b { color: var(--text); }
-.cm-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+.cm-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.cm-suggest { color: var(--emerald); }
+.cm-draft {
+  margin: 10px 0 0; padding: 10px 12px; border-radius: var(--r-md);
+  background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.28);
+}
+.cm-draft-text { margin: 0 0 8px; color: var(--text); line-height: 1.55; white-space: pre-wrap; }
+.cm-draft-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cm-draft.is-error .cm-draft-text { color: var(--ember); }
 
 /* Members or followers, beside wherever a source is named. */
 .audience { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }

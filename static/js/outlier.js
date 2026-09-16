@@ -2710,4 +2710,52 @@
       if (event.key === "Escape" && !modal.hidden) closeHelp();
     });
   })();
+
+  /* ------------------------------------------------ comments: suggest a reply
+   *
+   * The same draft the extension writes on Facebook, asked for from the
+   * Comments page. Shown with a Copy button and nothing else: Tallgrass never
+   * posts a reply, from here or from Facebook.
+   */
+  (function () {
+    if (!document.querySelector("[data-suggest]")) return;
+
+    document.addEventListener("click", function (event) {
+      var ask = event.target.closest("[data-suggest]");
+      if (ask) {
+        var id = ask.getAttribute("data-suggest");
+        var box = document.querySelector('[data-draft-for="' + id + '"]');
+        if (!box) return;
+        var text = box.querySelector(".cm-draft-text");
+        box.hidden = false;
+        box.classList.remove("is-error");
+        text.textContent = "✨ Writing a reply…";
+        ask.disabled = true;
+        post("/comments/" + id + "/draft", {}).then(function (data) {
+          if (data && data.ok) {
+            text.textContent = data.reply;
+            ask.textContent = "Another reply";
+          } else {
+            box.classList.add("is-error");
+            text.textContent = (data && data.error) || "Could not draft a reply.";
+          }
+        }).catch(function (error) {
+          box.classList.add("is-error");
+          text.textContent = error.message || "Could not draft a reply.";
+        }).then(function () { ask.disabled = false; });
+        return;
+      }
+
+      var copy = event.target.closest("[data-draft-copy]");
+      if (copy) {
+        var draft = copy.closest(".cm-draft");
+        var words = draft && draft.querySelector(".cm-draft-text").textContent;
+        if (!words || draft.classList.contains("is-error")) return;
+        navigator.clipboard.writeText(words).then(function () {
+          copy.textContent = "Copied";
+          setTimeout(function () { copy.textContent = "Copy"; }, 1500);
+        }).catch(function () { copy.textContent = "Select and copy"; });
+      }
+    });
+  })();
 })();

@@ -4141,6 +4141,249 @@
     });
   }
 
+  /* ------------------------------------------------ quick respond, on Facebook
+   *
+   * A "✨ Suggest reply" link beside each comment that isn't yours, on an open
+   * post. Pressing it drafts a reply in your voice and puts it in Facebook's
+   * own reply box for that comment.
+   *
+   * It never posts. Nothing here presses Enter or clicks Facebook's send: the
+   * draft sits in the box until you read it, change it and send it yourself.
+   * That is the line between a writing aid and automation that gets an account
+   * restricted, and it is not a setting.
+   *
+   * Facebook re-renders comments freely and takes injected nodes with it, so
+   * the links are re-added on the panel's regular tick, and drafts are kept by
+   * comment key so a re-render never costs a second generation.
+   */
+  var SUGGEST_ATTR = "data-tallgrass-suggest";
+  var DRAFT_ATTR = "data-tallgrass-draft";
+  var DRAFTS = {};
+
+  function ownedBy(el, article) {
+    var owner = el.closest ? el.closest('div[role="article"]') : null;
+    return owner === article;
+  }
+
+  // The comment's own Reply control, not one belonging to a reply under it.
+  function ownReplyButton(article) {
+    var nodes = article.querySelectorAll('[role="button"], span, div');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.children && el.children.length) continue;
+      if (!/^reply$/i.test(visibleText(el.innerText || "").trim())) continue;
+      if (!ownedBy(el, article)) continue;
+      return (el.closest && el.closest('[role="button"]')) || el;
+    }
+    return null;
+  }
+
+  function insertAfter(node, ref) {
+    var parent = ref.parentElement;
+    if (!parent) return;
+    if (parent.insertBefore && ref.nextSibling !== undefined) parent.insertBefore(node, ref.nextSibling);
+    else parent.appendChild(node);
+  }
+
+  function findByAttr(attr, key) {
+    var hits = document.querySelectorAll("[" + attr + "]");
+    for (var i = 0; i < hits.length; i++) {
+      if (hits[i].getAttribute(attr) === key) return hits[i];
+    }
+    return null;
+  }
+
+  function injectQuickRespond() {
+    if (!openPostDialog()) return 0;
+    var r = readCommentThread();
+    var added = 0;
+    r.threads.forEach(function (c) {
+      if (c.mine || !c.text) return;
+      var already = c.el.querySelectorAll("[" + SUGGEST_ATTR + "]");
+      for (var i = 0; i < already.length; i++) if (ownedBy(already[i], c.el)) return;
+
+      var reply = ownReplyButton(c.el);
+      if (!reply || !reply.parentElement) return;
+      var link = document.createElement("span");
+      link.setAttribute(SUGGEST_ATTR, c.key);
+      link.setAttribute("role", "button");
+      link.textContent = "✨ Suggest reply";
+      styleEl(link, {
+        marginLeft: "10px", cursor: "pointer", fontWeight: "600", fontSize: "12px",
+        color: "#10b981", whiteSpace: "nowrap"
+      });
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        suggestReply(c.key);
+      });
+      insertAfter(link, reply);
+      added++;
+      if (DRAFTS[c.key]) renderDraftCard(c.key);
+    });
+    return added;
+  }
+
+  function threadByKey(key) {
+    var r = readCommentThread();
+    for (var i = 0; i < r.threads.length; i++) if (r.threads[i].key === key) return r.threads[i];
+    return null;
+  }
+
+  function suggestReply(key) {
+    var payload = commentPayload();
+    var c = null;
+    payload.read.threads.forEach(function (t) { if (t.key === key) c = t; });
+    if (!c) return;
+    DRAFTS[key] = { busy: true };
+    renderDraftCard(key);
+
+    // Saved first, so the draft is also kept on the Comments page.
+    chrome.runtime.sendMessage({ type: "OUTLIER_COMMENTS", body: payload.body }, function () {
+      void chrome.runtime.lastError;
+      chrome.runtime.sendMessage({
+        type: "OUTLIER_DRAFT",
+        body: {
+          post: payload.body.post,
+          comment: { key: c.key, author: c.author, text: c.text },
+          replies: c.replies.map(function (rep) { return { author: rep.author, text: rep.text }; })
+        }
+      }, function (response) {
+        if (chrome.runtime.lastError || !response) {
+          DRAFTS[key] = { error: "The extension was asleep — press Try again." };
+        } else if (!response.ok) {
+          DRAFTS[key] = { error: response.error || "Could not draft a reply." };
+        } else {
+          DRAFTS[key] = { text: response.reply };
+        }
+        renderDraftCard(key);
+        if (DRAFTS[key].text) putInReplyBox(key);
+      });
+    });
+  }
+
+  function cardButton(label, onClick) {
+    var b = document.createElement("span");
+    b.setAttribute("role", "button");
+    b.textContent = label;
+    styleEl(b, {
+      marginRight: "12px", cursor: "pointer", fontWeight: "600", color: "#10b981"
+    });
+    b.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick();
+    });
+    return b;
+  }
+
+  function renderDraftCard(key) {
+    var state = DRAFTS[key];
+    var link = findByAttr(SUGGEST_ATTR, key);
+    if (!state || !link) return;
+    var card = findByAttr(DRAFT_ATTR, key);
+    if (!card) {
+      card = document.createElement("div");
+      card.setAttribute(DRAFT_ATTR, key);
+      styleEl(card, {
+        margin: "6px 0 8px", padding: "8px 10px", borderRadius: "8px", fontSize: "13px",
+        lineHeight: "1.45", background: "rgba(16,185,129,0.08)",
+        border: "1px solid rgba(16,185,129,0.35)", color: "inherit"
+      });
+      insertAfter(card, link.parentElement || link);
+    }
+    card.textContent = "";
+
+    var text = document.createElement("div");
+    styleEl(text, { whiteSpace: "pre-wrap", marginBottom: "6px", userSelect: "text" });
+    var actions = document.createElement("div");
+
+    if (state.busy) {
+      text.textContent = "✨ Writing a reply…";
+    } else if (state.error) {
+      text.textContent = state.error;
+      actions.appendChild(cardButton("Try again", function () { suggestReply(key); }));
+    } else {
+      text.textContent = state.text;
+      actions.appendChild(cardButton("Put in reply box", function () { putInReplyBox(key); }));
+      actions.appendChild(cardButton("Copy", function () {
+        try { navigator.clipboard.writeText(state.text); state.note = "Copied."; }
+        catch (e) { state.note = "Select the text above to copy it."; }
+        renderDraftCard(key);
+      }));
+      actions.appendChild(cardButton("Another", function () { suggestReply(key); }));
+    }
+    card.appendChild(text);
+    card.appendChild(actions);
+    var note = document.createElement("div");
+    note.textContent = state.note ||
+      (state.text ? "Tallgrass never posts — read it, edit it, then send it yourself." : "");
+    styleEl(note, { marginTop: "4px", fontSize: "11px", opacity: "0.7" });
+    card.appendChild(note);
+  }
+
+  // Facebook's reply box for this comment: the one it focuses after Reply is
+  // pressed, or failing that, the box labelled "Reply to <their name>".
+  function findReplyBox(c) {
+    var active = document.activeElement;
+    if (active && active.isContentEditable) return active;
+    var first = String(c.author || "").split(" ")[0].toLowerCase();
+    var boxes = (openPostDialog() || document).querySelectorAll('[contenteditable="true"]');
+    for (var i = 0; i < boxes.length; i++) {
+      var label = String(boxes[i].getAttribute("aria-label") || "").toLowerCase();
+      if (/^reply to/.test(label) && first && label.indexOf(first) !== -1) return boxes[i];
+    }
+    return null;
+  }
+
+  function putInReplyBox(key) {
+    var state = DRAFTS[key];
+    var c = threadByKey(key);
+    if (!state || !state.text || !c) return;
+    var reply = ownReplyButton(c.el);
+    if (reply && reply.click) reply.click();
+
+    var tries = 0;
+    (function attempt() {
+      var box = findReplyBox(c);
+      if (box) {
+        insertDraft(box, c, state.text);
+        state.note = "In the reply box. Read it, edit it, then send it yourself.";
+        renderDraftCard(key);
+        return;
+      }
+      if (++tries < 15) return setTimeout(attempt, 150);
+      state.note = "Couldn't find the reply box — use Copy, then paste it in.";
+      renderDraftCard(key);
+    })();
+  }
+
+  function insertDraft(box, c, text) {
+    if (box.focus) box.focus();
+    var out = text;
+    // Facebook often starts a reply with the commenter's name already tagged.
+    // Don't greet them twice.
+    var first = String(c.author || "").split(" ")[0];
+    var existing = visibleText(box.innerText || "").trim();
+    if (existing && first && existing.toLowerCase().indexOf(first.toLowerCase()) !== -1) {
+      out = " " + text.replace(new RegExp("^" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+                                          "[,!.:]?\\s*", "i"), "");
+    }
+    try {
+      // Caret to the end, so a tag Facebook put in first is kept.
+      var range = document.createRange();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch (e) { /* no selection API here */ }
+    // insertText goes through the editor's own input handling, so Facebook's
+    // box treats it as typed. It is never followed by Enter.
+    try { return document.execCommand("insertText", false, out); }
+    catch (e) { return false; }
+  }
+
   function saveCommentReport() {
     var lines = [];
     var version = "?";
@@ -4478,6 +4721,8 @@
   setTimeout(function () { countPostsOnScreen(); renderHud(); }, 1500);
   setInterval(function () {
     if (!autoScrolling) { countPostsOnScreen(); renderHud(); }
+    // Quick respond links on an open post. Never allowed to break the tick.
+    try { if (!autoScrolling) injectQuickRespond(); } catch (e) { /* page changed underneath */ }
   }, 2500);
 
   // Exposed for debugging against live Facebook: select a post in devtools and
@@ -4539,6 +4784,9 @@
     // __outlier.saveCommentReport() saves the raw labels and markup.
     saveCommentReport: saveCommentReport,
     commentPayload: function () { return commentPayload().body; },
+    injectQuickRespond: injectQuickRespond,
+    ownReplyButton: ownReplyButton,
+    insertDraft: insertDraft,
     // A function, not the object: STATS is reassigned when the source
     // changes, so a captured reference goes stale and reads as all zeros.
     stats: function () { return STATS; },

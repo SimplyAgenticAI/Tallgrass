@@ -81,6 +81,15 @@
         {% if c.verdict == 'unknown' %}
         <p class="fine">{{ c.hidden_replies }} repl{{ 'y' if c.hidden_replies == 1 else 'ies' }} were folded, so {{ app_name }} can't tell if you answered.</p>
         {% endif %}
+        {% if c.verdict != 'yours' %}
+        <div class="cm-draft" data-draft-for="{{ c.id }}"{% if not c.draft %} hidden{% endif %}>
+          <p class="cm-draft-text">{{ c.draft or '' }}</p>
+          <div class="cm-draft-actions">
+            <button class="filter" type="button" data-draft-copy>Copy</button>
+            <span class="fine">{{ app_name }} never posts. Copy it, then reply on Facebook.</span>
+          </div>
+        </div>
+        {% endif %}
         {% if c.replies %}
         <ul class="cm-replies">
           {% for r in c.replies %}
@@ -90,6 +99,11 @@
         {% endif %}
       </div>
       <div class="cm-actions">
+        {% if c.verdict != 'yours' %}
+        <button class="filter cm-suggest" type="button" data-suggest="{{ c.id }}">
+          {{ 'Another reply' if c.draft else '✨ Suggest reply' }}
+        </button>
+        {% endif %}
         {% if c.url or post.url %}
         <a class="filter" href="{{ c.url or post.url }}" target="_blank" rel="noopener">Open</a>
         {% endif %}

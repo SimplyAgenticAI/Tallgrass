@@ -126,6 +126,53 @@ def main():
            if t["author"] == "Mark Twain"][0]["status"], "done")
 
     print()
+    print("suggesting a reply")
+    asked = []
+
+    def fake_draft(post_title, author, comment, replies=None, instructions=""):
+        asked.append({"title": post_title, "author": author, "comment": comment,
+                      "replies": replies})
+        return "Thanks %s! Sending you a message now." % (author or "").split(" ")[0], None
+
+    appmod.replies.draft_reply = fake_draft
+
+    jane = [t for t in comments.threads_for(1, show_done=True)["posts"][0]["threads"]
+            if t["author"] == "Jane Doe"][0]
+    result = me.post("/comments/%d/draft" % jane["id"], json={},
+                     headers={"X-CSRF-Token": csrf}).get_json()
+    check("the Comments page gets a draft", result.get("reply"),
+          "Thanks Jane! Sending you a message now.")
+    check("  written from the post and the comment",
+          (asked[-1]["title"], asked[-1]["comment"]), ("New website packages", "How much?"))
+    check("  knowing the replies already under it",
+          [r["author"] for r in asked[-1]["replies"]], ["Jeff Randle"])
+    check("  and it is kept",
+          comments.context_for(1, comment_id=jane["id"])["draft"],
+          "Thanks Jane! Sending you a message now.")
+    check("another account cannot draft on it",
+          other.post("/comments/%d/draft" % jane["id"], json={},
+                     headers={"X-CSRF-Token": other_csrf}).status_code, 404)
+
+    def api_draft(body, api_key=key):
+        return me.post("/api/comments/draft", json=body, headers={"X-Outlier-Key": api_key})
+
+    check("Facebook's draft needs a key",
+          api_draft({"comment": {"text": "hi"}}, api_key="olk_wrong").status_code, 401)
+    result = api_draft({"post": {"key": "p:1"}, "comment": {"key": "c:333", "text": "ignored"}}).get_json()
+    check("a saved comment is drafted from what was saved",
+          (result.get("reply"), asked[-1]["comment"]),
+          ("Thanks Mark! Sending you a message now.", "Logos too?"))
+    check("  and the draft shows on the Comments page",
+          "Thanks Mark! Sending you a message now." in
+          me.get("/comments?done=1").get_data(as_text=True), True)
+    result = api_draft({"post": {"key": "p:new", "title": "Fresh post"},
+                        "comment": {"key": "c:999", "author": "Ana Ruiz", "text": "Book a call?"},
+                        "replies": [{"author": "Tom Hanks", "text": "Me too"}]}).get_json()
+    check("an unsaved comment is drafted from what the page sent",
+          (result.get("reply"), asked[-1]["title"], asked[-1]["comment"]),
+          ("Thanks Ana! Sending you a message now.", "Fresh post", "Book a call?"))
+
+    print()
     print("the page")
     html = me.get("/comments").get_data(as_text=True)
     check("renders", "Unanswered" in html or "Check replies" in html, True)
