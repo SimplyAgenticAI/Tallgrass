@@ -19,6 +19,7 @@ import billing
 import db
 import comments
 import messages
+import today
 import demo_snapshot
 import funnel
 import hooks
@@ -64,7 +65,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "26.8"
+APP_VERSION = "26.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1486,6 +1487,21 @@ def go_store():
     return redirect(EXTENSION_STORE_URL)
 
 
+# ---------------------------------------------------------------- today
+
+
+@app.route("/today")
+@auth.login_required
+def today_page():
+    """Everyone waiting on an answer — comments and chats — in one queue."""
+    return render_template(
+        "today.html",
+        queue=today.queue(_uid()),
+        version=APP_VERSION,
+        active="today",
+    )
+
+
 # ---------------------------------------------------------------- comments
 
 
@@ -1512,6 +1528,8 @@ def comment_status(comment_id):
         comments.set_status(_uid(), comment_id, request.form.get("status"))
     except ValueError:
         pass
+    if request.args.get("next") == "today":
+        return redirect(url_for("today_page"))
     return redirect(url_for("comments_page", done=request.args.get("done")) +
                     "#c%d" % comment_id)
 
@@ -1539,7 +1557,8 @@ def api_comments():
         result = comments.save_thread(api_user["id"], request.get_json(silent=True))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({"ok": True, **result})
+    # For the extension's icon badge: everyone waiting, comments and chats.
+    return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"])})
 
 
 def _draft_for(ctx, instructions="", comment_id=None):
@@ -1633,6 +1652,8 @@ def message_status(thread_id):
         messages.set_status(_uid(), thread_id, request.form.get("status"))
     except ValueError:
         pass
+    if request.args.get("next") == "today":
+        return redirect(url_for("today_page"))
     return redirect(url_for("messages_page"))
 
 
@@ -1655,7 +1676,7 @@ def api_message_threads():
         result = messages.save_threads(api_user["id"], request.get_json(silent=True))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({"ok": True, **result})
+    return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"])})
 
 
 @app.route("/api/messages/draft", methods=["POST", "OPTIONS"])
@@ -1769,7 +1790,19 @@ def inject_globals():
         # page contradicted itself inside a single screen — its header said
         # one group while its own feature list said unlimited.
         "free_limits": billing.FREE_LIMITS,
+        # People waiting on an answer, for the Today badge in the navigation.
+        "waiting_count": _waiting_count_for_nav(),
     }
+
+
+def _waiting_count_for_nav():
+    user = auth.current_user()
+    if not user:
+        return 0
+    try:
+        return today.waiting_count(user["id"])
+    except Exception:                                  # noqa: BLE001
+        return 0                                       # never break a page over a badge
 
 
 # Endpoints that legitimately have no session cookie to protect: the extension

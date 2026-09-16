@@ -1289,6 +1289,13 @@ select.kind-select option { color: initial; }
 }
 .source-title:hover { color: var(--emerald-bright); }
 
+/* How many people are waiting, beside Today in the navigation. */
+.nav-count {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 3px;
+  border-radius: var(--r-pill); font-size: 11px; line-height: 18px; text-align: center;
+  font-weight: 700; color: #1a0f0a; background: var(--ember); vertical-align: 1px;
+}
+
 /* Comments page. Unanswered is the only state allowed to draw the eye. */
 .cm-post { margin-bottom: 18px; }
 .cm-post-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }

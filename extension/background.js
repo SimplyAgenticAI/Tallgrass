@@ -104,13 +104,25 @@ async function fetchKeyFromDashboard() {
 }
 
 async function bumpCounter(newCount) {
-  const stored = await chrome.storage.local.get(["totalCaptured"]);
+  const stored = await chrome.storage.local.get(["totalCaptured", "waitingTotal"]);
   const total = (stored.totalCaptured || 0) + newCount;
   await chrome.storage.local.set({ totalCaptured: total, lastCapture: Date.now() });
 
+  // Once replies are in use, the badge belongs to the people waiting on an
+  // answer — a number worth acting on — and a capture does not overwrite it.
+  if (typeof stored.waitingTotal === "number") return;
   // Badge shows the running total so progress is visible without opening the popup.
   chrome.action.setBadgeText({ text: total > 999 ? "999+" : String(total) });
   chrome.action.setBadgeBackgroundColor({ color: "#10b981" });
+}
+
+/* How many people are waiting on an answer, on the toolbar icon.
+ * Updated whenever comments or chats are saved, which is when it can change. */
+async function showWaiting(count) {
+  if (typeof count !== "number") return;
+  await chrome.storage.local.set({ waitingTotal: count });
+  chrome.action.setBadgeText({ text: count ? (count > 99 ? "99+" : String(count)) : "" });
+  chrome.action.setBadgeBackgroundColor({ color: "#e07a5f" });
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -424,6 +436,7 @@ async function postToDashboard(path, body) {
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return { ok: false, error: data.error || `Dashboard returned ${response.status}` };
+    if (typeof data.waiting_total === "number") await showWaiting(data.waiting_total);
     return data;
   } catch (error) {
     return { ok: false, error: "Could not reach the dashboard at " + endpoint +

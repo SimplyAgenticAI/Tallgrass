@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Today{% endblock %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>Today</h1>
+    <p class="sub">
+      Everyone waiting on an answer from you — comments on your posts and
+      Messenger chats — in one list, likely opportunities first.
+      {% if queue.entries %}
+        <b>{{ queue.entries|length }}</b> waiting:
+        {{ queue.comments }} comment{{ '' if queue.comments == 1 else 's' }},
+        {{ queue.messages }} chat{{ '' if queue.messages == 1 else 's' }}
+        {%- if queue.opportunities %}, {{ queue.opportunities }} that look like opportunities{% endif %}.
+      {% endif %}
+    </p>
+  </div>
+  {% if queue.entries and queue.entries[0].url %}
+  <div class="filters">
+    <a class="filter cm-suggest" href="{{ queue.entries[0].url }}" target="_blank" rel="noopener">Start with the first →</a>
+  </div>
+  {% endif %}
+</section>
+
+{% if not queue.entries %}
+<div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
+  <p>
+    Nobody is waiting on you. On Facebook, save the comments on your posts, or
+    press <b>Find unanswered chats</b> on facebook.com/messages, and anyone
+    still waiting shows up here.
+  </p>
+  <a class="btn btn-primary" href="https://www.facebook.com/messages" target="_blank" rel="noopener">Open Messenger</a>
+</div>
+{% else %}
+<section class="glass panel cm-post">
+  <p class="fine" style="margin:0 0 4px">
+    Answered somebody? It leaves this list by itself the next time {{ app_name }}
+    sees your reply. <b>Done</b> is for setting someone aside.
+  </p>
+  <ul class="cm-list">
+    {% for item in queue.entries %}
+    <li class="cm-item" id="{{ item.kind }}-{{ item.id }}">
+      <div class="cm-main">
+        {% if item.opportunity %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
+        {% elif item.question %}<span class="cm-chip cm-chip-unknown">Question</span>{% endif %}
+        <span class="cm-chip">{{ 'Comment' if item.kind == 'comment' else 'Message' }}</span>
+        {% if item.unread %}<span class="uh-tag">unread</span>{% endif %}
+        <b class="cm-author">{{ item.who }}</b>
+        {% if item.kind == 'comment' %}
+        <p class="cm-body">{{ item.text or "Text not read" }}</p>
+        <p class="fine" style="margin:4px 0 0">On “{{ item.where }}”
+          {%- if item.verdict == 'unknown' %} · replies were folded, so check you haven't answered{% endif %}.</p>
+        <div class="cm-draft" data-draft-for="{{ item.id }}"{% if not item.draft %} hidden{% endif %}>
+          <p class="cm-draft-text">{{ item.draft or '' }}</p>
+          <div class="cm-draft-actions">
+            <button class="filter" type="button" data-draft-copy>Copy</button>
+            {% for tone in ["Shorter", "Warmer", "More direct", "Ask a question"] %}
+            <button class="filter" type="button" data-tone="{{ tone }}" data-tone-for="{{ item.id }}">{{ tone }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <p class="fine" style="margin:4px 0 0">
+          Messaged you last{% if item.when %}, about {{ item.when | ago }}{% endif %}.
+          Open the chat and press <b>✨ Suggest a message</b> in the {{ app_name }} panel.
+        </p>
+        {% endif %}
+      </div>
+      <div class="cm-actions">
+        {% if item.kind == 'comment' %}
+        <button class="filter cm-suggest" type="button" data-suggest="{{ item.id }}">
+          {{ 'Another reply' if item.draft else '✨ Suggest reply' }}
+        </button>
+        {% endif %}
+        {% if item.url %}
+        <a class="filter" href="{{ item.url }}" target="_blank" rel="noopener">Open</a>
+        {% endif %}
+        <form method="post" action="{{ url_for('comment_status', comment_id=item.id, next='today') if item.kind == 'comment' else url_for('message_status', thread_id=item.id, next='today') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="done">
+          <button class="filter" type="submit">Done</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

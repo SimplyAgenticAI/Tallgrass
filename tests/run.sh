@@ -99,6 +99,8 @@ echo "--- saved comments ---"
 python tests/comment_store.test.py
 echo "--- messenger inbox ---"
 python tests/messages_store.test.py
+echo "--- today queue ---"
+python tests/today.test.py
 echo "--- capture health canary ---"
 python tests/health.test.py
 echo "--- app consistency ---"
