@@ -208,9 +208,69 @@ check("the link does not change how the thread reads",
       ["yours", "unanswered", "unanswered"]);
 
 console.log();
-if (FAILURES.length) {
-  console.log(FAILURES.length + " FAILURES");
-  process.exit(1);
-}
-console.log("threads read the way you would read them");
-process.exit(0);
+console.log("a reply you post is noticed");
+var saved = [];
+chrome.runtime.sendMessage = function (m, cb) { saved.push(m); if (cb) cb({ ok: true, comments: 3, new: 0, verdicts: {} }); };
+check("nothing new, nothing saved", api.watchComments(api.readCommentThread()), false);
+comment(post.children[2], "Reply by Jeff Randle to Mark Twain's comment 1m", "Jeff Randle", "Yes! DM me");
+check("your reply to Mark is noticed", api.watchComments(api.readCommentThread()), true);
+check("  and the thread is saved at once", [saved.length, saved[0] && saved[0].type], [1, "OUTLIER_COMMENTS"]);
+check("  with Mark now answered",
+      saved[0].body.comments.filter(function (c) { return c.author === "Mark Twain"; })[0].verdict, "answered");
+check("  once", api.watchComments(api.readCommentThread()), false);
+
+console.log();
+console.log("opening the whole thread before saving");
+D = H.makeDoc();
+root = D.el("div");
+post = add(root, "div", { role: "dialog" });
+add(post, "div", {}, "Comment as Jeff Randle");
+var sara = comment(post, "Comment by Sara Lee 5h", "Sara Lee", "Great post");
+var fold = add(post, "span", { role: "button" }, "View 1 reply");
+fold.onClick = function () {
+  fold.textContent = "Hide 1 reply";
+  comment(sara, "Reply by Jeff Randle to Sara Lee's comment 4h", "Jeff Randle", "Thank you!");
+};
+var more = add(post, "div", { role: "button" }, "View more comments");
+more.onClick = function () {
+  more.textContent = "";
+  comment(post, "Comment by Late Comer 1h", "Late Comer", "How much is it?");
+  var laterFold = add(post, "span", { role: "button" }, "View 2 replies");
+  laterFold.onClick = function () { laterFold.textContent = "Hide 2 replies"; };
+};
+var reply2 = add(post, "div", { role: "button" }, "Reply");
+var hide = add(post, "div", { role: "button" }, "Hide");
+
+api = runScan({ doc: D, root: root }, "/jeffrandle/posts/pfbid02abc");
+api.resetViewerNames();
+api.setExpandWait(1);
+check("before: one comment, its reply folded",
+      api.readCommentThread().threads.map(function (c) { return c.verdict; }), ["unknown"]);
+saved = [];
+chrome.runtime.sendMessage = function (m, cb) { saved.push(m); if (cb) cb({ ok: true }); };
+api.injectQuickRespond();           // the watcher's first look at the post
+api.expandThread(function () {}, function (opened, how) {
+  check("every fold was opened, including one that appeared after a click", opened, 3);
+  check("  and it says it finished", how, "everything is open");
+  check("  never Reply or Hide", [reply2.clicked, hide.clicked], [0, 0]);
+  var after = api.readCommentThread();
+  check("after: the late comment is there, and Sara's reply is visible",
+        after.threads.map(function (c) { return c.author + ":" + c.verdict; }),
+        ["Sara Lee:answered", "Late Comer:unanswered"]);
+  // Save sends the opened thread; the next tick must not call Sara's reply —
+  // opened by Save, not written just now — a reply you just posted.
+  saved = [];
+  api.saveComments(function () {});
+  api.injectQuickRespond();
+  api.injectQuickRespond();
+  check("a reply opened by Save is not announced as one you just posted",
+        saved.filter(function (m) { return m.type === "OUTLIER_COMMENTS"; }).length, 1);
+
+  console.log();
+  if (FAILURES.length) {
+    console.log(FAILURES.length + " FAILURES");
+    process.exit(1);
+  }
+  console.log("threads read the way you would read them");
+  process.exit(0);
+});

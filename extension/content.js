@@ -4131,6 +4131,12 @@
     var payload = commentPayload();
     var r = payload.read;
     if (!r.threads.length) return done({ ok: false, error: "No comments found on this post." });
+    // What was saved is the new baseline for the reply watcher. Without this,
+    // replies that were only folded — opened by Save itself — would read as
+    // replies just posted, and be announced as such.
+    var baseline = {};
+    r.threads.forEach(function (c) { baseline[c.key] = c.verdict; });
+    COMMENT_VERDICTS[payload.body.post.key] = baseline;
     chrome.runtime.sendMessage({ type: "OUTLIER_COMMENTS", body: payload.body }, function (response) {
       if (chrome.runtime.lastError || !response) {
         return done({ ok: false, error: "Extension worker asleep — press again." });
@@ -4139,6 +4145,116 @@
       response.moreComments = r.moreComments;
       done(response);
     });
+  }
+
+  /* Opening the whole thread before it is read.
+   *
+   * Comments hidden behind "View more comments" were never saved, and a
+   * comment whose replies were folded behind "View 2 replies" could only be
+   * called "check replies" — so every save began with clicking those by hand.
+   * These are clicked for you now, in rounds, until a round finds nothing left
+   * to open twice running (Facebook takes a moment to render what a click
+   * loads, and that can hold more to open).
+   *
+   * Only controls whose whole text is one of those — "View more comments",
+   * "View 3 replies", "See more" inside a comment — and only inside the open
+   * post. Never Reply, Like, Hide or anything that changes the post. Each
+   * control is clicked once, and there is a ceiling on rounds and clicks.
+   */
+  var EXPAND_WAIT = 900;
+  var EXPAND_ROUNDS = 25;
+  var EXPAND_CLICKS = 120;
+  var commentExpanding = null;
+
+  function expandControls(scope, clicked) {
+    var out = [];
+    var nodes = scope.querySelectorAll('div[role="button"], span[role="button"], span, div');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.children && el.children.length) continue;
+      var text = visibleText(el.innerText || "").replace(/\s+/g, " ").trim();
+      if (!text || text.length > 40) continue;
+      var comment = el.closest ? el.closest('div[role="article"]') : null;
+      var wanted = MORE_COMMENTS_RE.test(text) || REPLY_TOGGLE_RE.test(text) ||
+        (/^see more$/i.test(text) && comment && parseCommentLabel(comment.getAttribute("aria-label")));
+      if (!wanted) continue;
+      var control = (el.closest && el.closest('[role="button"]')) || el;
+      if (!scope.contains(control) || clicked.indexOf(control) !== -1 || out.indexOf(control) !== -1) continue;
+      out.push(control);
+    }
+    return out;
+  }
+
+  function expandThread(progress, done) {
+    var clicked = [];
+    var rounds = 0;
+    var empty = 0;
+    commentExpanding = { clicks: 0 };
+    (function round() {
+      var dialog = openPostDialog();
+      if (!dialog) { commentExpanding = null; return done(clicked.length, "the post was closed"); }
+      var controls = expandControls(dialog, clicked);
+      if (!controls.length) {
+        empty++;
+        if (empty >= 2) { commentExpanding = null; return done(clicked.length, "everything is open"); }
+      } else {
+        empty = 0;
+        for (var i = 0; i < controls.length && clicked.length < EXPAND_CLICKS; i++) {
+          try { controls[i].click(); } catch (e) { /* gone already */ }
+          clicked.push(controls[i]);
+        }
+      }
+      rounds++;
+      commentExpanding.clicks = clicked.length;
+      progress(clicked.length);
+      if (rounds >= EXPAND_ROUNDS || clicked.length >= EXPAND_CLICKS) {
+        commentExpanding = null;
+        return done(clicked.length, "stopped at the limit — some may still be folded");
+      }
+      setTimeout(round, EXPAND_WAIT);
+    })();
+  }
+
+  /* Noticing a reply to a comment as it is posted.
+   *
+   * The same idea as the Messenger watcher: the thread's verdicts are compared
+   * on each tick, and when a comment that was waiting becomes answered — you
+   * replied, from Suggest reply or by hand — the thread is saved at once, so
+   * the Comments page moves it without a second press of Save. The first look
+   * at a post only records where it stands. A draft for that comment is
+   * cleared, having been used.
+   */
+  var COMMENT_VERDICTS = {};
+  var COMMENT_NOTE = "";
+
+  function watchComments(r) {
+    if (!r || !r.threads.length || commentExpanding) return false;
+    var post = openPostIdentity(r).key;
+    var now = {};
+    r.threads.forEach(function (c) { now[c.key] = c.verdict; });
+    var before = COMMENT_VERDICTS[post];
+    COMMENT_VERDICTS[post] = now;
+    if (!before) return false;
+
+    var answered = r.threads.filter(function (c) {
+      return c.verdict === "answered" && before[c.key] && before[c.key] !== "answered" &&
+             before[c.key] !== "yours";
+    });
+    if (!answered.length) return false;
+    answered.forEach(function (c) { delete DRAFTS[c.key]; });
+    sendComments(function (response) {
+      if (!response || !response.ok) {
+        COMMENT_NOTE = "Saw your reply, but saving it failed: " +
+          ((response && response.error) || "the extension was asleep");
+      } else {
+        var first = String(answered[0].author || "them").split(" ")[0];
+        COMMENT_NOTE = "✓ Saw your reply to " + first +
+          (answered.length > 1 ? " and " + (answered.length - 1) + " more" : "") +
+          " — marked answered in Tallgrass.";
+      }
+      renderHud();
+    });
+    return true;
   }
 
   /* ------------------------------------------------ quick respond, on Facebook
@@ -4221,6 +4337,8 @@
       added++;
       if (DRAFTS[c.key]) renderDraftCard(c.key);
     });
+    // The same read serves the reply watcher, rather than reading twice a tick.
+    watchComments(r);
     return added;
   }
 
@@ -5263,24 +5381,37 @@
         background: "rgba(52,211,153,0.14)", color: "#6ee7b7",
         fontSize: "0.95em", fontWeight: "650"
       });
+      if (commentExpanding) {
+        readComments.textContent = "Opening comments… " + commentExpanding.clicks + " opened";
+        readComments.disabled = true;
+      }
       readComments.addEventListener("click", function () {
-        lastCommentReport = "Saving…";
+        if (commentExpanding) return;
+        lastCommentReport = "Opening every comment and reply…";
         renderHud();
-        sendComments(function (r) {
-          if (!r.ok) {
-            lastCommentReport = r.error || "Could not save the comments.";
-          } else {
-            var v = r.verdicts || {};
-            lastCommentReport = "Saved " + r.comments + " (" + r.new + " new): " +
-              (v.unanswered || 0) + " unanswered, " + (v.answered || 0) + " answered, " +
-              (v.unknown || 0) + " to check, " + (v.yours || 0) + " yours." +
-              (r.viewerFound ? "" : " Your name was not detected.") +
-              (r.moreComments ? " Some comments are still folded — expand and save again." : "");
-          }
+        expandThread(function () { renderHud(); }, function (opened, how) {
+          lastCommentReport = "Opened " + opened + " (" + how + "). Saving…";
           renderHud();
+          sendComments(function (r) {
+            if (!r.ok) {
+              lastCommentReport = r.error || "Could not save the comments.";
+            } else {
+              var v = r.verdicts || {};
+              lastCommentReport = "Saved " + r.comments + " (" + r.new + " new): " +
+                (v.unanswered || 0) + " unanswered, " + (v.answered || 0) + " answered, " +
+                (v.unknown || 0) + " to check, " + (v.yours || 0) + " yours." +
+                (r.viewerFound ? "" : " Your name was not detected.") +
+                (r.moreComments ? " Some comments are still folded." : "") +
+                (/most relevant/i.test(visibleText((openPostDialog() || {}).innerText || ""))
+                  ? " Tip: switch the post's comment filter to All comments to include every one."
+                  : "");
+            }
+            renderHud();
+          });
         });
       });
       hudBody.appendChild(readComments);
+      if (COMMENT_NOTE) hudBody.appendChild(hudNote(COMMENT_NOTE));
       if (lastCommentReport) {
         var said = document.createElement("div");
         said.textContent = lastCommentReport;
@@ -5462,6 +5593,10 @@
     saveCommentReport: saveCommentReport,
     commentPayload: function () { return commentPayload().body; },
     injectQuickRespond: injectQuickRespond,
+    expandThread: expandThread,
+    saveComments: sendComments,
+    watchComments: watchComments,
+    setExpandWait: function (ms) { EXPAND_WAIT = ms; },
     readChatList: readChatList,
     scanChats: scanChats,
     chatTarget: function () { return chatTarget; },
