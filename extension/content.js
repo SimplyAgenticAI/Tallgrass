@@ -3904,6 +3904,12 @@
   var lastCommentReport = "";     // the HUD's one-line result of the last report
 
   function myNamesIn(scope) {
+    // Found once, kept a while: finding the composer walks every element in
+    // the post, and it does not change while the post is open. Not cached
+    // until it has been found — the composer can render after the comments.
+    if (scope.__tallgrassNames && Date.now() - scope.__tallgrassNamesAt < 30000) {
+      return scope.__tallgrassNames;
+    }
     var names = Object.create(null);
     var nodes = scope.querySelectorAll("[aria-label], [placeholder], span, div");
     for (var i = 0; i < nodes.length; i++) {
@@ -3917,10 +3923,43 @@
         if (m) names[m[1].replace(/[….]+$/, "").trim().toLowerCase()] = "composer";
       }
     }
+    var fromComposer = Object.keys(names).length > 0;
     Object.keys(viewerNames()).forEach(function (n) {
       if (n.indexOf(" ") !== -1 && !names[n]) names[n] = "banner";
     });
+    if (fromComposer) {
+      scope.__tallgrassNames = names;
+      scope.__tallgrassNamesAt = Date.now();
+    }
     return names;
+  }
+
+  /* Skipping a tick when nothing changed.
+   *
+   * Every 2.5 seconds the panel re-read the open post's whole comment thread
+   * and the open conversation, walking every element in them, whether or not
+   * anything had changed — steady work in a Facebook tab left open. A cheap
+   * fingerprint is taken first (how many comments or rows, and how much text)
+   * and the full read only happens when it differs. Anything that matters
+   * changes it: a new comment or reply, a new message, our own link being
+   * re-rendered away, the post or chat being switched.
+   */
+  var PERF = { threadReads: 0, conversationReads: 0 };
+  var lastThreadPrint = null;
+  var lastConversationPrint = null;
+
+  function threadFingerprint(dialog) {
+    return dialog.querySelectorAll('div[role="article"]').length + ":" +
+           String(dialog.textContent || "").length;
+  }
+
+  function conversationFingerprint() {
+    var main = document.querySelector('[role="main"]');
+    if (!main) return location.pathname;
+    var rows = main.querySelectorAll('[role="row"]');
+    if (!rows.length) rows = main.querySelectorAll('div[role="article"]');
+    return location.pathname + ":" + rows.length + ":" +
+           (rows.length ? String(rows[rows.length - 1].textContent || "") : "");
   }
 
   // The post that is open, if one is: the dialog that actually holds comments.
@@ -4310,7 +4349,11 @@
   }
 
   function injectQuickRespond() {
-    if (!openPostDialog()) return 0;
+    var dialog = openPostDialog();
+    if (!dialog) { lastThreadPrint = null; return 0; }
+    var print = threadFingerprint(dialog);
+    if (lastThreadPrint && lastThreadPrint.dialog === dialog && lastThreadPrint.print === print) return 0;
+    PERF.threadReads++;
     var r = readCommentThread();
     var added = 0;
     r.threads.forEach(function (c) {
@@ -4339,6 +4382,8 @@
     });
     // The same read serves the reply watcher, rather than reading twice a tick.
     watchComments(r);
+    // Taken after the links went in, since adding them changes the text.
+    lastThreadPrint = { dialog: dialog, print: threadFingerprint(dialog) };
     return added;
   }
 
@@ -4964,6 +5009,10 @@
 
   function watchConversation() {
     if (!onMessenger() || chatScan) return null;
+    var print = conversationFingerprint();
+    if (print === lastConversationPrint) return null;
+    lastConversationPrint = print;
+    PERF.conversationReads++;
     var convo = readConversation();
     if (!convo) return null;
     if (!convo.messages.length) {
@@ -5661,6 +5710,7 @@
     saveCommentReport: saveCommentReport,
     commentPayload: function () { return commentPayload().body; },
     injectQuickRespond: injectQuickRespond,
+    perf: function () { return PERF; },
     expandThread: expandThread,
     saveComments: sendComments,
     watchComments: watchComments,

@@ -208,6 +208,17 @@ check("the link does not change how the thread reads",
       ["yours", "unanswered", "unanswered"]);
 
 console.log();
+console.log("an unchanged post is not re-read every tick");
+var readsBefore = api.perf().threadReads;
+api.injectQuickRespond();
+api.injectQuickRespond();
+api.injectQuickRespond();
+check("three ticks with nothing changed, no full reads", api.perf().threadReads, readsBefore);
+comment(post, "Comment by New Person 1m", "New Person", "Just saw this, how do I sign up?");
+check("a new comment is read on the next tick", api.injectQuickRespond(), 1);
+check("  with one full read", api.perf().threadReads, readsBefore + 1);
+
+console.log();
 console.log("a reply you post is noticed");
 var saved = [];
 chrome.runtime.sendMessage = function (m, cb) { saved.push(m); if (cb) cb({ ok: true, comments: 3, new: 0, verdicts: {} }); };
