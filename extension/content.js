@@ -4718,17 +4718,43 @@
   var LIVE_LAST = {};
   var LIVE_NOTE = {};
 
+  /* What the watcher saw on its last look at each chat, shown in the panel.
+   *
+   * Reported: a reply sent with the chat open did not move it. Several
+   * different failures look identical from outside — the sender not placed,
+   * the new message not recognised as new, the save refused — so rather than
+   * guess which, the panel says what was read and what was decided, every
+   * tick. The answer to "why didn't it move" is then on screen.
+   */
+  var LIVE_SEEN = {};
+
+  function seen(id, fields) {
+    LIVE_SEEN[id] = Object.assign(LIVE_SEEN[id] || {}, fields);
+  }
+
   function watchConversation() {
     if (!onMessenger() || chatScan) return null;
     var convo = readConversation();
-    if (!convo || !convo.messages.length) return null;
+    if (!convo) return null;
+    if (!convo.messages.length) {
+      seen(convo.id, { read: 0, from: null, decision: "no messages read in this chat yet" });
+      return null;
+    }
     var last = convo.messages[convo.messages.length - 1];
-    if (last.from === "unknown") return null;          // never guessed
+    seen(convo.id, { read: convo.messages.length, from: last.from, unknown: convo.unknown });
+    if (last.from === "unknown") {                     // never guessed
+      seen(convo.id, { decision: "can't tell who sent the last message, so nothing is changed" });
+      return null;
+    }
 
     var signature = last.from + "|" + last.text;
     var before = LIVE_LAST[convo.id];
     LIVE_LAST[convo.id] = signature;
-    if (before === undefined || before === signature) return null;
+    if (before === undefined) {
+      seen(convo.id, { decision: "watching — send a message and it will be noticed" });
+      return null;
+    }
+    if (before === signature) return null;
     // Only a message ADDED after the one seen last time counts. A chat still
     // loading, or the previous chat's messages lingering during a switch,
     // also changes the last line — but the old last line is not in the
@@ -4736,7 +4762,11 @@
     var grew = convo.messages.slice(0, -1).some(function (m) {
       return m.from + "|" + m.text === before;
     });
-    if (!grew) return null;
+    if (!grew) {
+      seen(convo.id, { decision: "the last message changed, but the one before it wasn't " +
+                                 "found — treated as the chat reloading, not a new message" });
+      return null;
+    }
 
     var thread = {
       key: "t:" + convo.id,
@@ -4753,10 +4783,20 @@
     // Your message went out, so a draft for this chat has been used.
     if (last.from === "me" && MSG_DRAFT && MSG_DRAFT.threadId === convo.id) MSG_DRAFT = null;
 
+    seen(convo.id, { decision: "new message from " + (last.from === "me" ? "you" : "them") +
+                               " — saving to Tallgrass…" });
     chrome.runtime.sendMessage({ type: "OUTLIER_THREADS", body: { threads: [thread] } },
       function (response) {
         void chrome.runtime.lastError;
-        if (!response || !response.ok) return;
+        if (!response || !response.ok) {
+          // This used to return without a word, so a refused save looked
+          // exactly like nothing having been noticed.
+          seen(convo.id, { decision: "noticed the new message, but saving failed: " +
+                                     ((response && response.error) || "the extension was asleep") });
+          renderHud();
+          return;
+        }
+        seen(convo.id, { decision: "saved" });
         var first = String(convo.name || "them").split(" ")[0];
         LIVE_NOTE[convo.id] = last.from === "me"
           ? "✓ Saw your reply — moved to Replied in Tallgrass."
@@ -4857,6 +4897,16 @@
     var id = currentThreadId();
     if (!id) return true;
     if (LIVE_NOTE[id]) body.appendChild(hudNote(LIVE_NOTE[id]));
+    var look = LIVE_SEEN[id];
+    if (look) {
+      var who = { me: "you", them: "them", unknown: "unclear" }[look.from] || "—";
+      var readout = hudNote("Tallgrass sees " + look.read + " message" + (look.read === 1 ? "" : "s") +
+        ", last one from " + who +
+        (look.unknown ? " (" + look.unknown + " with sender unclear)" : "") +
+        (look.decision ? ". " + look.decision.charAt(0).toUpperCase() + look.decision.slice(1) + "." : "."));
+      styleEl(readout, { fontSize: "0.8em", color: "#7fa693" });
+      body.appendChild(readout);
+    }
     var draft = MSG_DRAFT && MSG_DRAFT.threadId === id ? MSG_DRAFT : null;
     body.appendChild(button(draft && draft.text ? "Another message" : "✨ Suggest a message",
                             suggestMessage));
@@ -4919,6 +4969,7 @@
     var convo = readConversation();
     lines.push("", "--- open conversation: " + (convo ? JSON.stringify(convo.name) : "none") + " ---");
     if (convo) {
+      lines.push("watcher: " + JSON.stringify(LIVE_SEEN[convo.id] || null));
       lines.push("unplaced messages: " + convo.unknown);
       convo.messages.forEach(function (m) { lines.push(m.from + ": " + JSON.stringify(m.text.slice(0, 80))); });
       var main = document.querySelector('[role="main"]');
@@ -5350,6 +5401,7 @@
     setChatScrollWait: function (ms) { CHAT_SCROLL_WAIT = ms; },
     readConversation: readConversation,
     watchConversation: watchConversation,
+    liveSeen: function (id) { return LIVE_SEEN[id] || null; },
     chatTime: chatTime,
     saveMessengerReport: saveMessengerReport,
     ownReplyButton: ownReplyButton,

@@ -121,6 +121,8 @@ var sent = [];
 chrome.runtime.sendMessage = function (m, cb) { sent.push(m); if (cb) cb({ ok: true }); };
 check("the first look only records where the chat stands", api.watchConversation(), null);
 check("  and sends nothing", sent.length, 0);
+check("  and the panel says it is watching",
+      /^watching/.test(api.liveSeen("1001").decision) && api.liveSeen("1001").from, "them");
 check("nothing new, nothing sent", api.watchConversation(), null);
 
 messageRow("You sent", "It's [price] for the full package — want details?", null);
@@ -144,6 +146,14 @@ grid.children = [];
 messageRow("Tom Hanks", "Haha love it", null);
 check("a replaced conversation is a fresh look, not a reply", api.watchConversation(), null);
 check("  nothing sent for it", sent.length, 2);
+check("  and the panel says why", /reloading, not a new message/.test(api.liveSeen("1001").decision), true);
+
+// A save the dashboard refuses must be said, not swallowed.
+chrome.runtime.sendMessage = function (m, cb) { if (cb) cb({ ok: false, error: "Invalid or missing API key" }); };
+messageRow("You sent", "Sure thing!", null);
+api.watchConversation();
+check("a failed save is shown in the panel",
+      api.liveSeen("1001").decision, "noticed the new message, but saving failed: Invalid or missing API key");
 
 /* A list like Facebook's: 120 chats, ten rows rendered at a time, the rest
  * unmounted until scrolled to. Reading it once finds ten. */
