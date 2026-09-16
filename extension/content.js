@@ -4519,8 +4519,87 @@
     return threads;
   }
 
-  function sendChatList(done) {
-    var threads = readChatList();
+  /* Reading more chats than fit on the screen.
+   *
+   * The chat list is virtualised: Facebook renders the rows in view, loads
+   * older chats as the list nears its end, and unmounts the ones scrolled
+   * past. Reading it once gave "a couple". So the list is scrolled a screen at
+   * a time and every row seen is kept, keyed by chat, until there are as many
+   * as were asked for or the list stops growing — several waits at the bottom
+   * with nothing new, which is the end of the inbox rather than a slow load.
+   */
+  var CHAT_TARGETS = [25, 50, 100, 250];
+  var chatTarget = 50;
+  var CHAT_SCROLL_WAIT = 800;
+  var CHAT_STALLS = 4;
+  var chatScan = null;
+
+  try {
+    chrome.storage.local.get(["chatScanTarget"], function (stored) {
+      var t = stored && parseInt(stored.chatScanTarget, 10);
+      if (CHAT_TARGETS.indexOf(t) !== -1) chatTarget = t;
+    });
+  } catch (e) { /* storage unavailable: keep the default */ }
+
+  function setChatTarget(n) {
+    chatTarget = n;
+    try { chrome.storage.local.set({ chatScanTarget: n }); } catch (e) {}
+  }
+
+  function chatListScroller() {
+    var link = document.querySelector('a[href*="/messages/t/"], a[href*="/messages/e2ee/t/"]');
+    var el = link && link.parentElement;
+    while (el && el !== document.body) {
+      if (el.scrollHeight > el.clientHeight + 20) {
+        var overflow = "";
+        try { overflow = window.getComputedStyle(el).overflowY; } catch (e) {}
+        if (!overflow || /auto|scroll|overlay/.test(overflow)) return el;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function scanChats(target, progress, done) {
+    var state = chatScan = { found: {}, order: [], stalls: 0, stopped: false };
+    var scroller = chatListScroller();
+
+    function collect() {
+      var added = 0;
+      readChatList().forEach(function (t) {
+        if (state.found[t.key]) return;
+        state.found[t.key] = t;
+        state.order.push(t.key);
+        added++;
+      });
+      return added;
+    }
+
+    function finish() {
+      chatScan = null;
+      if (scroller) scroller.scrollTop = 0;
+      done(state.order.slice(0, target).map(function (k) { return state.found[k]; }),
+           state.stopped);
+    }
+
+    (function step() {
+      if (state.stopped) return finish();
+      var added = collect();
+      progress(Math.min(state.order.length, target));
+      if (state.order.length >= target || !scroller) return finish();
+
+      var before = scroller.scrollTop;
+      scroller.scrollTop = before + Math.max(200, scroller.clientHeight * 0.8);
+      var moved = scroller.scrollTop !== before;
+      // At the bottom with nothing new: give Facebook a few waits to load
+      // older chats before calling it the end of the inbox.
+      state.stalls = (added || moved) ? 0 : state.stalls + 1;
+      if (state.stalls >= CHAT_STALLS) return finish();
+      setTimeout(step, CHAT_SCROLL_WAIT);
+    })();
+  }
+
+  function sendChatList(threads, done) {
     if (!threads.length) return done({ ok: false, error: "No chats found. Open facebook.com/messages first." });
     var body = { threads: threads.map(function (t) {
       return { key: t.key, name: t.name, url: t.url, last_from: t.last_from, last_at: t.last_at,
@@ -4658,17 +4737,57 @@
   function renderMessengerHud(body, button) {
     if (!onMessenger()) return false;
 
-    body.appendChild(button("Find unanswered chats", function () {
-      lastChatScan = "Reading the chat list…";
-      renderHud();
-      sendChatList(function (r) {
-        lastChatScan = !r.ok ? (r.error || "Could not save the chats.")
-          : "Read " + r.read + " chats: " + r.waiting + " waiting on you" +
-            (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
-            ", " + r.quiet + " gone quiet. See Messages on the dashboard.";
-        renderHud();
+    if (chatScan) {
+      body.appendChild(button("Stop — save what's read so far", function () {
+        if (chatScan) chatScan.stopped = true;
+      }));
+    } else {
+      // How many chats to read. Buttons rather than a dropdown: the panel
+      // redraws every few seconds, which would close an open dropdown.
+      var picker = document.createElement("div");
+      styleEl(picker, { display: "flex", alignItems: "center", gap: "0.35em",
+                        marginTop: "0.65em", fontSize: "0.88em", color: "#9fc3b1" });
+      var label = document.createElement("span");
+      label.textContent = "Chats to read:";
+      styleEl(label, { marginRight: "0.2em" });
+      picker.appendChild(label);
+      CHAT_TARGETS.forEach(function (n) {
+        var choice = document.createElement("button");
+        choice.textContent = String(n);
+        var on = n === chatTarget;
+        styleEl(choice, {
+          flex: "1", padding: "0.35em 0", borderRadius: "6px", cursor: "pointer",
+          fontSize: "0.95em", fontWeight: on ? "700" : "500",
+          border: "1px solid " + (on ? "rgba(110,231,183,0.7)" : "rgba(110,231,183,0.2)"),
+          background: on ? "rgba(52,211,153,0.22)" : "transparent",
+          color: on ? "#6ee7b7" : "#7fa693"
+        });
+        choice.addEventListener("click", function () { setChatTarget(n); renderHud(); });
+        picker.appendChild(choice);
       });
-    }));
+      body.appendChild(picker);
+
+      body.appendChild(button("Find unanswered chats", function () {
+        var target = chatTarget;
+        lastChatScan = "Reading chats… 0 of " + target;
+        scanChats(target, function (count) {
+          lastChatScan = "Reading chats… " + count + " of " + target;
+          renderHud();
+        }, function (threads, stopped) {
+          lastChatScan = "Saving " + threads.length + " chats…";
+          renderHud();
+          sendChatList(threads, function (r) {
+            lastChatScan = !r.ok ? (r.error || "Could not save the chats.")
+              : "Read " + r.read + " chats" + (stopped ? " (stopped early)" : "") + ": " +
+                r.waiting + " waiting on you" +
+                (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
+                ", " + r.quiet + " gone quiet. See Messages on the dashboard.";
+            renderHud();
+          });
+        });
+        renderHud();
+      }));
+    }
     if (lastChatScan) body.appendChild(hudNote(lastChatScan));
 
     var id = currentThreadId();
@@ -5159,6 +5278,9 @@
     commentPayload: function () { return commentPayload().body; },
     injectQuickRespond: injectQuickRespond,
     readChatList: readChatList,
+    scanChats: scanChats,
+    chatTarget: function () { return chatTarget; },
+    setChatScrollWait: function (ms) { CHAT_SCROLL_WAIT = ms; },
     readConversation: readConversation,
     chatTime: chatTime,
     saveMessengerReport: saveMessengerReport,

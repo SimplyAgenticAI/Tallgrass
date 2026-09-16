@@ -115,10 +115,69 @@ check("who said what",
 check("what was said", convo.messages[0].text, "Hi! Saw your post about websites");
 check("nobody left unplaced", convo.unknown, 0);
 
-console.log();
-if (FAILURES.length) {
-  console.log(FAILURES.length + " FAILURES");
-  process.exit(1);
+/* A list like Facebook's: 120 chats, ten rows rendered at a time, the rest
+ * unmounted until scrolled to. Reading it once finds ten. */
+function virtualInbox(total) {
+  var VD = H.makeDoc();
+  var vroot = VD.el("div");
+  var scroller = VD.el("div");
+  vroot.appendChild(scroller);
+  var top = 0;
+  scroller.clientHeight = 500;
+  scroller.scrollHeight = total * 50;
+  function render() {
+    scroller.children = [];
+    var first = Math.floor(top / 50);
+    for (var i = first; i < Math.min(total, first + 10); i++) {
+      var a = VD.el("a");
+      a.setAttribute("href", "/messages/t/" + (5000 + i) + "/");
+      scroller.appendChild(a);
+      var n = VD.el("span"); n.textContent = "Person " + i; a.appendChild(n);
+      var l = VD.el("span"); l.textContent = (i % 3 ? "You: ok" : "Is this still available?"); a.appendChild(l);
+      var w = VD.el("span"); w.textContent = "2d"; a.appendChild(w);
+    }
+  }
+  Object.defineProperty(scroller, "scrollTop", {
+    get: function () { return top; },
+    set: function (v) { top = Math.max(0, Math.min(v, scroller.scrollHeight - scroller.clientHeight)); render(); }
+  });
+  render();
+  return { doc: VD, root: vroot, scroller: scroller };
 }
-console.log("chats read the way Messenger shows them");
-process.exit(0);
+
+function scanTest(total, target, then) {
+  var inbox = virtualInbox(total);
+  var vapi = runScan({ doc: inbox.doc, root: inbox.root }, "/messages/");
+  vapi.setChatScrollWait(1);
+  check("one screen shows only ten", vapi.readChatList().length, 10);
+  var seen = [];
+  vapi.scanChats(target, function (n) { seen.push(n); }, function (threads, stopped) {
+    then(threads, stopped, seen, inbox);
+  });
+}
+
+console.log();
+console.log("reading more than one screen");
+scanTest(120, 50, function (threads, stopped, progress, inbox) {
+  check("scrolls until it has as many as asked", threads.length, 50);
+  check("  each chat once", Object.keys(threads.reduce(function (a, t) { a[t.key] = 1; return a; }, {})).length, 50);
+  check("  in list order, from the top", [threads[0].name, threads[49].name], ["Person 0", "Person 49"]);
+  check("  reporting progress as it goes", progress[progress.length - 1], 50);
+  check("  and returns the list to the top", inbox.scroller.scrollTop, 0);
+  check("  not stopped", stopped, false);
+
+  scanTest(120, 250, function (threads2) {
+    check("an inbox smaller than asked is read to its end", threads2.length, 120);
+    finishTests();
+  });
+});
+
+function finishTests() {
+  console.log();
+  if (FAILURES.length) {
+    console.log(FAILURES.length + " FAILURES");
+    process.exit(1);
+  }
+  console.log("chats read the way Messenger shows them");
+  process.exit(0);
+}
