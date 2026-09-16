@@ -3,9 +3,10 @@
 
 {% block content %}
 <section class="pricing-head">
-  <h1>Find what broke out. Write the next one.</h1>
+  <h1>Find what broke out. Answer everyone it brings in.</h1>
   <p class="sub">
-    Start free on as many groups as you like. Upgrade when the scoring earns it.
+    Start free on as many groups as you like, with reply drafting for your
+    comments and Messenger included. Upgrade when it earns it.
   </p>
 </section>
 
@@ -106,10 +107,24 @@
 
 <section class="glass panel reveal pricing-faq">
   <h2>Worth knowing</h2>
+  {% if shared_ai %}
   <p class="fine">
-    <b>You bring your own AI key.</b> Sage and the post-idea writer run on your
-    own Claude or OpenAI key, so there's no model cost baked into the price and
-    no cap on how much you use them.
+    <b>AI drafting is included.</b> Suggested replies and messages, Sage, remix
+    and the post-idea writer run on the included AI allowance —
+    {{ ai_limits.free }} generations a month on Free, {{ ai_limits.pro }} on Pro.
+    Add your own Claude or OpenAI key in Settings and there's no cap at all.
+  </p>
+  {% else %}
+  <p class="fine">
+    <b>You bring your own AI key.</b> Suggested replies and messages, Sage and
+    the post-idea writer run on your own Claude or OpenAI key, so there's no
+    model cost baked into the price and no cap on how much you use them.
+  </p>
+  {% endif %}
+  <p class="fine">
+    <b>It never posts for you.</b> Every reply and message {{ app_name }} drafts
+    is put in Facebook's own box for you to read, edit and send. Nothing is
+    ever posted or sent on your behalf.
   </p>
   <p class="fine">
     <b>Payments are handled by Stripe.</b> Card details go straight to Stripe

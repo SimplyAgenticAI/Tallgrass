@@ -68,6 +68,8 @@ PRO_FEATURES = [
 
 FREE_FEATURES = [
     "Every feature — Sage, remix, ideas, export",
+    "Unanswered comments and Messenger chats, found for you",
+    "Replies and follow-ups drafted in your voice",
     "Full outlier scoring and the meadow",
     "Unlimited groups, pages and profiles",
     "1,000 captured posts",

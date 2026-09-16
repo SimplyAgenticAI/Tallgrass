@@ -64,7 +64,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "26.3"
+APP_VERSION = "26.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2499,6 +2499,10 @@ def pricing():
         billing_ready=billing.is_configured(),
         is_pro=billing.is_pro(user),
         usage=billing.usage(user["id"]) if user else None,
+        # Whether AI features run on an included key (metered by plan) or need
+        # the user's own — the page says whichever is actually true here.
+        shared_ai=bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+        ai_limits=billing.AI_LIMITS,
         version=APP_VERSION,
         active="pricing",
     )
