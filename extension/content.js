@@ -4384,6 +4384,376 @@
     catch (e) { return false; }
   }
 
+  /* ------------------------------------------------------------- Messenger
+   *
+   * facebook.com/messages: find the chats someone is waiting on, and draft the
+   * next message in the one that is open.
+   *
+   * The chat list is the source for the first half, because every row already
+   * says what matters — who, the last line (prefixed "You:" when it was you),
+   * and when. Only a summary leaves the browser: who spoke last, roughly when,
+   * whether it looked like an opportunity, and a hash of the last line so a new
+   * message can be noticed. Never the text.
+   *
+   * The second half reads the open conversation and sends it to the AI once, on
+   * request. Speakers are read from Facebook's own hidden "You sent" headings
+   * when present, and from which side of the conversation a bubble sits on
+   * when not — and a message nobody can place is sent as "unknown" rather than
+   * guessed. The draft goes in Messenger's box. Nothing here sends it.
+   *
+   * Unlike comments, none of this has been checked against the real page yet:
+   * __outlier.saveMessengerReport() saves what was read, with the markup.
+   */
+  var THREAD_HREF_RE = /\/messages\/(?:e2ee\/)?t\/([^/?#]+)/;
+  var CHAT_TIME_RE = new RegExp(
+    "^(?:just now|now|\\d+\\s*(?:m|h|d|w|y|min|mins|hr|hrs|wk|wks)|yesterday" +
+    "|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday" +
+    "|[a-z]{3,9}\\s+\\d{1,2}(?:,\\s*\\d{4})?|\\d{1,2}/\\d{1,2}/\\d{2,4}" +
+    "|\\d{1,2}:\\d{2}\\s*(?:am|pm)?)$", "i");
+  var FROM_ME_RE =
+    /^you(?::|\s+(?:sent|replied|reacted|unsent|called|missed|liked|shared|forwarded|changed|named|set|started))/i;
+  var OPPORTUNITY_RE = new RegExp(
+    "\\b(?:how much|price|pricing|prices|cost|costs|quote|rates?|available|availability" +
+    "|interested|book|booking|appointment|schedule|order|buy|purchase|still (?:have|available|for sale)" +
+    "|ship|shipping|deliver|delivery|invoice|payment|deposit|call me|text me|dm me" +
+    "|more info|details)\\b", "i");
+  var CHAT_NOISE_RE = /^(?:active now|active \d+\s*\w+ ago|unread|new message|·|\||muted|pinned)$/i;
+
+  function onMessenger() {
+    return /^\/messages(?:\/|$)/.test(location.pathname);
+  }
+
+  function currentThreadId() {
+    var m = location.pathname.match(THREAD_HREF_RE);
+    return m ? m[1] : null;
+  }
+
+  // Leaf text in document order: what a row actually shows, line by line,
+  // without depending on how innerText joins blocks.
+  function leafLines(el) {
+    var out = [];
+    var nodes = el.querySelectorAll("span, div, abbr");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].children && nodes[i].children.length) continue;
+      var text = visibleText(nodes[i].innerText || "").replace(/\s+/g, " ").trim();
+      if (text) out.push(text);
+    }
+    if (!out.length) {
+      out = visibleText(el.innerText || "").split(/\n+/).map(function (s) { return s.trim(); });
+    }
+    return out.filter(function (s) { return s && !CHAT_NOISE_RE.test(s); });
+  }
+
+  function chatTime(label) {
+    var t = String(label || "").trim().toLowerCase();
+    var short = t.match(/^(\d+)\s*(min|mins|hr|hrs|wk|wks)$/);
+    if (short) {
+      return parseRelativeTime(short[1] + { min: "m", mins: "m", hr: "h", hrs: "h",
+                                            wk: "w", wks: "w" }[short[2]]);
+    }
+    var day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].indexOf(t.slice(0, 3));
+    if (day !== -1 && /^[a-z]+$/.test(t)) {
+      var back = (new Date().getDay() - day + 7) % 7 || 7;
+      return isoOf(new Date(Date.now() - back * 864e5));
+    }
+    if (/^\d{1,2}:\d{2}\s*(am|pm)?$/.test(t)) {
+      var today = new Date();
+      applyClock(today, label);
+      return isoOf(today);
+    }
+    var slash = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (slash) {
+      var year = parseInt(slash[3], 10);
+      return isoOf(new Date(year < 100 ? 2000 + year : year,
+                            parseInt(slash[1], 10) - 1, parseInt(slash[2], 10), 12));
+    }
+    return parseRelativeTime(label);
+  }
+
+  function readChatList() {
+    var links = document.querySelectorAll('a[href*="/messages/"]');
+    var seen = {};
+    var threads = [];
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute("href") || "";
+      var m = href.match(THREAD_HREF_RE);
+      if (!m || seen[m[1]]) continue;
+      // A link inside the open conversation is not a row in the list.
+      if (links[i].closest && links[i].closest('[role="main"] [role="row"], [role="main"] [role="article"]')) continue;
+      var lines = leafLines(links[i]);
+      if (lines.length < 2 || lines[0].length > 80) continue;
+
+      var name = lines[0];
+      var rest = lines.slice(1).join(" · ").split(/\s+·\s+/)
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return s && !CHAT_NOISE_RE.test(s); });
+      var whenText = "";
+      for (var j = rest.length - 1; j >= 0; j--) {
+        if (CHAT_TIME_RE.test(rest[j])) { whenText = rest.splice(j, 1)[0]; break; }
+      }
+      var last = rest.join(" · ");
+      if (!last) continue;
+      seen[m[1]] = true;
+
+      var fromMe = FROM_ME_RE.test(last);
+      var label = (links[i].getAttribute("aria-label") || "") + " " +
+        Array.prototype.map.call(links[i].querySelectorAll("[aria-label]"), function (el) {
+          return el.getAttribute("aria-label");
+        }).join(" ");
+      threads.push({
+        key: "t:" + m[1],
+        name: cut(name, 200),
+        url: absolute(href.split("?")[0]),
+        last_from: fromMe ? "me" : "them",
+        last_at: chatTime(whenText),
+        when_text: whenText,
+        unread: /\bunread\b|mark as read/i.test(label),
+        signal: fromMe ? null
+          : OPPORTUNITY_RE.test(last) ? "opportunity"
+          : /\?\s*$/.test(last) ? "question" : null,
+        // The last line, once — so a new message can reopen a chat marked done
+        // on the dashboard, without the line itself ever being sent.
+        last_hash: hashString((fromMe ? "me|" : "them|") + last)
+      });
+    }
+    return threads;
+  }
+
+  function sendChatList(done) {
+    var threads = readChatList();
+    if (!threads.length) return done({ ok: false, error: "No chats found. Open facebook.com/messages first." });
+    var body = { threads: threads.map(function (t) {
+      return { key: t.key, name: t.name, url: t.url, last_from: t.last_from, last_at: t.last_at,
+               unread: t.unread, signal: t.signal, last_hash: t.last_hash };
+    }) };
+    chrome.runtime.sendMessage({ type: "OUTLIER_THREADS", body: body }, function (response) {
+      if (chrome.runtime.lastError || !response) {
+        return done({ ok: false, error: "The extension was asleep — press again." });
+      }
+      response.read = threads.length;
+      done(response);
+    });
+  }
+
+  function threadName(id) {
+    var rows = document.querySelectorAll('a[href*="/t/' + id + '"]');
+    for (var i = 0; i < rows.length; i++) {
+      var lines = leafLines(rows[i]);
+      if (lines.length >= 2 && lines[0].length <= 80) return lines[0];
+    }
+    var main = document.querySelector('[role="main"]');
+    var heading = main && main.querySelector("h1, h2");
+    return heading ? visibleText(heading.innerText || "").trim() : "";
+  }
+
+  var TIME_LINE_RE = /^(?:today|yesterday|mon|tue|wed|thu|fri|sat|sun|[a-z]{3,9}\s+\d{1,2})?[a-z,]*\s*(?:at\s+)?\d{1,2}:\d{2}\s*(?:am|pm)?$/i;
+  var MESSAGE_NOISE_RE =
+    /^(?:you sent|sent|seen|delivered|enter|edited|message sent|you replied|replied to you|reacted .*|you reacted .*|original message:?)$/i;
+
+  function readConversation() {
+    var id = currentThreadId();
+    if (!id) return null;
+    var main = document.querySelector('[role="main"]') || document.body;
+    var name = threadName(id);
+    var first = String(name || "").split(" ")[0].toLowerCase();
+
+    var rows = main.querySelectorAll('[role="row"]');
+    if (!rows.length) rows = main.querySelectorAll('div[role="article"]');
+    var mainBox = main.getBoundingClientRect ? main.getBoundingClientRect() : null;
+    var middle = mainBox && mainBox.width ? mainBox.left + mainBox.width / 2 : null;
+
+    var out = [];
+    var unknown = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      // A row inside another row is read with its parent.
+      var outer = row.parentElement && row.parentElement.closest
+        ? row.parentElement.closest('[role="row"]') : null;
+      if (outer && outer !== row && main.contains(outer)) continue;
+
+      var from = null;
+      var words = [];
+      var textEl = null;
+      var leaves = row.querySelectorAll("span, div, h4, h5, h6");
+      for (var j = 0; j < leaves.length; j++) {
+        var leaf = leaves[j];
+        if (leaf.children && leaf.children.length) continue;
+        var text = visibleText(leaf.innerText || "").replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        var low = text.toLowerCase();
+        // Facebook's hidden headings name the sender of a message group.
+        if (/^you sent\b/.test(low) || low === "you") { from = "me"; continue; }
+        if (name && (low === name.toLowerCase() || (first && low === first))) { from = from || "them"; continue; }
+        if (/ sent$/.test(low) && low.length < 60) { from = from || "them"; continue; }
+        if (TIME_LINE_RE.test(text) || MESSAGE_NOISE_RE.test(text)) continue;
+        if (!textEl && leaf.closest && leaf.closest('[dir="auto"]')) textEl = leaf;
+        if (words.indexOf(text) === -1) words.push(text);
+      }
+      if (!words.length) continue;
+
+      if (!from && textEl && middle !== null && textEl.getBoundingClientRect) {
+        var box = textEl.getBoundingClientRect();
+        if (box.width) from = (box.left + box.width / 2) > middle ? "me" : "them";
+      }
+      if (!from) unknown++;
+      out.push({ from: from || "unknown", text: cut(words.join(" "), 1000) });
+    }
+
+    return { id: id, name: name, messages: out.slice(-30), unknown: unknown };
+  }
+
+  function messageBox() {
+    var main = document.querySelector('[role="main"]') || document;
+    var boxes = main.querySelectorAll('[contenteditable="true"]');
+    return boxes.length ? boxes[boxes.length - 1] : null;
+  }
+
+  function typeInto(box, text) {
+    if (box.focus) box.focus();
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch (e) { /* no selection API here */ }
+    // Typed, never sent: nothing here presses Enter or Messenger's send.
+    try { return document.execCommand("insertText", false, text); }
+    catch (e) { return false; }
+  }
+
+  var MSG_DRAFT = null;          // { threadId, busy | error | text, note }
+  var lastChatScan = "";
+
+  function suggestMessage() {
+    var convo = readConversation();
+    if (!convo) return;
+    MSG_DRAFT = { threadId: convo.id, busy: true };
+    renderHud();
+    if (!convo.messages.length) {
+      MSG_DRAFT = { threadId: convo.id, error: "Couldn't read this conversation yet — scroll it a little and try again." };
+      return renderHud();
+    }
+    chrome.runtime.sendMessage({
+      type: "OUTLIER_MESSAGE_DRAFT",
+      body: { name: convo.name, messages: convo.messages }
+    }, function (response) {
+      if (chrome.runtime.lastError || !response) {
+        MSG_DRAFT = { threadId: convo.id, error: "The extension was asleep — press again." };
+      } else if (!response.ok) {
+        MSG_DRAFT = { threadId: convo.id, error: response.error || "Could not draft a message." };
+      } else {
+        MSG_DRAFT = { threadId: convo.id, text: response.reply };
+        var box = messageBox();
+        MSG_DRAFT.note = box && typeInto(box, response.reply)
+          ? "In the message box. Read it, edit it, then send it yourself."
+          : "Couldn't reach the message box — use Copy, then paste it in.";
+      }
+      renderHud();
+    });
+  }
+
+  // The Messenger controls in the panel. Returns true when it added any.
+  function renderMessengerHud(body, button) {
+    if (!onMessenger()) return false;
+
+    body.appendChild(button("Find unanswered chats", function () {
+      lastChatScan = "Reading the chat list…";
+      renderHud();
+      sendChatList(function (r) {
+        lastChatScan = !r.ok ? (r.error || "Could not save the chats.")
+          : "Read " + r.read + " chats: " + r.waiting + " waiting on you" +
+            (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
+            ", " + r.quiet + " gone quiet. See Messages on the dashboard.";
+        renderHud();
+      });
+    }));
+    if (lastChatScan) body.appendChild(hudNote(lastChatScan));
+
+    var id = currentThreadId();
+    if (!id) return true;
+    var draft = MSG_DRAFT && MSG_DRAFT.threadId === id ? MSG_DRAFT : null;
+    body.appendChild(button(draft && draft.text ? "Another message" : "✨ Suggest a message",
+                            suggestMessage));
+    if (draft) {
+      if (draft.busy) body.appendChild(hudNote("✨ Writing the next message…"));
+      else if (draft.error) body.appendChild(hudNote(draft.error));
+      else {
+        var text = hudNote(draft.text);
+        styleEl(text, { color: "#e8f5ee", whiteSpace: "pre-wrap", userSelect: "text",
+                        padding: "0.5em 0.6em", borderRadius: "7px",
+                        background: "rgba(52,211,153,0.10)" });
+        body.appendChild(text);
+        body.appendChild(button("Put in message box", function () {
+          var box = messageBox();
+          draft.note = box && typeInto(box, draft.text)
+            ? "In the message box. Read it, edit it, then send it yourself."
+            : "Couldn't reach the message box — use Copy.";
+          renderHud();
+        }));
+        body.appendChild(button("Copy", function () {
+          try { navigator.clipboard.writeText(draft.text); draft.note = "Copied."; }
+          catch (e) { draft.note = "Select the text above to copy it."; }
+          renderHud();
+        }));
+        body.appendChild(hudNote(draft.note || "Tallgrass never sends — you do."));
+      }
+    }
+    return true;
+  }
+
+  function hudButton(label, onClick) {
+    var b = document.createElement("button");
+    b.textContent = label;
+    styleEl(b, {
+      width: "100%", marginTop: "0.55em", padding: "0.65em", borderRadius: "8px",
+      border: "1px solid rgba(110,231,183,0.4)", cursor: "pointer",
+      background: "rgba(52,211,153,0.14)", color: "#6ee7b7",
+      fontSize: "0.95em", fontWeight: "650"
+    });
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function hudNote(text) {
+    var note = document.createElement("div");
+    note.textContent = text;
+    styleEl(note, { marginTop: "0.4em", fontSize: "0.88em", color: "#9fc3b1" });
+    return note;
+  }
+
+  function saveMessengerReport() {
+    var nl = String.fromCharCode(10);
+    var lines = ["TALLGRASS MESSENGER REPORT", "url: " + location.pathname, ""];
+    var threads = readChatList();
+    lines.push("--- chat list: " + threads.length + " rows ---");
+    threads.forEach(function (t) {
+      lines.push(t.last_from + "  " + JSON.stringify(t.name) + "  when=" + JSON.stringify(t.when_text) +
+                 " -> " + t.last_at + "  unread=" + t.unread + "  signal=" + t.signal);
+    });
+    var convo = readConversation();
+    lines.push("", "--- open conversation: " + (convo ? JSON.stringify(convo.name) : "none") + " ---");
+    if (convo) {
+      lines.push("unplaced messages: " + convo.unknown);
+      convo.messages.forEach(function (m) { lines.push(m.from + ": " + JSON.stringify(m.text.slice(0, 80))); });
+      var main = document.querySelector('[role="main"]');
+      var row = main && (main.querySelector('[role="row"]') || main.querySelector('div[role="article"]'));
+      lines.push("", "--- first message row markup ---", row ? (row.outerHTML || "").slice(0, 15000) : "none");
+    }
+    var link = document.querySelector('a[href*="/messages/t/"], a[href*="/messages/e2ee/t/"]');
+    lines.push("", "--- first chat row markup ---", link ? (link.outerHTML || "").slice(0, 8000) : "none");
+    var text = lines.join(nl);
+    try {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      a.download = "tallgrass-messenger-report.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) { console.log(text); }
+  }
+
   function saveCommentReport() {
     var lines = [];
     var version = "?";
@@ -4579,6 +4949,9 @@
      * Offered only while a post with comments is open — which is where you
      * are when you want it, and not in the way of a scan the rest of the time.
      */
+    // Messenger: find unanswered chats, and draft the next message.
+    if (!autoScrolling) renderMessengerHud(hudBody, hudButton);
+
     if (!autoScrolling && openPostDialog()) {
       var readComments = document.createElement("button");
       readComments.textContent = "Save comments to Tallgrass";
@@ -4785,6 +5158,10 @@
     saveCommentReport: saveCommentReport,
     commentPayload: function () { return commentPayload().body; },
     injectQuickRespond: injectQuickRespond,
+    readChatList: readChatList,
+    readConversation: readConversation,
+    chatTime: chatTime,
+    saveMessengerReport: saveMessengerReport,
     ownReplyButton: ownReplyButton,
     insertDraft: insertDraft,
     // A function, not the object: STATS is reassigned when the source

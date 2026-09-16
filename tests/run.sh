@@ -51,6 +51,8 @@ echo "--- members and followers ---"
 node tests/audience.test.js
 echo "--- comment threads and who answered ---"
 node tests/comments.test.js
+echo "--- messenger chats and conversations ---"
+node tests/messenger.test.js
 echo "--- captions ---"
 node tests/caption.test.js
 echo "--- timestamps ---"
@@ -95,6 +97,8 @@ echo "--- signup-to-paid funnel ---"
 python tests/funnel.test.py
 echo "--- saved comments ---"
 python tests/comment_store.test.py
+echo "--- messenger inbox ---"
+python tests/messages_store.test.py
 echo "--- capture health canary ---"
 python tests/health.test.py
 echo "--- app consistency ---"

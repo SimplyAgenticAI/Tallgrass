@@ -320,6 +320,31 @@ CREATE TABLE IF NOT EXISTS post_comments (
     FOREIGN KEY (post_id) REFERENCES comment_posts(id) ON DELETE CASCADE
 );
 
+-- Messenger chats, as the chat list shows them. Deliberately no message text:
+-- who the chat is with, its link, who spoke last, roughly when, and whether
+-- the last message looked like an opportunity (decided in the browser). The
+-- text itself goes to the AI only when a draft is asked for, and is never
+-- kept. last_hash is a hash of the last message, so a new message can reopen
+-- a chat marked done without the message being stored. See messages.py.
+CREATE TABLE IF NOT EXISTS message_threads (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    thread_key    TEXT NOT NULL,
+    name          TEXT,
+    url           TEXT,
+    last_from     TEXT,              -- me | them
+    last_at       TEXT,              -- approximate, UTC
+    signal        TEXT,              -- opportunity | question | NULL
+    unread        INTEGER DEFAULT 0,
+    last_hash     TEXT,
+    status        TEXT DEFAULT 'open',
+    done_hash     TEXT,
+    first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    seen_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, thread_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- The first time each account reached each step between signing up and paying.
 -- The primary key is the "first time only": later repeats are ignored. first_at
 -- is NULL only for a step recovered from history with no known time. See

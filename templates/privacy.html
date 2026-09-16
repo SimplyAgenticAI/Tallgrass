@@ -38,11 +38,29 @@
     only when you press the button; opening a post reads nothing.
   </p>
 
+  <h3 id="messenger">Messenger</h3>
+  <p>
+    On <b>facebook.com/messages</b>, and only when you press a button:
+  </p>
+  <ul>
+    <li><b>Find unanswered chats</b> reads the chat list on your screen. For each
+      chat it sends only who the chat is with, the chat's link, whether you or
+      they sent the last message, roughly when, whether it is unread, whether
+      the last message looked like a question or an opportunity, and a
+      one-way fingerprint of that message so a new message can be noticed.
+      <b>The message text itself is not sent or stored.</b> That judgement is
+      made in your browser.</li>
+    <li><b>Suggest a message</b> reads the recent messages in the conversation
+      you have open and sends them to the AI provider once, to write a draft.
+      The conversation is not stored by {{ app_name }}, and the draft is put in
+      Messenger's box for you to send — {{ app_name }} never sends a message.</li>
+  </ul>
+
   <h3>What it does not collect</h3>
   <ul>
     <li>Your Facebook password, or any Facebook credential. The extension never sees the login form.</li>
     <li>Your Facebook cookies or session token.</li>
-    <li>Messages, Messenger conversations, or anything in your inbox.</li>
+    <li>The text of your messages, except as described under Messenger above: sent to the AI provider for one draft when you ask, and never stored.</li>
     <li>Your friend list, your notifications, or your own profile data.</li>
     <li>Comment text during a scan. A scan reads only the comment <i>count</i>; comments themselves are read only from a post you open and save, as described above.</li>
     <li>Private groups you are not a member of. The extension can only see what your own logged-in account can already see on screen.</li>
@@ -57,6 +75,7 @@
     <li><b>Your account:</b> your email address and a password hash. Your password is stored using scrypt and is never stored, logged or transmitted in readable form.</li>
     <li><b>Your API key:</b> stored as a hash, not as the key itself. We cannot read your key back — a lost key has to be reissued, not recovered.</li>
     <li><b>Your captured posts:</b> the fields listed above, kept under your account and visible only to you.</li>
+    <li><b>Messenger chats:</b> the chat summaries described above — names, links, who spoke last and when, never message text. <b>Forget all chats</b> on the Messages page removes them immediately.</li>
     <li><b>Comments you save:</b> the commenter names, comment text and links described above, kept under your account and visible only to you. <b>Forget</b> on the Comments page removes a post's comments immediately.</li>
   </ul>
 
@@ -67,8 +86,9 @@
       worth being blunt about it.
     </p>
     <p>
-      If you use <b>Sage</b> or the <b>remix</b> feature, the post text and
-      author name of the posts involved are sent to a third-party AI provider
+      If you use <b>Sage</b>, <b>remix</b>, <b>Suggest reply</b> or
+      <b>Suggest a message</b>, the posts, comments or messages involved are
+      sent to a third-party AI provider
       — <b>Anthropic</b> or <b>OpenAI</b>, whichever is configured — so it can
       answer or rewrite. Those posts are typically written by other people, so
       you are sending someone else's public post to a third party. Both

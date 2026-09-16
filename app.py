@@ -18,6 +18,7 @@ import backup
 import billing
 import db
 import comments
+import messages
 import demo_snapshot
 import funnel
 import hooks
@@ -63,7 +64,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.8"
+APP_VERSION = "25.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -181,7 +182,8 @@ app.config.update(
 
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
 # need permissive CORS. Everything else is same-origin.
-INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft")
+INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft",
+                "/api/messages/threads", "/api/messages/draft")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1592,6 +1594,83 @@ def api_comment_draft():
                       comment_id=ctx.get("id"))
 
 
+# ---------------------------------------------------------------- messenger
+
+
+def _api_user():
+    """The extension's key owner, installed as this request's user, or None."""
+    api_user = auth.user_for_api_key(request.headers.get("X-Outlier-Key", "").strip())
+    if api_user:
+        g.user = api_user
+    return api_user
+
+
+@app.route("/messages")
+@auth.login_required
+def messages_page():
+    """Messenger chats waiting on an answer, and ones that went quiet."""
+    return render_template(
+        "messages.html",
+        inbox=messages.inbox(_uid()),
+        version=APP_VERSION,
+        active="messages",
+    )
+
+
+@app.route("/messages/<int:thread_id>/status", methods=["POST"])
+@auth.login_required
+def message_status(thread_id):
+    try:
+        messages.set_status(_uid(), thread_id, request.form.get("status"))
+    except ValueError:
+        pass
+    return redirect(url_for("messages_page"))
+
+
+@app.route("/messages/forget", methods=["POST"])
+@auth.login_required
+def messages_forget():
+    messages.forget_all(_uid())
+    return redirect(url_for("messages_page"))
+
+
+@app.route("/api/messages/threads", methods=["POST", "OPTIONS"])
+def api_message_threads():
+    """The chat list, summarised in the browser. No message text arrives here."""
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = _api_user()
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    try:
+        result = messages.save_threads(api_user["id"], request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/api/messages/draft", methods=["POST", "OPTIONS"])
+def api_message_draft():
+    """The next message for an open conversation. Drafted, returned, not kept.
+
+    The conversation is sent to the AI provider for this one draft and stored
+    nowhere, and the extension only fills Messenger's own box — the user sends.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if not _api_user():
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    blocked = _ai_gate("message")
+    if blocked:
+        return blocked
+    body = request.get_json(silent=True) or {}
+    text, error = replies.draft_message(
+        (body.get("name") or "")[:200], body.get("messages"), body.get("instructions", ""))
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True, "reply": text})
+
+
 # ---------------------------------------------------------------- ingest API
 
 
@@ -1628,6 +1707,9 @@ def _field_scores(limit=90):
     # the score means — so a blade's height and a post's multiple agree.
     middle = weighted[len(weighted) // 2] or 1
     return [round(w / middle, 2) for w in weighted]
+
+
+app.add_template_filter(age_of, "ago")
 
 
 @app.template_filter("audience")
@@ -1686,7 +1768,8 @@ def inject_globals():
 # Endpoints that legitimately have no CSRF token: the extension authenticates
 # with an API key or its own header, and Stripe signs its webhooks.
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
-               "/api/extension/key", "/api/comments", "/api/comments/draft"}
+               "/api/extension/key", "/api/comments", "/api/comments/draft",
+               "/api/messages/threads", "/api/messages/draft"}
 
 
 @app.before_request

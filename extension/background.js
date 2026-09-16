@@ -131,6 +131,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  // Messenger: the chat list summary (no message text), and a draft for the
+  // open conversation, which comes back to the page and is never sent.
+  if (message.type === "OUTLIER_THREADS") {
+    postToDashboard("/api/messages/threads", message.body).then(sendResponse);
+    return true;
+  }
+  if (message.type === "OUTLIER_MESSAGE_DRAFT") {
+    postToDashboard("/api/messages/draft", message.body).then(sendResponse);
+    return true;
+  }
+
   if (message.type === "OUTLIER_PING") {
     testConnection().then(sendResponse);
     return true;

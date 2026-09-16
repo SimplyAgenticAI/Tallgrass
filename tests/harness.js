@@ -60,7 +60,7 @@ function makeDoc() {
       return String(sel).split(",").some(function (part) {
         part = part.trim();
         var m = part.match(
-          /^([a-zA-Z]+)?(?:\[([^\]~^$*|=]+)(?:([~^$*|]?=)"([^"]*)")?(\s+i)?\])?$/
+          /^([a-zA-Z][a-zA-Z0-9]*)?(?:\[([^\]~^$*|=]+)(?:([~^$*|]?=)"([^"]*)")?(\s+i)?\])?$/
         );
         if (!m || (!m[1] && !m[2])) { return false; }
         if (m[1] && e.tagName !== m[1].toUpperCase()) { return false; }

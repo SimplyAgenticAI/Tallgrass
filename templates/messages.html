@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Messages{% endblock %}
+
+{% macro thread_row(t, quiet=False) %}
+<li class="cm-item" id="t{{ t.id }}">
+  <div class="cm-main">
+    {% if t.signal == 'opportunity' %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
+    {% elif t.signal == 'question' %}<span class="cm-chip cm-chip-unknown">Question</span>
+    {% elif quiet %}<span class="cm-chip">Gone quiet</span>
+    {% else %}<span class="cm-chip">Waiting</span>{% endif %}
+    {% if t.unread %}<span class="uh-tag">unread</span>{% endif %}
+    <b class="cm-author">{{ t.name or "Unnamed chat" }}</b>
+    <p class="fine" style="margin:4px 0 0">
+      {% if quiet %}You messaged last{% else %}They messaged last{% endif %}
+      {%- if t.last_at %}, about {{ t.last_at | ago }}{% endif %}.
+      {% if t.status == 'done' %} Marked done.{% endif %}
+    </p>
+  </div>
+  <div class="cm-actions">
+    {% if t.url %}
+    <a class="filter cm-suggest" href="{{ t.url }}" target="_blank" rel="noopener">Open in Messenger</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('message_status', thread_id=t.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="status" value="{{ 'open' if t.status == 'done' else 'done' }}">
+      <button class="filter" type="submit">{{ 'Reopen' if t.status == 'done' else 'Done' }}</button>
+    </form>
+  </div>
+</li>
+{% endmacro %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>Messages</h1>
+    <p class="sub">
+      Messenger chats where someone is waiting on you, and conversations that
+      went quiet after your last message.
+      {% if inbox.waiting or inbox.quiet %}
+        <b>{{ inbox.waiting|length }}</b> waiting{% if inbox.opportunities %}, {{ inbox.opportunities }} that look like opportunities{% endif %}
+        · <b>{{ inbox.quiet|length }}</b> gone quiet.
+      {% endif %}
+    </p>
+  </div>
+</section>
+
+<div class="glass panel cm-post">
+  <p class="fine" style="margin:0">
+    <b>How it works.</b> On <b>facebook.com/messages</b>, press <b>Find unanswered
+    chats</b> in the {{ app_name }} panel — it reads the chat list you can see, so
+    scroll the list first to include older chats. Then open any chat and press
+    <b>✨ Suggest a message</b>: the next message is written into Messenger's box
+    for you to edit and send. {{ app_name }} never sends a message.
+  </p>
+  <p class="fine" style="margin:8px 0 0">
+    <b>What is kept:</b> who each chat is with, its link, who spoke last and
+    roughly when — never what anyone wrote. A conversation is sent to the AI
+    only when you ask for a draft, and isn't stored.
+  </p>
+</div>
+
+{% if not inbox.waiting and not inbox.quiet %}
+<div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
+  <p>Nothing here yet. Open facebook.com/messages and press <b>Find unanswered chats</b> in the {{ app_name }} panel.</p>
+  <a class="btn btn-primary" href="https://www.facebook.com/messages" target="_blank" rel="noopener">Open Messenger</a>
+</div>
+{% endif %}
+
+{% if inbox.waiting %}
+<section class="glass panel cm-post">
+  <header class="cm-post-head">
+    <div class="cm-post-title">Waiting on you</div>
+  </header>
+  <ul class="cm-list">
+    {% for t in inbox.waiting %}{{ thread_row(t) }}{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if inbox.quiet %}
+<section class="glass panel cm-post">
+  <header class="cm-post-head">
+    <div>
+      <div class="cm-post-title">Gone quiet</div>
+      <div class="fine">You messaged last, {{ inbox.quiet_days }}+ days ago, and nothing came back.</div>
+    </div>
+  </header>
+  <ul class="cm-list">
+    {% for t in inbox.quiet %}{{ thread_row(t, quiet=True) }}{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if inbox.waiting or inbox.quiet %}
+<form method="post" action="{{ url_for('messages_forget') }}" style="margin-top:12px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="filter" type="submit">Forget all chats</button>
+</form>
+{% endif %}
+{% endblock %}
