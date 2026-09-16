@@ -17,6 +17,7 @@ import auth
 import backup
 import billing
 import db
+import comments
 import demo_snapshot
 import funnel
 import hooks
@@ -61,7 +62,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "25.6"
+APP_VERSION = "25.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -111,7 +112,7 @@ EXTENSION_STORE_URL = (
 
 # The date shown on the legal pages. Bump it when the terms change in a way
 # that affects what is collected or who receives it — not for typos.
-LEGAL_UPDATED = "10 August 2026"
+LEGAL_UPDATED = "16 September 2026"
 
 # Under gunicorn the app's own logger is not configured by default, so
 # anything it writes is discarded. Nothing here logged at all, which meant the
@@ -179,7 +180,7 @@ app.config.update(
 
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
 # need permissive CORS. Everything else is same-origin.
-INGEST_PATHS = ("/api/capture", "/api/ping")
+INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1473,6 +1474,62 @@ def go_store():
     return redirect(EXTENSION_STORE_URL)
 
 
+# ---------------------------------------------------------------- comments
+
+
+@app.route("/comments")
+@auth.login_required
+def comments_page():
+    """Comments on your own posts, the ones you have not answered first."""
+    show_done = request.args.get("done") == "1"
+    data = comments.threads_for(_uid(), show_done=show_done)
+    return render_template(
+        "comments.html",
+        posts=data["posts"],
+        totals=data["totals"],
+        show_done=show_done,
+        version=APP_VERSION,
+        active="comments",
+    )
+
+
+@app.route("/comments/<int:comment_id>/status", methods=["POST"])
+@auth.login_required
+def comment_status(comment_id):
+    try:
+        comments.set_status(_uid(), comment_id, request.form.get("status"))
+    except ValueError:
+        pass
+    return redirect(url_for("comments_page", done=request.args.get("done")) +
+                    "#c%d" % comment_id)
+
+
+@app.route("/comments/post/<int:post_id>/forget", methods=["POST"])
+@auth.login_required
+def comment_post_forget(post_id):
+    comments.forget_post(_uid(), post_id)
+    return redirect(url_for("comments_page"))
+
+
+@app.route("/api/comments", methods=["POST", "OPTIONS"])
+def api_comments():
+    """One read of one post's comments, from the extension.
+
+    Authenticated by API key for the same reason capture is: it is called from
+    the extension, and ambient browser authority must not be enough.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = auth.user_for_api_key(request.headers.get("X-Outlier-Key", "").strip())
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    try:
+        result = comments.save_thread(api_user["id"], request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, **result})
+
+
 # ---------------------------------------------------------------- ingest API
 
 
@@ -1567,7 +1624,7 @@ def inject_globals():
 # Endpoints that legitimately have no CSRF token: the extension authenticates
 # with an API key or its own header, and Stripe signs its webhooks.
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
-               "/api/extension/key"}
+               "/api/extension/key", "/api/comments"}
 
 
 @app.before_request

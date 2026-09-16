@@ -119,6 +119,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;  // keep the channel open for the async reply
   }
 
+  if (message.type === "OUTLIER_COMMENTS") {
+    handleComments(message).then(sendResponse);
+    return true;
+  }
+
   if (message.type === "OUTLIER_PING") {
     testConnection().then(sendResponse);
     return true;
@@ -298,6 +303,42 @@ async function handleCapture(message) {
       error: "Could not reach the dashboard at " + endpoint +
              " — " + reason + " (tried 3 times)"
     };
+  }
+}
+
+/* An open post's comments, saved to the dashboard.
+ *
+ * One request pressed by hand, so none of capture's batching or retry loop:
+ * the same key recovery, and a plain answer either way. Saving twice is safe —
+ * the server updates a thread it has already seen.
+ */
+async function handleComments(message) {
+  const endpoint = await getEndpoint();
+  if (!(await hasHostPermission(endpoint))) {
+    return { ok: false, error: "No Chrome permission for " + endpoint + " — re-save it in the popup" };
+  }
+  const send = (key) => fetch(`${endpoint}/api/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Outlier-Key": key },
+    body: JSON.stringify(message.body)
+  });
+  try {
+    const apiKey = await getApiKey();
+    if (!apiKey) return { ok: false, error: "Sign in at " + endpoint + " in this browser first." };
+    let response = await send(apiKey);
+    if (response.status === 401) {
+      const fresh = await refreshKey();
+      if (fresh) response = await send(fresh);
+      if (!fresh || response.status === 401) {
+        return { ok: false, error: "Sign in at " + endpoint + " in this browser to reconnect." };
+      }
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, error: data.error || `Dashboard returned ${response.status}` };
+    return data;
+  } catch (error) {
+    return { ok: false, error: "Could not reach the dashboard at " + endpoint +
+                               " — " + ((error && error.message) || error) };
   }
 }
 

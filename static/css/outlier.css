@@ -1289,6 +1289,39 @@ select.kind-select option { color: initial; }
 }
 .source-title:hover { color: var(--emerald-bright); }
 
+/* Comments page. Unanswered is the only state allowed to draw the eye. */
+.cm-post { margin-bottom: 18px; }
+.cm-post-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.cm-post-title { font-weight: 650; color: var(--text); margin-bottom: 3px; }
+.cm-post-actions { display: flex; gap: 6px; align-items: center; }
+.cm-post-actions form, .cm-actions form { margin: 0; }
+button.filter { font: inherit; cursor: pointer; }
+.cm-warn {
+  margin: 12px 0 0; padding: 9px 12px; border-radius: var(--r-md); font-size: 13px;
+  color: #f0c274; background: rgba(217,180,95,0.10); border: 1px solid rgba(217,180,95,0.28);
+}
+.cm-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.cm-item {
+  display: flex; justify-content: space-between; gap: 12px; padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.cm-item:first-child { border-top: 0; }
+.cm-main { min-width: 0; flex: 1; }
+.cm-author { color: var(--text); margin-left: 6px; }
+.cm-body { margin: 5px 0 0; color: var(--text-muted); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-chip {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 2px 7px; border-radius: var(--r-xs); border: 1px solid var(--border); color: var(--text-faint);
+}
+.cm-chip-unanswered { color: var(--ember); border-color: rgba(224,122,95,0.45); }
+.cm-chip-unknown { color: #f0c274; border-color: rgba(217,180,95,0.35); }
+.cm-chip-answered, .cm-chip-yours { color: var(--emerald); border-color: rgba(52,211,153,0.3); }
+.cm-answered .cm-body, .cm-yours .cm-body, .cm-done .cm-body { opacity: 0.7; }
+.cm-replies { list-style: none; margin: 8px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--border); font-size: 13px; color: var(--text-muted); }
+.cm-replies li { margin: 4px 0; }
+.cm-replies b { color: var(--text); }
+.cm-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+
 /* Members or followers, beside wherever a source is named. */
 .audience { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .source-title + .audience { margin: -10px 0 14px; }

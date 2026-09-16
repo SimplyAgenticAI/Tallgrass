@@ -29,13 +29,22 @@
     <li>the name and address of the group, page or profile you are viewing</li>
   </ul>
 
+  <h3 id="comments">Comments on your posts</h3>
+  <p>
+    When you open a post and press <b>Save comments to {{ app_name }}</b>, the
+    extension reads that one post's comment thread and nothing else. For each
+    comment and reply it reads the commenter's display name, the comment's
+    text, its link, and whether a reply on the page is from you. That happens
+    only when you press the button; opening a post reads nothing.
+  </p>
+
   <h3>What it does not collect</h3>
   <ul>
     <li>Your Facebook password, or any Facebook credential. The extension never sees the login form.</li>
     <li>Your Facebook cookies or session token.</li>
     <li>Messages, Messenger conversations, or anything in your inbox.</li>
     <li>Your friend list, your notifications, or your own profile data.</li>
-    <li>Comment text. Only the comment <i>count</i> is read, never the comments themselves.</li>
+    <li>Comment text during a scan. A scan reads only the comment <i>count</i>; comments themselves are read only from a post you open and save, as described above.</li>
     <li>Private groups you are not a member of. The extension can only see what your own logged-in account can already see on screen.</li>
   </ul>
   <p>
@@ -48,6 +57,7 @@
     <li><b>Your account:</b> your email address and a password hash. Your password is stored using scrypt and is never stored, logged or transmitted in readable form.</li>
     <li><b>Your API key:</b> stored as a hash, not as the key itself. We cannot read your key back — a lost key has to be reissued, not recovered.</li>
     <li><b>Your captured posts:</b> the fields listed above, kept under your account and visible only to you.</li>
+    <li><b>Comments you save:</b> the commenter names, comment text and links described above, kept under your account and visible only to you. <b>Forget</b> on the Comments page removes a post's comments immediately.</li>
   </ul>
 
   <h2 id="ai">When your posts are sent to an AI provider</h2>

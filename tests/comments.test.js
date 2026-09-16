@@ -148,6 +148,34 @@ check("a folded reply is unclear", verdictOf("Daniel Medina"), "unknown");
 check("and an unreplied comment is unanswered", verdictOf("Chris M Utter"), "unanswered");
 
 console.log();
+console.log("what is sent to the dashboard");
+D = H.makeDoc();
+root = D.el("div");
+post = add(root, "div", { role: "dialog" });
+add(post, "div", { dir: "auto" }, "Some seasons of building feel like progress");
+var jane = comment(post, "Comment by Jane Doe 2 days ago", "Jane Doe", "How much?");
+add(jane, "a", { href: "/jeffrandle/posts/pfbid02abc?comment_id=111" }, "2d");
+var reply = comment(post, "Reply by Jeff Randle to Jane Doe's comment 1 day ago", "Jeff Randle", "Sent a DM");
+add(reply, "a", { href: "/jeffrandle/posts/pfbid02abc?comment_id=111&reply_comment_id=222" }, "1d");
+comment(post, "Comment by Mark Twain 3h", "Mark Twain", "Logos too?");
+add(post, "div", {}, "Comment as Jeff Randle");
+
+api = runScan({ doc: D, root: root }, "/jeffrandle/posts/pfbid02abc");
+api.resetViewerNames();
+var body = api.commentPayload();
+check("the post is keyed on its id", body.post.key, "p:pfbid02abc");
+check("the post links to itself", body.post.url, "https://www.facebook.com/jeffrandle/posts/pfbid02abc");
+check("and is named by its own words", body.post.title, "Some seasons of building feel like progress");
+check("a comment is keyed on Facebook's comment id", body.comments[0].key, "c:111");
+check("a reply on its reply id", body.comments[1].key, "c:222");
+check("  and points at its comment", body.comments[1].parent_key, "c:111");
+check("the reply carries no verdict of its own", body.comments[1].verdict, undefined);
+check("a comment with no link is keyed on its words",
+      /^h:/.test(body.comments[2].key), true);
+check("verdicts travel", body.comments.map(function (c) { return c.verdict; }),
+      ["answered", undefined, "unanswered"]);
+
+console.log();
 if (FAILURES.length) {
   console.log(FAILURES.length + " FAILURES");
   process.exit(1);

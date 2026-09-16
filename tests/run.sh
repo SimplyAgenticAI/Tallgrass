@@ -93,6 +93,8 @@ echo "--- cross-user health ---"
 python tests/users.test.py
 echo "--- signup-to-paid funnel ---"
 python tests/funnel.test.py
+echo "--- saved comments ---"
+python tests/comment_store.test.py
 echo "--- capture health canary ---"
 python tests/health.test.py
 echo "--- app consistency ---"

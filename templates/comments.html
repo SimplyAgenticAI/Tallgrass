@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Comments{% endblock %}
+
+{% set verdict_labels = {
+  "unanswered": "Unanswered",
+  "unknown": "Check replies",
+  "answered": "Answered",
+  "yours": "Yours"
+} %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>Comments</h1>
+    <p class="sub">
+      Comments on your own posts, the ones you haven't answered first.
+      {% if posts %}
+        <b>{{ totals.unanswered }}</b> unanswered
+        {%- if totals.unknown %} · {{ totals.unknown }} with replies still folded{% endif %}.
+      {% endif %}
+    </p>
+  </div>
+  <div class="filters">
+    <a class="filter {{ 'active' if not show_done }}" href="{{ url_for('comments_page') }}">Open</a>
+    <a class="filter {{ 'active' if show_done }}" href="{{ url_for('comments_page', done=1) }}">Include done</a>
+  </div>
+</section>
+
+{% if not posts %}
+<div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
+  <p>
+    No comments saved yet. On Facebook, open one of your posts, click every
+    <b>View replies</b> so the whole thread shows, then press
+    <b>Save comments to {{ app_name }}</b> in the {{ app_name }} panel.
+  </p>
+  <a class="btn btn-primary" href="{{ url_for('capture') }}">Get the extension</a>
+</div>
+{% endif %}
+
+{% for post in posts %}
+<section class="glass panel cm-post">
+  <header class="cm-post-head">
+    <div>
+      <div class="cm-post-title">{{ post.title or "Your post" }}</div>
+      <div class="fine">
+        Read {{ (post.read_at or '')[:16] }} UTC
+        {%- if post.counts.unanswered %} · <span class="sa-warn">{{ post.counts.unanswered }} unanswered</span>{% endif %}
+        {%- if post.done_count %} · {{ post.done_count }} done{% endif %}
+      </div>
+    </div>
+    <div class="cm-post-actions">
+      {% if post.url %}
+      <a class="filter" href="{{ post.url }}" target="_blank" rel="noopener">Open on Facebook</a>
+      {% endif %}
+      <form method="post" action="{{ url_for('comment_post_forget', post_id=post.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="filter" type="submit" title="Remove this post's comments from {{ app_name }}">Forget</button>
+      </form>
+    </div>
+  </header>
+
+  {% if post.more_comments %}
+  <p class="cm-warn">
+    Some comments were still folded when this was read. Open the post, click
+    <b>View more comments</b>, and save again to get them all.
+  </p>
+  {% endif %}
+
+  {% if not post.threads %}
+  <p class="fine">Nothing open on this post.</p>
+  {% endif %}
+
+  <ul class="cm-list">
+    {% for c in post.threads %}
+    <li class="cm-item cm-{{ c.verdict }}{{ ' cm-done' if c.status == 'done' }}" id="c{{ c.id }}">
+      <div class="cm-main">
+        <span class="cm-chip cm-chip-{{ c.verdict }}">{{ verdict_labels.get(c.verdict, c.verdict) }}</span>
+        <b class="cm-author">{{ c.author or "Author not read" }}</b>
+        <p class="cm-body">{{ c.body or "Text not read" }}</p>
+        {% if c.verdict == 'unknown' %}
+        <p class="fine">{{ c.hidden_replies }} repl{{ 'y' if c.hidden_replies == 1 else 'ies' }} were folded, so {{ app_name }} can't tell if you answered.</p>
+        {% endif %}
+        {% if c.replies %}
+        <ul class="cm-replies">
+          {% for r in c.replies %}
+          <li><b>{{ r.author or "Author not read" }}</b>{% if r.is_mine %} <span class="uh-tag">you</span>{% endif %} — {{ r.body or "Text not read" }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      <div class="cm-actions">
+        {% if c.url or post.url %}
+        <a class="filter" href="{{ c.url or post.url }}" target="_blank" rel="noopener">Open</a>
+        {% endif %}
+        {% if c.verdict != 'yours' %}
+        <form method="post" action="{{ url_for('comment_status', comment_id=c.id, done=1 if show_done else None) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if c.status == 'done' %}
+          <input type="hidden" name="status" value="open">
+          <button class="filter" type="submit">Reopen</button>
+          {% else %}
+          <input type="hidden" name="status" value="done">
+          <button class="filter" type="submit">Done</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% endblock %}

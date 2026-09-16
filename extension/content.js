@@ -4011,14 +4011,134 @@
       else c.verdict = "unanswered";
     });
 
+    // Identity, so a second read of the same post updates it instead of
+    // duplicating it. Replies carry their thread's key as their parent.
+    threads.forEach(function (c) {
+      c.key = commentKey(c);
+      c.replies.forEach(function (rep) { rep.key = commentKey(rep); rep.parentKey = c.key; });
+    });
+
     return {
       scope: dialog ? "post dialog" : "page",
+      dialog: dialog,
       viewer: Object.keys(myNames),
       viewerFrom: myNames,
       comments: comments,
       threads: threads,
       moreComments: moreComments
     };
+  }
+
+  /* A comment's own link and identity.
+   *
+   * Its timestamp links to the post with ?comment_id= (and a reply adds
+   * reply_comment_id=), which is Facebook's own id for it — stable across
+   * reads, edits and re-ordering. Only when no such link is on the page does
+   * identity fall back to author and text.
+   */
+  function commentLink(c) {
+    var links = c.el.querySelectorAll('a[href*="comment_id="]');
+    for (var i = 0; i < links.length; i++) {
+      var owner = links[i].closest ? links[i].closest('div[role="article"]') : null;
+      if (owner && owner !== c.el) continue;
+      return absolute(links[i].getAttribute("href") || "");
+    }
+    return "";
+  }
+
+  function commentKey(c) {
+    c.url = commentLink(c);
+    var m = c.url.match(/[?&]reply_comment_id=(\d+)/) || c.url.match(/[?&]comment_id=(\d+)/);
+    if (m) return "c:" + m[1];
+    return "h:" + hashString((c.author || "") + "|" + (c.text || ""));
+  }
+
+  var POST_URL_RE = /\/posts\/|\/permalink|story_fbid=|[?&]fbid=|\/videos\/|\/reel\/|\/photo/;
+
+  // Which post this is. The address bar usually names it once a post is open;
+  // otherwise a comment's link does, with the comment part taken off.
+  function openPostIdentity(r) {
+    var url = POST_URL_RE.test(location.href) ? location.href : "";
+    if (!url) {
+      var links = (r.dialog || document).querySelectorAll(
+        'a[href*="/posts/"], a[href*="story_fbid"], a[href*="fbid="], a[href*="/videos/"], a[href*="/reel/"]');
+      for (var i = 0; i < links.length; i++) {
+        var href = links[i].getAttribute("href") || "";
+        if (/comment_id=/.test(href)) continue;
+        url = absolute(href);
+        break;
+      }
+    }
+    if (!url && r.threads[0] && r.threads[0].url) {
+      url = r.threads[0].url.replace(/[?&](reply_)?comment_id=\d+/g, "");
+    }
+    var m = url.match(/(?:posts|permalink|videos|reel)\/([\w]+)/) ||
+            url.match(/story_fbid=([\w]+)/) || url.match(/[?&]fbid=(\d+)/);
+    var key = m ? "p:" + m[1]
+      : url ? "u:" + cleanPermalink(url)
+      : "h:" + hashString(location.pathname + "|" + (r.threads.length
+          ? r.threads[0].author + "|" + r.threads[0].text : ""));
+    // cleanPermalink keeps story_fbid and id; a photo post is fbid, which it
+    // would strip, leaving a link to nothing in particular.
+    var stored = url ? cleanPermalink(url) : "";
+    var photo = url.match(/[?&]fbid=(\d+)/);
+    if (photo && stored.indexOf("fbid=") === -1) stored = stored.split("?")[0] + "?fbid=" + photo[1];
+    return { key: key, url: stored };
+  }
+
+  // The first words of the post itself, so the Comments page can say which
+  // post this was. Anything inside a comment, or Facebook's own furniture, is
+  // not the post.
+  function openPostTitle(r) {
+    var scope = r.dialog || document;
+    var blocks = scope.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+    for (var i = 0; i < blocks.length; i++) {
+      var el = blocks[i];
+      var owner = el.closest ? el.closest('div[role="article"]') : null;
+      if (owner && parseCommentLabel(owner.getAttribute("aria-label"))) continue;
+      var text = visibleText(el.innerText || "").replace(/\s+/g, " ").trim();
+      if (text.length < 8 || CHROME_RE.test(text) || isOnlyChrome(text) ||
+          isOwnerNotice(text) || COMMENT_AS_RE.test(text)) continue;
+      return cut(text, 140);
+    }
+    return "";
+  }
+
+  function commentPayload() {
+    var r = readCommentThread();
+    var post = openPostIdentity(r);
+    var items = [];
+    r.threads.forEach(function (c) {
+      items.push({ key: c.key, author: c.author, text: cut(c.text, 5000), url: c.url,
+                   mine: c.mine, verdict: c.verdict, hidden_replies: c.hiddenReplies });
+      c.replies.forEach(function (rep) {
+        items.push({ key: rep.key, parent_key: rep.parentKey, author: rep.author,
+                     text: cut(rep.text, 5000), url: rep.url, mine: rep.mine });
+      });
+    });
+    return {
+      read: r,
+      body: {
+        post: { key: post.key, url: post.url, title: openPostTitle(r),
+                more_comments: r.moreComments > 0 },
+        comments: items
+      }
+    };
+  }
+
+  // Send the open post's comments to the dashboard.
+  function sendComments(done) {
+    var payload = commentPayload();
+    var r = payload.read;
+    if (!r.threads.length) return done({ ok: false, error: "No comments found on this post." });
+    chrome.runtime.sendMessage({ type: "OUTLIER_COMMENTS", body: payload.body }, function (response) {
+      if (chrome.runtime.lastError || !response) {
+        return done({ ok: false, error: "Extension worker asleep — press again." });
+      }
+      response.viewerFound = r.viewer.length > 0;
+      response.moreComments = r.moreComments;
+      done(response);
+    });
   }
 
   function saveCommentReport() {
@@ -4218,7 +4338,7 @@
      */
     if (!autoScrolling && openPostDialog()) {
       var readComments = document.createElement("button");
-      readComments.textContent = "Save comment report";
+      readComments.textContent = "Save comments to Tallgrass";
       styleEl(readComments, {
         width: "100%", marginTop: "0.65em", padding: "0.7em", borderRadius: "8px",
         border: "1px solid rgba(110,231,183,0.4)", cursor: "pointer",
@@ -4226,14 +4346,21 @@
         fontSize: "0.95em", fontWeight: "650"
       });
       readComments.addEventListener("click", function () {
-        var r = saveCommentReport();
-        var v = r.verdicts;
-        lastCommentReport = r.threads + " comments: " + v.unanswered + " unanswered, " +
-          v.answered + " answered, " + v.unknown + " unclear, " + v.yours + " yours." +
-          (r.viewerFound ? "" : " Your name was not detected.") +
-          (r.moreComments ? " Some comments are still folded — expand and save again." : "") +
-          " Saved to Downloads.";
+        lastCommentReport = "Saving…";
         renderHud();
+        sendComments(function (r) {
+          if (!r.ok) {
+            lastCommentReport = r.error || "Could not save the comments.";
+          } else {
+            var v = r.verdicts || {};
+            lastCommentReport = "Saved " + r.comments + " (" + r.new + " new): " +
+              (v.unanswered || 0) + " unanswered, " + (v.answered || 0) + " answered, " +
+              (v.unknown || 0) + " to check, " + (v.yours || 0) + " yours." +
+              (r.viewerFound ? "" : " Your name was not detected.") +
+              (r.moreComments ? " Some comments are still folded — expand and save again." : "");
+          }
+          renderHud();
+        });
       });
       hudBody.appendChild(readComments);
       if (lastCommentReport) {
@@ -4315,10 +4442,6 @@
     }
     if (message.type === "OUTLIER_SCAN")  { scanPosts(); flush(); sendResponse({ ok: true, stats: STATS }); }
     if (message.type === "OUTLIER_STATS") { sendResponse({ ok: true, stats: STATS, scrolling: autoScrolling }); }
-    if (message.type === "OUTLIER_COMMENT_REPORT") {
-      try { sendResponse(Object.assign({ ok: true }, saveCommentReport())); }
-      catch (e) { sendResponse({ ok: false, error: String(e && e.message || e) }); }
-    }
   });
 
   /* Capture only while a scan is running.
@@ -4412,7 +4535,10 @@
     savePageReport: savePageReport,
     readCommentThread: readCommentThread,
     parseCommentLabel: parseCommentLabel,
+    // The text report stays for debugging a wrong verdict from the console:
+    // __outlier.saveCommentReport() saves the raw labels and markup.
     saveCommentReport: saveCommentReport,
+    commentPayload: function () { return commentPayload().body; },
     // A function, not the object: STATS is reassigned when the source
     // changes, so a captured reference goes stale and reads as all zeros.
     stats: function () { return STATS; },

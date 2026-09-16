@@ -284,6 +284,42 @@ CREATE TABLE IF NOT EXISTS group_candidates (
     UNIQUE(user_id, fb_id)
 );
 
+-- Comments on the user's own posts, read by the extension from an open post.
+-- See comments.py. comment_key is Facebook's comment_id when the page gives
+-- one, otherwise a hash of author and text. status is the user's ("done")
+-- and a re-read never resets it; verdict is the extension's and always does.
+CREATE TABLE IF NOT EXISTS comment_posts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    post_key      TEXT NOT NULL,
+    url           TEXT,
+    title         TEXT,
+    more_comments INTEGER DEFAULT 0,
+    read_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS post_comments (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    post_id        INTEGER NOT NULL,
+    comment_key    TEXT NOT NULL,
+    parent_key     TEXT,              -- NULL for a top-level comment
+    author         TEXT,
+    body           TEXT,
+    url            TEXT,
+    is_mine        INTEGER DEFAULT 0,
+    verdict        TEXT,              -- top-level: unanswered|unknown|answered|yours
+    hidden_replies INTEGER DEFAULT 0,
+    position       INTEGER,
+    status         TEXT DEFAULT 'open',
+    first_seen_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    seen_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, post_id, comment_key),
+    FOREIGN KEY (post_id) REFERENCES comment_posts(id) ON DELETE CASCADE
+);
+
 -- The first time each account reached each step between signing up and paying.
 -- The primary key is the "first time only": later repeats are ignored. first_at
 -- is NULL only for a step recovered from history with no known time. See

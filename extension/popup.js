@@ -199,22 +199,6 @@ scanBtn.addEventListener("click", async () => {
   }
   setTimeout(refreshFromPage, 700);
 });
-
-// Testing only — see the note beside the button in popup.html.
-el("comment-report").addEventListener("click", async () => {
-  say("Reading comments…");
-  const r = await askContentScript("OUTLIER_COMMENT_REPORT");
-  if (!r) return say("Couldn't reach the page — reload the Facebook tab.", "err");
-  if (!r.ok) return say("Report failed: " + (r.error || "unknown error"), "err");
-  if (!r.threads) return say("No comments found. Open one of your posts first.", "warn");
-  const v = r.verdicts;
-  say(`Saved to Downloads — ${r.threads} comments: ${v.unanswered} unanswered, ` +
-      `${v.answered} answered, ${v.unknown} unclear, ${v.yours} yours.` +
-      (r.viewerFound ? "" : " Your name wasn't detected.") +
-      (r.moreComments ? " Some comments are still folded." : ""),
-      r.viewerFound && !r.moreComments ? "ok" : "warn");
-});
-
 toggleEl.addEventListener("change", () => {
   chrome.storage.local.set({ enabled: toggleEl.checked });
   say(toggleEl.checked ? "Capture on." : "Capture paused.", "ok");
