@@ -55,7 +55,8 @@
         {% if item.kind == 'comment' %}
         <p class="cm-body">{{ item.text or "Text not read" }}</p>
         <p class="fine" style="margin:4px 0 0">On “{{ item.where }}”
-          {%- if item.verdict == 'unknown' %} · replies were folded, so check you haven't answered{% endif %}.</p>
+          {%- if item.came_back %} · they wrote again after your reply
+          {%- elif item.verdict == 'unknown' %} · replies were folded, so check you haven't answered{% endif %}.</p>
         <div class="cm-draft" data-draft-for="{{ item.id }}"{% if not item.draft %} hidden{% endif %}>
           <p class="cm-draft-text">{{ item.draft or '' }}</p>
           <div class="cm-draft-actions">

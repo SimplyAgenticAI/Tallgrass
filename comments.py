@@ -154,8 +154,8 @@ def save_thread(user_id, payload):
                 """
                 INSERT INTO post_comments (user_id, post_id, comment_key, parent_key,
                                            author, body, url, is_mine, verdict,
-                                           hidden_replies, position)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                           hidden_replies, position, came_back)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, post_id, comment_key) DO UPDATE SET
                     parent_key     = excluded.parent_key,
                     author         = COALESCE(NULLIF(excluded.author, ''), post_comments.author),
@@ -168,12 +168,14 @@ def save_thread(user_id, payload):
                     is_mine        = excluded.is_mine,
                     verdict        = excluded.verdict,
                     hidden_replies = excluded.hidden_replies,
+                    came_back      = excluded.came_back,
                     position       = excluded.position,
                     seen_at        = CURRENT_TIMESTAMP
                 """,
                 (user_id, post_id, comment_key, parent, author, body,
                  post_link(_text(item.get("url"), 500)), int(bool(item.get("mine"))),
-                 verdict, _count(item.get("hidden_replies")), position))
+                 verdict, _count(item.get("hidden_replies")), position,
+                 int(bool(item.get("came_back")) and parent is None)))
 
     return {"post_id": post_id, "comments": len(items), "new": new, "verdicts": counts}
 

@@ -250,6 +250,15 @@ def main():
           "Your reply kit" in settings_html and "Websites from $1,500" in settings_html, True)
 
     print()
+    print("they wrote again after your reply")
+    save({"post": {"key": "p:back"}, "comments": [
+        {"key": "c:5001", "author": "Rae Wu", "text": "Resend please?", "verdict": "unanswered",
+         "came_back": True}]})
+    rae = [t for p in comments.threads_for(1)["posts"] for t in p["threads"] if t["author"] == "Rae Wu"][0]
+    check("is stored, so the page can say why", bool(rae["came_back"]), True)
+    check("  and says it", "wrote again after your last reply" in me.get("/comments").get_data(as_text=True), True)
+
+    print()
     print("Open goes to the post, never the commenter")
     profile = "https://www.facebook.com/dana.brooks?comment_id=Y29tbWVudDo5ODc2NV80NDQ0"
     save({"post": {"key": "p:links", "url": "https://www.facebook.com/me/posts/77"},

@@ -27,7 +27,7 @@ def queue(user_id):
     with db.get_db() as conn:
         comment_rows = conn.execute(
             """
-            SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft,
+            SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft, c.came_back,
                    c.first_seen_at, p.title AS post_title, p.url AS post_url, p.is_demo
             FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
             WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
@@ -52,6 +52,7 @@ def queue(user_id):
             "when": r["first_seen_at"],
             "verdict": r["verdict"],
             "hidden_replies": r["hidden_replies"],
+            "came_back": bool(r["came_back"]),
             "draft": r["draft"],
             "sample": bool(r["is_demo"]),
             "opportunity": bool(OPPORTUNITY_RE.search(r["body"] or "")),

@@ -122,6 +122,29 @@ check("nothing outside the dialog",
       r.comments.some(function (c) { return c.author === "Someone Else"; }), false);
 
 console.log();
+console.log("answered means you have the last word");
+D = H.makeDoc();
+root = D.el("div");
+post = add(root, "div", { role: "dialog" });
+add(post, "div", {}, "Comment as Jeff Randle");
+comment(post, "Comment by Jane Doe 2d", "Jane Doe", "How much?");
+comment(post, "Reply by Jeff Randle to Jane Doe's comment 1d", "Jeff Randle", "Sent you a DM!");
+comment(post, "Reply by Jane Doe to Jeff Randle's comment 5h", "Jane Doe", "Didn't get it, can you resend?");
+comment(post, "Comment by Mark Twain 2d", "Mark Twain", "Logos too?");
+comment(post, "Reply by Jeff Randle to Mark Twain's comment 1d", "Jeff Randle", "Yes!");
+comment(post, "Reply by Sam Lee to Mark Twain's comment 1h", "Sam Lee", "Same question");
+api = runScan({ doc: D, root: root }, "/jeffrandle");
+api.resetViewerNames();
+r = api.readCommentThread();
+var janeThread = r.threads.filter(function (c) { return c.author === "Jane Doe"; })[0];
+check("they wrote again after your reply: waiting on you", [janeThread.verdict, janeThread.cameBack],
+      ["unanswered", true]);
+check("  and that travels to the dashboard",
+      api.commentPayload().comments.filter(function (c) { return c.author === "Jane Doe" && !c.parent_key; })[0].came_back, true);
+check("someone else chiming in does not reopen it",
+      r.threads.filter(function (c) { return c.author === "Mark Twain"; })[0].verdict, "answered");
+
+console.log();
 console.log("you, from the comment box, with no name in the banner");
 // The shape of a real post dialog: Facebook keeps another dialog mounted
 // first, the banner carries only "Your profile", and the one thing on the

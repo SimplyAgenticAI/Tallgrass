@@ -494,6 +494,10 @@ def _migrate(conn):
     comment_cols = _columns(conn, "post_comments")
     if "draft" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")
+    # They wrote again after your last reply — shown so "unanswered" on a
+    # comment you did answer once is explained, not a mystery.
+    if "came_back" not in comment_cols:
+        conn.execute("ALTER TABLE post_comments ADD COLUMN came_back INTEGER DEFAULT 0")
     if "drafted_at" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN drafted_at TEXT")
 

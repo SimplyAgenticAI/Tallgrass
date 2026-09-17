@@ -105,6 +105,20 @@ def main():
     check("the open-chat watcher updates the same chat, not a new one", rows(), 5)
 
     print()
+    print("a chat's label from the open conversation")
+    def label(key, signal):
+        return me.post("/api/messages/signal", headers={"X-Outlier-Key": key_},
+                       json={"key": key, "signal": signal}).get_json()
+    key_ = key
+    check("relabelled from what they actually said", label("t:4", "opportunity")["changed"], True)
+    check("  shown as an opportunity", [t["signal"] for t in messages.inbox(1)["waiting"] if t["name"] == "Tom Hanks"],
+          ["opportunity"])
+    check("  and unchanged is not a change", label("t:4", "opportunity")["changed"], False)
+    check("never on a chat you spoke last in", label("t:2", "opportunity")["changed"], False)
+    check("never creates a chat", label("t:nope", "opportunity")["changed"], False)
+    label("t:4", None)
+
+    print()
     print("a chat moves on its own")
     live = {"threads": [{"key": "t:4", "name": "Tom Hanks", "last_from": "me",
                          "last_at": ago(0), "last_hash": "me-reply"}]}

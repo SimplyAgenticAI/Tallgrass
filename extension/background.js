@@ -154,6 +154,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  // A chat's opportunity label, judged on the open conversation. No text.
+  if (message.type === "OUTLIER_SIGNAL") {
+    postToDashboard("/api/messages/signal", message.body).then(sendResponse);
+    return true;
+  }
+
   // The reply queue shown in the panel, and setting someone aside from it.
   if (message.type === "OUTLIER_TODAY") {
     postToDashboard("/api/today", {}).then(sendResponse);

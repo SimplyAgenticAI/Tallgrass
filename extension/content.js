@@ -4058,10 +4058,26 @@
       else if (current) { current.replies.push(c); current.hiddenReplies += c.hiddenReplies; }
     });
 
+    /* Answered means you have the last word — not that you replied once.
+     *
+     * A comment counted as answered if you had replied anywhere under it, so
+     * "How much?" → "Sent you a DM!" → "Didn't get it, can you resend?" still
+     * read Answered while they waited. Now: they wrote again after your last
+     * reply and it is theirs to wait on (came_back). Replies still folded after
+     * yours could hold exactly that, so they make it unknown rather than
+     * answered. Someone else chiming in — a friend tagged — does not reopen it.
+     */
     threads.forEach(function (c) {
-      if (c.mine) c.verdict = "yours";
-      else if (c.replies.some(function (r) { return r.mine; })) c.verdict = "answered";
+      c.cameBack = false;
+      if (c.mine) { c.verdict = "yours"; return; }
+      var lastMine = -1;
+      c.replies.forEach(function (rep, i) { if (rep.mine) lastMine = i; });
+      c.cameBack = lastMine >= 0 && c.replies.slice(lastMine + 1).some(function (rep) {
+        return !rep.mine && rep.author === c.author;
+      });
+      if (c.cameBack) c.verdict = "unanswered";
       else if (c.hiddenReplies) c.verdict = "unknown";
+      else if (lastMine >= 0) c.verdict = "answered";
       else c.verdict = "unanswered";
     });
 
@@ -4207,7 +4223,8 @@
     var items = [];
     r.threads.forEach(function (c) {
       items.push({ key: c.key, author: c.author, text: cut(c.text, 5000), url: c.url,
-                   mine: c.mine, verdict: c.verdict, hidden_replies: c.hiddenReplies });
+                   mine: c.mine, verdict: c.verdict, hidden_replies: c.hiddenReplies,
+                   came_back: c.cameBack });
       c.replies.forEach(function (rep) {
         items.push({ key: rep.key, parent_key: rep.parentKey, author: rep.author,
                      text: cut(rep.text, 5000), url: rep.url, mine: rep.mine });
@@ -5062,6 +5079,21 @@
    * tick. The answer to "why didn't it move" is then on screen.
    */
   var LIVE_SEEN = {};
+  var SIGNAL_SENT = {};
+
+  /* Whether a chat looks like an opportunity, judged on the whole run of what
+   * they have said since your last message — not just the one-line preview
+   * the chat list shows, which is how "Hi!" hid "…and how much for a logo?".
+   * Decided here in the browser; only the label is ever sent. */
+  function chatSignal(convo) {
+    var lastMine = -1;
+    convo.messages.forEach(function (m, i) { if (m.from === "me") lastMine = i; });
+    var theirs = convo.messages.slice(lastMine + 1).filter(function (m) { return m.from !== "me"; });
+    if (!theirs.length) return null;
+    var words = theirs.map(function (m) { return m.text; }).join(" / ");
+    if (OPPORTUNITY_RE.test(words)) return "opportunity";
+    return /\?\s*$/.test(theirs[theirs.length - 1].text) ? "question" : null;
+  }
 
   function seen(id, fields) {
     LIVE_SEEN[id] = Object.assign(LIVE_SEEN[id] || {}, fields);
@@ -5091,6 +5123,17 @@
     LIVE_LAST[convo.id] = signature;
     if (before === undefined) {
       seen(convo.id, { decision: "watching — send a message and it will be noticed" });
+      // The first look is also the moment to judge the chat on everything they
+      // said, which the chat list could not see. Once per chat per page load.
+      if (last.from === "them" && !SIGNAL_SENT[convo.id]) {
+        SIGNAL_SENT[convo.id] = true;
+        chrome.runtime.sendMessage({ type: "OUTLIER_SIGNAL",
+                                     body: { key: "t:" + convo.id, signal: chatSignal(convo) } },
+          function (response) {
+            void chrome.runtime.lastError;
+            if (response && response.ok && response.changed) refreshReplyQueue(true);
+          });
+      }
       return null;
     }
     if (before === signature) return null;
@@ -5114,9 +5157,7 @@
       last_from: last.from,
       last_at: isoOf(new Date()),
       unread: false,
-      signal: last.from === "me" ? null
-        : OPPORTUNITY_RE.test(last.text) ? "opportunity"
-        : /\?\s*$/.test(last.text) ? "question" : null,
+      signal: last.from === "me" ? null : chatSignal(convo),
       last_hash: hashString(signature)
     };
     // Your message went out, so a draft for this chat has been used.
@@ -5939,6 +5980,7 @@
     setChatScrollWait: function (poll, max) { CHAT_POLL = poll; CHAT_WAIT_MAX = max === undefined ? poll * 3 : max; },
     readConversation: readConversation,
     watchConversation: watchConversation,
+    chatSignal: chatSignal,
     liveSeen: function (id) { return LIVE_SEEN[id] || null; },
     chatTime: chatTime,
     saveMessengerReport: saveMessengerReport,

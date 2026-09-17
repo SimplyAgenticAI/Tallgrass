@@ -131,6 +131,21 @@ def inbox(user_id, show_done=False):
     }
 
 
+def set_signal(user_id, thread_key, signal):
+    """Relabel a chat from the open conversation. Returns whether it changed.
+
+    Only while they spoke last — a label describes THEIR messages — and only a
+    chat already saved; this never creates one.
+    """
+    if signal not in SIGNALS:
+        signal = None
+    with db.get_db() as conn:
+        return conn.execute(
+            "UPDATE message_threads SET signal = ? WHERE user_id = ? AND thread_key = ? "
+            "AND last_from = 'them' AND signal IS NOT ?",
+            (signal, user_id, _text(thread_key, 200), signal)).rowcount > 0
+
+
 def set_status(user_id, thread_id, status):
     if status not in ("open", "done"):
         raise ValueError("status must be open or done")

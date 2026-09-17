@@ -66,7 +66,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "27.4"
+APP_VERSION = "27.5"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -185,7 +185,8 @@ app.config.update(
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
 # need permissive CORS. Everything else is same-origin.
 INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft",
-                "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done")
+                "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done",
+                "/api/messages/signal")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1743,6 +1744,20 @@ def api_message_threads():
     return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"])})
 
 
+@app.route("/api/messages/signal", methods=["POST", "OPTIONS"])
+def api_message_signal():
+    """A chat's opportunity label, judged in the browser on the open conversation."""
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = _api_user()
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    body = request.get_json(silent=True) or {}
+    changed = messages.set_signal(api_user["id"], body.get("key"), body.get("signal"))
+    return jsonify({"ok": True, "changed": changed,
+                    "waiting_total": today.waiting_count(api_user["id"])})
+
+
 @app.route("/api/messages/draft", methods=["POST", "OPTIONS"])
 def api_message_draft():
     """The next message for an open conversation. Drafted, returned, not kept.
@@ -1875,7 +1890,8 @@ def _waiting_count_for_nav():
 # with an API key or its own header, and Stripe signs its webhooks.
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
                "/api/extension/key", "/api/comments", "/api/comments/draft",
-               "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done"}
+               "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done",
+               "/api/messages/signal"}
 
 
 @app.before_request

@@ -118,10 +118,26 @@ check("nobody left unplaced", convo.unknown, 0);
 console.log();
 console.log("noticing a reply as it is sent");
 var sent = [];
-// Only the saves are counted; the panel's queue refresh also messages the worker.
-chrome.runtime.sendMessage = function (m, cb) { if (m.type !== "OUTLIER_TODAY") sent.push(m); if (cb) cb({ ok: true }); };
+var signals = [];
+// Only chat saves are counted in `sent`; the panel's queue refresh also
+// messages the worker, and the first look sends the chat's label.
+chrome.runtime.sendMessage = function (m, cb) {
+  if (m.type === "OUTLIER_SIGNAL") signals.push(m.body);
+  else if (m.type !== "OUTLIER_TODAY") sent.push(m);
+  if (cb) cb({ ok: true });
+};
 check("the first look only records where the chat stands", api.watchConversation(), null);
-check("  and sends nothing", sent.length, 0);
+check("  and saves nothing", sent.length, 0);
+check("  but labels the chat from everything they said since your last message",
+      signals, [{ key: "t:1001", signal: "opportunity" }]);
+check("an opportunity hidden behind a harmless last line is found",
+      api.chatSignal({ messages: [{ from: "me", text: "Hey, thanks for following!" },
+                                  { from: "them", text: "Quick one, how much for a logo" },
+                                  { from: "them", text: "Hi!" }] }), "opportunity");
+check("  but not from before your last message",
+      api.chatSignal({ messages: [{ from: "them", text: "How much?" },
+                                  { from: "me", text: "It's $300" },
+                                  { from: "them", text: "Thanks!" }] }), null);
 check("  and the panel says it is watching",
       /^watching/.test(api.liveSeen("1001").decision) && api.liveSeen("1001").from, "them");
 check("nothing new, nothing sent", api.watchConversation(), null);
