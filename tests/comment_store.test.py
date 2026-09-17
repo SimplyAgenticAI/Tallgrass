@@ -319,6 +319,61 @@ def main():
           and "this is the first message" in captured["prompt"], True)
 
     print()
+    print("AI sort")
+    import today
+    calls = []
+
+    def fake_classify(cfg, brand, items):
+        calls.append([i["text"] for i in items])
+        guess = {"Can I book you for June 3rd?": "hot_lead", "Love this!!": "praise",
+                 "@Sam Lee": "tag", "Earn $5000 a week from home, DM me": "spam"}
+        return [{"id": str(i["id"]), "label": guess.get(i["text"], "other"), "reason": "because"}
+                for i in items] + [{"id": "999999", "label": "hot_lead", "reason": "not theirs"},
+                                   {"id": str(items[0]["id"]), "label": "made_up", "reason": "x"}]
+
+    real_classify = appmod.replies.classify_comments
+    appmod.replies.classify_comments = fake_classify
+    comments.TRIAGE_ASYNC = False
+    triage_thread = {"post": {"key": "p:triage", "title": "Summer sessions"}, "comments": [
+        {"key": "c:9101", "author": "Ava Stone", "text": "Love this!!", "verdict": "unanswered"},
+        {"key": "c:9102", "author": "Ben Hart", "text": "@Sam Lee", "verdict": "unanswered"},
+        {"key": "c:9103", "author": "Cal Reed", "text": "Earn $5000 a week from home, DM me", "verdict": "unanswered"},
+        {"key": "c:9104", "author": "Dee Moss", "text": "Can I book you for June 3rd?", "verdict": "unanswered"},
+        {"key": "c:9105", "author": "Me", "text": "Thanks all", "verdict": "yours", "mine": True}]}
+
+    before = today.waiting_count(1)
+    save(triage_thread)
+    check("without an AI key nothing is sent to sort", calls, [])
+    check("  and the keyword check still decides", before + 4, today.waiting_count(1))
+
+    with db.get_db() as conn:
+        conn.execute("DELETE FROM comment_posts WHERE post_key = 'p:triage'")
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test"
+    save(triage_thread)
+    check("with a key, one call sorts the new comments", len(calls), 1)
+    check("  never your own", "Thanks all" in calls[0], False)
+    with db.get_db() as conn:
+        got = dict(conn.execute("SELECT author, intent FROM post_comments WHERE comment_key LIKE 'c:91%' "
+                                "AND author != 'Me'").fetchall())
+    check("  each gets its label", got, {"Ava Stone": "praise", "Ben Hart": "tag",
+                                         "Cal Reed": "spam", "Dee Moss": "hot_lead"})
+    check("spam leaves the waiting count", today.waiting_count(1), before + 3)
+    q = today.queue(1)
+    whos = [i["who"] for i in q["entries"]]
+    check("  and Today", "Cal Reed" in whos, False)
+    leads = [i["who"] for i in q["entries"] if i["opportunity"]]
+    check("a hot lead ranks with the opportunities, ahead of everything else",
+          "Dee Moss" in leads and whos.index("Dee Moss") < len(leads), True)
+    check("tags and praise sink below the rest",
+          whos.index("Ava Stone") > len(whos) - 3 and whos.index("Ben Hart") > len(whos) - 3, True)
+    check("Today shows the label", ">Hot lead</span>" in me.get("/today").get_data(as_text=True), True)
+    save(triage_thread)
+    check("a rescan never sorts the same comments again", len(calls), 1)
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    appmod.replies.classify_comments = real_classify
+    comments.TRIAGE_ASYNC = True
+
+    print()
     print("a comment that gains its Facebook id is not stored twice")
     save({"post": {"key": "p:links"}, "comments": [
         {"key": "h:kim", "author": "Kim Park", "text": "Do you deliver to Austin?", "verdict": "unanswered"},

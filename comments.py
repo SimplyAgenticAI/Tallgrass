@@ -263,6 +263,7 @@ def threads_for(user_id, show_done=False):
     for p in posts:
         p["url"] = post_link(p["url"])
     for row in rows:
+        row["intent_label"] = INTENT_LABELS.get(row.get("intent"))
         row["url"] = post_link(row["url"])
         row["dm_url"] = messenger_link(row.get("author_url"))
 
@@ -325,6 +326,47 @@ def context_for(user_id, comment_id=None, post_key=None, comment_key=None):
             "WHERE post_id = ? AND user_id = ? AND parent_key = ? ORDER BY position",
             (found["post_id"], user_id, found["comment_key"]))]
     return found
+
+
+# ------------------------------------------------------------------ triage
+#
+# A keyword list decided what looked like an opportunity: "how much" did, "I've
+# been looking for someone to do this for months" didn't. When comments are
+# saved and an AI is available, each NEW comment someone else wrote gets one
+# label from one call — never re-labelled, never a comment of yours. Spam
+# leaves Today and the waiting count; tags and praise sink; hot leads rise.
+# Without an AI the keyword check stands, exactly as before.
+
+INTENTS = ("hot_lead", "question", "praise", "tag", "spam", "other")
+INTENT_LABELS = {"hot_lead": "Hot lead", "question": "Question", "praise": "Praise",
+                 "tag": "Tag", "spam": "Spam", "other": "Other"}
+TRIAGE_ASYNC = True          # tests run it inline
+TRIAGE_MAX = 60              # comments per call
+
+
+def untriaged(user_id, post_id):
+    with db.get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, author, body FROM post_comments WHERE user_id = ? AND post_id = ? "
+            "AND parent_key IS NULL AND is_mine = 0 AND intent IS NULL "
+            "AND body IS NOT NULL AND body != '' ORDER BY position LIMIT ?",
+            (user_id, int(post_id), TRIAGE_MAX)).fetchall()
+    return [{"id": r["id"], "author": r["author"] or "", "text": r["body"]} for r in rows]
+
+
+def store_intents(user_id, labels):
+    """labels: [{"id", "label", "reason"}]. Unknown labels and ids are ignored."""
+    with db.get_db() as conn:
+        for item in labels or []:
+            if not isinstance(item, dict) or item.get("label") not in INTENTS:
+                continue
+            try:
+                row_id = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            conn.execute("UPDATE post_comments SET intent = ?, intent_reason = ? "
+                         "WHERE id = ? AND user_id = ? AND intent IS NULL",
+                         (item["label"], _text(item.get("reason"), 140) or None, row_id, user_id))
 
 
 def recent_own_replies(user_id, limit=5):

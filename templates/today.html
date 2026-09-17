@@ -55,7 +55,8 @@
     {% for item in queue.entries %}
     <li class="cm-item" id="{{ item.kind }}-{{ item.id }}">
       <div class="cm-main">
-        {% if item.opportunity %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
+        {% if item.intent_label %}<span class="cm-chip cm-intent-{{ item.intent }}" title="{{ item.intent_reason or '' }}">{{ item.intent_label }}</span>
+        {% elif item.opportunity %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
         {% elif item.question %}<span class="cm-chip cm-chip-unknown">Question</span>{% endif %}
         <span class="cm-chip">{{ 'Comment' if item.kind == 'comment' else 'Message' }}</span>
         {% if item.sample %}<span class="demo-chip">sample</span>{% endif %}

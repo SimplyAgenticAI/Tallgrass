@@ -29,12 +29,14 @@ def queue(user_id):
         comment_rows = conn.execute(
             """
             SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft, c.came_back,
+                   c.intent, c.intent_reason,
                    c.first_seen_at, c.stage, c.note, c.author_url,
                    p.title AS post_title, p.url AS post_url, p.is_demo
             FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
             WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
               AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown')
               AND (c.snooze_until IS NULL OR c.snooze_until <= ?)
+              AND c.intent IS NOT 'spam'
             """, (user_id, pipeline.now_utc())).fetchall()
         chat_rows = conn.execute(
             """
@@ -63,8 +65,15 @@ def queue(user_id):
             "sample": bool(r["is_demo"]),
             # Message them: reach the commenter in Messenger.
             "dm_url": comments.messenger_link(r["author_url"]),
-            "opportunity": bool(OPPORTUNITY_RE.search(r["body"] or "")),
-            "question": (r["body"] or "").rstrip().endswith("?"),
+            # The AI's label when there is one; the keyword check when not.
+            "intent": r["intent"],
+            "intent_label": comments.INTENT_LABELS.get(r["intent"]),
+            "intent_reason": r["intent_reason"],
+            "opportunity": r["intent"] == "hot_lead" if r["intent"]
+                           else bool(OPPORTUNITY_RE.search(r["body"] or "")),
+            "question": r["intent"] == "question" if r["intent"]
+                        else (r["body"] or "").rstrip().endswith("?"),
+            "low": r["intent"] in ("praise", "tag", "other"),
         })
     for r in chat_rows:
         items.append({
@@ -81,10 +90,11 @@ def queue(user_id):
             "note": r["note"],
             "opportunity": r["signal"] == "opportunity",
             "question": r["signal"] == "question",
+            "low": False,
         })
 
     items.sort(key=lambda i: i["when"] or "", reverse=True)
-    items.sort(key=lambda i: (not i["opportunity"], not i["question"]))
+    items.sort(key=lambda i: (not i["opportunity"], not i["question"], i["low"]))
     return {
         "entries": items,
         "comments": sum(1 for i in items if i["kind"] == "comment"),
@@ -122,7 +132,7 @@ def waiting_count(user_id):
             "SELECT COUNT(*) FROM post_comments c JOIN comment_posts p ON p.id = c.post_id "
             "WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open' "
             "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0 "
-            "AND (c.snooze_until IS NULL OR c.snooze_until <= ?)",
+            "AND (c.snooze_until IS NULL OR c.snooze_until <= ?) AND c.intent IS NOT 'spam'",
             (user_id, now)).fetchone()[0]
         chats = conn.execute(
             "SELECT COUNT(*) FROM message_threads WHERE user_id = ? AND status = 'open' "

@@ -2,6 +2,7 @@ import io
 import json
 import logging
 import math
+import threading
 import os
 import re
 import subprocess
@@ -67,7 +68,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "27.9"
+APP_VERSION = "28.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1639,15 +1640,42 @@ def api_comments():
     """
     if request.method == "OPTIONS":
         return "", 204
-    api_user = auth.user_for_api_key(request.headers.get("X-Outlier-Key", "").strip())
+    api_user = _api_user()
     if not api_user:
         return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
     try:
         result = comments.save_thread(api_user["id"], request.get_json(silent=True))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    _triage_comments(api_user, result["post_id"])
     # For the extension's icon badge: everyone waiting, comments and chats.
     return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"])})
+
+
+def _triage_comments(user, post_id):
+    """Label the new comments on a post, in the background, when an AI is available.
+
+    One call per save with anything new, counted like any other generation; a
+    save at the monthly limit simply is not labelled. Never delays the save.
+    """
+    pending = comments.untriaged(user["id"], post_id)
+    if not pending:
+        return
+    cfg = sage.get_config()
+    if not cfg["has_key"] or _ai_gate("triage"):
+        return
+    brand = sage.brand_summary()
+
+    def work():
+        try:
+            comments.store_intents(user["id"], replies.classify_comments(cfg, brand, pending))
+        except Exception:                                   # noqa: BLE001
+            log.exception("comment triage failed")
+
+    if comments.TRIAGE_ASYNC:
+        threading.Thread(target=work, daemon=True).start()
+    else:
+        work()
 
 
 def _draft_for(ctx, instructions="", comment_id=None):

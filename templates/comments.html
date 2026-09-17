@@ -80,6 +80,7 @@
     <li class="cm-item cm-{{ c.verdict }}{{ ' cm-done' if c.status == 'done' }}" id="c{{ c.id }}">
       <div class="cm-main">
         <span class="cm-chip cm-chip-{{ c.verdict }}">{{ verdict_labels.get(c.verdict, c.verdict) }}</span>
+        {% if c.intent_label %}<span class="cm-chip cm-intent-{{ c.intent }}" title="{{ c.intent_reason or '' }}">{{ c.intent_label }}</span>{% endif %}
         <b class="cm-author">{{ c.author or "Author not read" }}</b>
         <p class="cm-body">{{ c.body or "Text not read" }}</p>
         {% if c.came_back %}
