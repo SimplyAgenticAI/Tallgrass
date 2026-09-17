@@ -54,7 +54,6 @@ node tests/limits.test.js
 echo "--- comment threads and who answered ---"
 node tests/comments.test.js
 echo "--- checking your recent posts ---"
-node tests/postcheck.test.js
 echo "--- messenger chats and conversations ---"
 node tests/messenger.test.js
 echo "--- captions ---"

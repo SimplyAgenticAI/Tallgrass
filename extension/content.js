@@ -4422,169 +4422,6 @@
     return true;
   }
 
-  /* Checking the comments on your recent posts, one after another.
-   *
-   * Saving comments meant opening a post, pressing Save, closing it, and doing
-   * that again for every post. From your profile, your Page, or a group, this
-   * does it for your last few posts: it clicks each post's "N comments", waits
-   * for the comments to open (a pop-up, or in place under the post), opens
-   * everything folded, saves, closes the pop-up, and moves on — scrolling down
-   * for more posts when it runs out of ones on screen.
-   *
-   * It only reads, like Save. It never clicks Reply, Like or anything that
-   * changes a post. Only posts written by you: in a group that means a post
-   * whose author is your name, so if your name cannot be found there it stops
-   * rather than reading other people's posts. On your own profile or Page,
-   * where the posts are yours, it goes ahead and says it could not confirm it.
-   */
-  var POST_CHECK_TARGETS = [5, 10, 20];
-  var postCheckTarget = 10;
-  var POST_CHECK_WAIT = 300;         // polling while comments open or a dialog closes
-  var POST_CHECK_OPEN_MAX = 8000;    // how long a post gets to open its comments
-  var POST_CHECK_SCROLL_WAIT = 1500; // after scrolling for more posts
-  var postCheck = null;
-  var lastPostCheck = "";
-  var lastPostCheckDetail = null;    // why posts were passed over, for the report
-
-  var COMMENT_COUNT_RE = /^\d[\d,.]*\s*[KM]?\s+comments?$/i;
-
-  function commentCountControl(article) {
-    var nodes = article.querySelectorAll('[role="button"], span, div, a');
-    for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      if (el.children && el.children.length) continue;
-      if (!COMMENT_COUNT_RE.test(visibleText(el.innerText || "").replace(/\s+/g, " ").trim())) continue;
-      if (!owned(article, el)) continue;
-      return (el.closest && el.closest('[role="button"]')) || el;
-    }
-    return null;
-  }
-
-  function myFullNames() {
-    return Object.keys(viewerNames()).filter(function (n) { return n.indexOf(" ") !== -1; });
-  }
-
-  function writtenByMe(article, names) {
-    var author = extractAuthor(article, findActionBar(article));
-    return !!(author && author.name && names.indexOf(author.name.toLowerCase()) !== -1);
-  }
-
-  function waitFor(test, max, then) {
-    var waited = 0;
-    (function poll() {
-      var found = test();
-      if (found || waited >= max) return then(found || null);
-      waited += POST_CHECK_WAIT;
-      setTimeout(poll, POST_CHECK_WAIT);
-    })();
-  }
-
-  function closeDialog(dialog, then) {
-    var close = dialog.querySelector('[aria-label="Close" i], [aria-label="Close"]');
-    try {
-      if (close && close.click) close.click();
-      else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    } catch (e) { /* nothing to close with */ }
-    waitFor(function () { return dialog.isConnected === false || !openPostDialog(); }, 3000, then);
-  }
-
-  function checkMyPosts(target, progress, done) {
-    var source = detectSource() || lastKnownSource;
-    if (!source || source.isFeed || onMessenger()) {
-      return done({ checked: 0, saved: 0, reason: "open your profile, your Page or a group first" });
-    }
-    var names = myFullNames();
-    var mineByPage = source.kind === "profile" || source.kind === "page";
-    if (!names.length && !mineByPage) {
-      return done({ checked: 0, saved: 0,
-                    reason: "couldn't tell which posts here are yours, so nothing was read" });
-    }
-    var state = postCheck = { checked: 0, saved: 0, stopped: false, stalls: 0, scrolls: 0,
-                              unconfirmed: !names.length,
-                              // Every post passed over, and why — so a check that
-                              // stops early says which step it could not get past.
-                              skipped: { notMine: 0, noCount: 0, didNotOpen: 0 },
-                              samples: [] };
-
-    function finishCheck(reason) {
-      postCheck = null;
-      lastPostCheckDetail = { source: source, names: names, skipped: state.skipped,
-                              scrolls: state.scrolls, samples: state.samples,
-                              checked: state.checked, target: target, reason: reason };
-      done({ checked: state.checked, saved: state.saved, reason: reason, unconfirmed: state.unconfirmed,
-             skipped: state.skipped, scrolls: state.scrolls });
-    }
-
-    function sample(why, art) {
-      if (state.samples.filter(function (s) { return s.why === why; }).length >= 3) return;
-      var author = extractAuthor(art, findActionBar(art));
-      var bar = findActionBar(art);
-      state.samples.push({ why: why, author: author && author.name,
-                           text: visibleText(art.innerText || "").slice(0, 600),
-                           markup: ((bar && bar.parentElement) || art).outerHTML || "" });
-    }
-
-    function nextPost() {
-      var arts = feedArticles();
-      for (var i = 0; i < arts.length; i++) {
-        var art = arts[i];
-        if (art.__tallgrassChecked) continue;
-        art.__tallgrassChecked = true;
-        if (names.length && !writtenByMe(art, names)) {
-          state.skipped.notMine++;
-          sample("not yours", art);
-          continue;
-        }
-        var control = commentCountControl(art);
-        if (control) return { article: art, control: control };
-        state.skipped.noCount++;
-        sample("no comment count found", art);
-      }
-      return null;
-    }
-
-    (function step() {
-      if (state.stopped) return finishCheck("stopped by you");
-      if (state.checked >= target) return finishCheck("checked " + target);
-      var next = nextPost();
-      if (!next) {
-        state.stalls++;
-        if (state.stalls > 3) return finishCheck("no more of your posts with comments on this page");
-        state.scrolls++;
-        try { window.scrollBy(0, (window.innerHeight || 800) * 0.8); } catch (e) {}
-        return setTimeout(step, POST_CHECK_SCROLL_WAIT);
-      }
-      state.stalls = 0;
-      try { if (next.article.scrollIntoView) next.article.scrollIntoView({ block: "center" }); } catch (e) {}
-      var hadDialog = openPostDialog();
-      try { next.control.click(); } catch (e) { return step(); }
-      progress(state.checked + 1, state.saved, "opening");
-
-      // Comments open in a new pop-up, or in place under the post.
-      waitFor(function () {
-        var dialog = openPostDialog();
-        if (dialog && dialog !== hadDialog && dialog.getAttribute("role") === "dialog") return dialog;
-        return holdsComments(next.article) ? next.article : null;
-      }, POST_CHECK_OPEN_MAX, function (scope) {
-        if (!scope) {                                // nothing opened: skip this one
-          state.skipped.didNotOpen++;
-          sample("clicked the comment count, nothing opened", next.article);
-          return step();
-        }
-        progress(state.checked + 1, state.saved, "reading");
-        expandThread(function () {}, function () {
-          sendComments(function (response) {
-            state.checked++;
-            if (response && response.ok) state.saved += response.comments || 0;
-            progress(state.checked, state.saved, "saved");
-            if (scope.getAttribute("role") === "dialog") closeDialog(scope, function () { step(); });
-            else step();
-          }, scope);
-        }, scope);
-      });
-    })();
-  }
-
   /* ------------------------------------------------ quick respond, on Facebook
    *
    * A "✨ Suggest reply" link beside each comment that isn't yours, on an open
@@ -5804,36 +5641,6 @@
     } catch (e) { console.log(text); }
   }
 
-  /* What a post check passed over, and the markup it was looking at, so an
-   * early stop can be fixed from the real page instead of a guess. */
-  function savePostCheckReport() {
-    var d = lastPostCheckDetail;
-    if (!d) return;
-    var nl = String.fromCharCode(10);
-    var version = "?";
-    try { version = chrome.runtime.getManifest().version; } catch (e) {}
-    var lines = ["TALLGRASS POST CHECK REPORT", "version  : " + version, "url      : " + location.pathname,
-                 "page     : " + (d.source ? d.source.kind + " " + JSON.stringify(d.source.name) : "none"),
-                 "your name: " + (d.names.length ? JSON.stringify(d.names) : "NOT DETECTED"),
-                 "checked  : " + d.checked + " of " + d.target, "stopped  : " + d.reason,
-                 "passed   : " + JSON.stringify(d.skipped) + ", scrolled " + d.scrolls + " times",
-                 "posts on screen now: " + feedArticles().length, ""];
-    d.samples.forEach(function (s, n) {
-      lines.push("--- " + (n + 1) + ". " + s.why + " (author read: " + JSON.stringify(s.author || null) + ") ---");
-      lines.push("text: " + JSON.stringify(s.text));
-      lines.push("markup:", s.markup.slice(0, 12000), "");
-    });
-    var text = lines.join(nl);
-    try {
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-      a.download = "tallgrass-post-check-report.txt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (e) { console.log(text); }
-  }
-
   function saveCommentReport() {
     var lines = [];
     var version = "?";
@@ -5957,41 +5764,6 @@
     // which has its own picker for chats.
     if (!onMessenger()) {
       hudBody.appendChild(hudPicker("Posts to scan:", POST_TARGETS, maxPosts, setPostTarget));
-    }
-
-    // Check the comments on your recent posts, one after another.
-    if (!onMessenger() && !autoScrolling && source && !source.isFeed && !openPostDialog() ||
-        postCheck) {
-      if (postCheck) {
-        hudBody.appendChild(hudButton("Stop checking posts", function () {
-          if (postCheck) postCheck.stopped = true;
-        }));
-      } else {
-        hudBody.appendChild(hudPicker("My posts to check:", POST_CHECK_TARGETS, postCheckTarget,
-                                      function (n) { postCheckTarget = n; }));
-        hudBody.appendChild(hudButton("Check comments on my recent posts", function () {
-          var target = postCheckTarget;
-          lastPostCheck = "Looking for your posts…";
-          checkMyPosts(target, function (n, saved, stage) {
-            lastPostCheck = "Post " + n + " of " + target + ": " + stage + " · " + saved + " comments saved";
-            renderHud();
-          }, function (result) {
-            lastPostCheck = "Checked " + result.checked + " post" + (result.checked === 1 ? "" : "s") +
-              ", saved " + result.saved + " comments. Stopped: " + result.reason + "." +
-              (result.unconfirmed ? " (Couldn't confirm your name, so every post on this page was checked.)" : "") +
-              (result.checked ? " Unanswered ones are in your queue above." : "") +
-              (result.skipped ? " Passed over: " + result.skipped.notMine + " not yours, " +
-                result.skipped.noCount + " with no comment count found, " +
-                result.skipped.didNotOpen + " that didn't open. Scrolled " + result.scrolls + " times." : "");
-            renderHud();
-          });
-          renderHud();
-        }));
-      }
-      if (lastPostCheck) hudBody.appendChild(hudNote(lastPostCheck));
-      if (!postCheck && lastPostCheckDetail && lastPostCheckDetail.checked < lastPostCheckDetail.target) {
-        hudBody.appendChild(hudButton("Save post-check report", savePostCheckReport));
-      }
     }
 
     /* Waiting, and where it would go.
@@ -6292,10 +6064,6 @@
     postLimits: function () { return { maxPosts: maxPosts, maxMinutes: maxMinutes }; },
     expandThread: expandThread,
     saveComments: sendComments,
-    checkMyPosts: checkMyPosts,
-    setPostCheckWaits: function (poll, open, scroll) {
-      POST_CHECK_WAIT = poll; POST_CHECK_OPEN_MAX = open; POST_CHECK_SCROLL_WAIT = scroll;
-    },
     watchComments: watchComments,
     setExpandWait: function (ms) { EXPAND_WAIT = ms; },
     readChatList: readChatList,
