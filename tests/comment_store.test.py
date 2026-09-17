@@ -171,9 +171,10 @@ def main():
     print("suggesting a reply")
     asked = []
 
-    def fake_draft(post_title, author, comment, replies=None, instructions=""):
+    def fake_draft(post_title, author, comment, replies=None, instructions="", relationship=""):
         asked.append({"title": post_title, "author": author, "comment": comment,
-                      "replies": replies, "instructions": instructions})
+                      "replies": replies, "instructions": instructions,
+                      "relationship": relationship})
         return "Thanks %s! Sending you a message now." % (author or "").split(" ")[0], None
 
     appmod.replies.draft_reply = fake_draft

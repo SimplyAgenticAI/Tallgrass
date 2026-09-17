@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Today{% endblock %}
+{% from "_pipeline.html" import pipeline_controls with context %}
 
 {% block content %}
 <section class="feed-head">
@@ -24,6 +25,14 @@
 </section>
 
 {% include "_ai_meter.html" %}
+{% if stages.values()|sum %}
+<div class="pl-summary">
+  <span class="fine">Pipeline:</span>
+  {% for key, label in stage_labels.items() %}
+  <span class="pl-stage pl-{{ key }}{{ ' is-empty' if not stages[key] }}">{{ label }} {{ stages[key] }}</span>
+  {% endfor %}
+</div>
+{% endif %}
 {% if queue.samples %}{% include "_sample_note.html" %}{% endif %}
 
 {% if not queue.entries %}
@@ -72,6 +81,7 @@
           Open the chat and press <b>✨ Suggest a message</b> in the {{ app_name }} panel.
         </p>
         {% endif %}
+        {% if not item.sample %}{{ pipeline_controls(item.kind, item, "today") }}{% endif %}
       </div>
       <div class="cm-actions">
         {% if item.kind == 'comment' %}

@@ -12,6 +12,7 @@ import re
 
 import comments
 import db
+import pipeline
 
 # The same signals the extension looks for in a chat's last line, applied to
 # comment text here. A hint for ordering, never a verdict.
@@ -28,16 +29,18 @@ def queue(user_id):
         comment_rows = conn.execute(
             """
             SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft, c.came_back,
-                   c.first_seen_at, p.title AS post_title, p.url AS post_url, p.is_demo
+                   c.first_seen_at, c.stage, c.note, p.title AS post_title, p.url AS post_url, p.is_demo
             FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
             WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
               AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown')
-            """, (user_id,)).fetchall()
+              AND (c.snooze_until IS NULL OR c.snooze_until <= ?)
+            """, (user_id, pipeline.now_utc())).fetchall()
         chat_rows = conn.execute(
             """
-            SELECT id, name, url, last_at, signal, unread, is_demo FROM message_threads
+            SELECT id, name, url, last_at, signal, unread, is_demo, stage, note FROM message_threads
             WHERE user_id = ? AND status = 'open' AND last_from = 'them'
-            """, (user_id,)).fetchall()
+              AND (snooze_until IS NULL OR snooze_until <= ?)
+            """, (user_id, pipeline.now_utc())).fetchall()
 
     items = []
     for r in comment_rows:
@@ -53,6 +56,8 @@ def queue(user_id):
             "verdict": r["verdict"],
             "hidden_replies": r["hidden_replies"],
             "came_back": bool(r["came_back"]),
+            "stage": r["stage"],
+            "note": r["note"],
             "draft": r["draft"],
             "sample": bool(r["is_demo"]),
             "opportunity": bool(OPPORTUNITY_RE.search(r["body"] or "")),
@@ -69,6 +74,8 @@ def queue(user_id):
             "when": (r["last_at"] or "").replace("T", " "),
             "unread": bool(r["unread"]),
             "sample": bool(r["is_demo"]),
+            "stage": r["stage"],
+            "note": r["note"],
             "opportunity": r["signal"] == "opportunity",
             "question": r["signal"] == "question",
         })
@@ -95,6 +102,7 @@ def for_panel(user_id, limit=15):
         "kind": e["kind"], "id": e["id"], "who": e["who"], "where": e["where"],
         "text": (e["text"] or "")[:160], "url": e["url"],
         "opportunity": e["opportunity"], "question": e["question"],
+        "stage": pipeline.STAGE_LABELS.get(e["stage"]),
     } for e in entries]
 
 
@@ -104,13 +112,16 @@ def waiting_count(user_id):
     Examples are never counted: this is the number on a red badge, and it
     should only ever mean somebody real is waiting.
     """
+    now = pipeline.now_utc()
     with db.get_db() as conn:
         comments = conn.execute(
             "SELECT COUNT(*) FROM post_comments c JOIN comment_posts p ON p.id = c.post_id "
             "WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open' "
-            "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0",
-            (user_id,)).fetchone()[0]
+            "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0 "
+            "AND (c.snooze_until IS NULL OR c.snooze_until <= ?)",
+            (user_id, now)).fetchone()[0]
         chats = conn.execute(
             "SELECT COUNT(*) FROM message_threads WHERE user_id = ? AND status = 'open' "
-            "AND last_from = 'them' AND is_demo = 0", (user_id,)).fetchone()[0]
+            "AND last_from = 'them' AND is_demo = 0 "
+            "AND (snooze_until IS NULL OR snooze_until <= ?)", (user_id, now)).fetchone()[0]
     return comments + chats

@@ -1,0 +1,38 @@
+{# Stage, note and snooze for one comment or chat.
+   Folded into one line until opened, so a long list stays readable.
+   Import with context: {% from "_pipeline.html" import pipeline_controls with context %} #}
+{% macro pipeline_controls(kind, row, back) %}
+{% set labels = {"new": "New lead", "talking": "Talking", "quoted": "Quoted",
+                 "booked": "Booked", "won": "Won", "lost": "Lost"} %}
+{% set snoozed = row.snooze_until and row.snooze_until > now_utc %}
+<details class="pl-details">
+  <summary>
+    {% if row.stage %}<span class="pl-stage pl-{{ row.stage }}">{{ labels[row.stage] }}</span>{% else %}<span class="pl-add">+ Stage &amp; note</span>{% endif %}
+    {% if row.note %}<span class="pl-note">{{ row.note }}</span>{% endif %}
+    {% if snoozed %}<span class="pl-snoozed">snoozed until {{ row.snooze_until[:10] }}</span>{% endif %}
+  </summary>
+  <form method="post" action="{{ url_for('pipeline_update', kind=kind, row_id=row.id) }}" class="pl-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ back }}">
+    <select name="stage" aria-label="Stage">
+      <option value="">No stage</option>
+      {% for key, label in labels.items() %}
+      <option value="{{ key }}"{% if row.stage == key %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="note" value="{{ row.note or '' }}" maxlength="500"
+           placeholder="Note — e.g. wants the 5-page site, budget ~$2k">
+    <button class="filter" type="submit">Save</button>
+    <span class="pl-snooze">
+      {% if snoozed %}
+      <button class="filter" type="submit" name="snooze" value="wake">Unsnooze</button>
+      {% else %}
+      Snooze:
+      <button class="filter" type="submit" name="snooze" value="1">1 day</button>
+      <button class="filter" type="submit" name="snooze" value="3">3 days</button>
+      <button class="filter" type="submit" name="snooze" value="7">1 week</button>
+      {% endif %}
+    </span>
+  </form>
+</details>
+{% endmacro %}

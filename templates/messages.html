@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Messages{% endblock %}
+{% from "_pipeline.html" import pipeline_controls with context %}
 
 {% macro thread_row(t, stage="waiting") %}
 <li class="cm-item" id="t{{ t.id }}">
@@ -18,6 +19,7 @@
       {%- if stage == "replied" %} Waiting on them.{% endif %}
       {% if t.status == 'done' %} Marked done.{% endif %}
     </p>
+    {% if not t.is_demo %}{{ pipeline_controls("message", t, "messages") }}{% endif %}
   </div>
   <div class="cm-actions">
     {% if t.url %}

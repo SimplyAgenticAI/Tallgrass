@@ -1326,6 +1326,34 @@ select.kind-select option { color: initial; }
 .ai-meter a { color: var(--emerald-bright); }
 .sample-note { border-color: rgba(52, 211, 153, 0.3); }
 
+/* Pipeline: stage, note and snooze, folded into one line per person. */
+.pl-details { margin-top: 8px; font-size: 12.5px; }
+.pl-details > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pl-details > summary::-webkit-details-marker { display: none; }
+.pl-add { color: var(--text-faint); }
+.pl-add:hover { color: var(--emerald-bright); }
+.pl-note { color: var(--text-muted); font-style: italic; overflow-wrap: anywhere; }
+.pl-snoozed { color: #f0c274; }
+.pl-stage {
+  display: inline-block; padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px;
+  font-weight: 650; border: 1px solid var(--border); color: var(--text-muted);
+}
+.pl-new { color: #93c5fd; border-color: rgba(147, 197, 253, 0.4); }
+.pl-talking { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.4); }
+.pl-quoted { color: #f0c274; border-color: rgba(217, 180, 95, 0.45); }
+.pl-booked { color: var(--emerald-bright); border-color: rgba(52, 211, 153, 0.45); }
+.pl-won { color: #1a0f0a; background: var(--emerald); border-color: var(--emerald); }
+.pl-lost { color: var(--text-faint); }
+.pl-stage.is-empty { opacity: 0.45; }
+.pl-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.pl-form select, .pl-form input[type="text"] {
+  font: inherit; font-size: 12.5px; padding: 4px 8px; border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04); color: var(--text); border: 1px solid var(--border);
+}
+.pl-form input[type="text"] { flex: 1 1 220px; min-width: 160px; }
+.pl-snooze { display: inline-flex; gap: 4px; align-items: center; color: var(--text-faint); }
+.pl-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 14px; }
+
 /* How many people are waiting, beside Today in the navigation. */
 .nav-count {
   display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 3px;

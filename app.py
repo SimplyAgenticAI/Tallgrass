@@ -19,6 +19,7 @@ import billing
 import db
 import comments
 import messages
+import pipeline
 import reply_samples
 import today
 import demo_snapshot
@@ -66,7 +67,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "27.7"
+APP_VERSION = "27.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1489,6 +1490,29 @@ def go_store():
     return redirect(EXTENSION_STORE_URL)
 
 
+# ---------------------------------------------------------------- pipeline
+
+
+@app.route("/pipeline/<kind>/<int:row_id>", methods=["POST"])
+@auth.login_required
+def pipeline_update(kind, row_id):
+    """Stage, note and snooze for one comment or chat, from any of the pages."""
+    form = request.form
+    try:
+        snooze = form.get("snooze")
+        pipeline.set_meta(
+            kind, _uid(), row_id,
+            stage=form.get("stage") if "stage" in form else None,
+            note=form.get("note") if "note" in form else None,
+            snooze_days=int(snooze) if snooze and snooze.isdigit() else None,
+            wake=snooze == "wake")
+    except ValueError:
+        pass
+    back = {"today": "today_page", "comments": "comments_page", "messages": "messages_page"}
+    anchor = ("#%s-%d" % (kind, row_id)) if form.get("next") == "today" else ""
+    return redirect(url_for(back.get(form.get("next"), "today_page")) + anchor)
+
+
 # ---------------------------------------------------------------- today
 
 
@@ -1522,6 +1546,8 @@ def today_page():
     return render_template(
         "today.html",
         queue=today.queue(_uid()),
+        stages=pipeline.summary(_uid()),
+        stage_labels=pipeline.STAGE_LABELS,
         ai_meter=_ai_meter(),
         version=APP_VERSION,
         active="today",
@@ -1631,7 +1657,8 @@ def _draft_for(ctx, instructions="", comment_id=None):
         return blocked
     text, error = replies.draft_reply(
         ctx.get("post_title"), ctx.get("author"), ctx.get("body") or ctx.get("text"),
-        replies=ctx.get("replies"), instructions=instructions)
+        replies=ctx.get("replies"), instructions=instructions,
+        relationship=pipeline.draft_context(ctx.get("stage"), ctx.get("note")))
     if error:
         return jsonify({"ok": False, "error": error}), 400
     if comment_id is not None:
@@ -1773,8 +1800,17 @@ def api_message_draft():
     if blocked:
         return blocked
     body = request.get_json(silent=True) or {}
+    # The chat's stage and note, when it has been saved, shape the message.
+    relationship = ""
+    if body.get("key"):
+        with db.get_db() as conn:
+            row = conn.execute("SELECT stage, note FROM message_threads WHERE user_id = ? AND thread_key = ?",
+                               (g.user["id"], str(body.get("key"))[:200])).fetchone()
+        if row:
+            relationship = pipeline.draft_context(row["stage"], row["note"])
     text, error = replies.draft_message(
-        (body.get("name") or "")[:200], body.get("messages"), body.get("instructions", ""))
+        (body.get("name") or "")[:200], body.get("messages"), body.get("instructions", ""),
+        relationship=relationship)
     if error:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True, "reply": text})
@@ -1871,6 +1907,8 @@ def inject_globals():
         "free_limits": billing.FREE_LIMITS,
         # People waiting on an answer, for the Today badge in the navigation.
         "waiting_count": _waiting_count_for_nav(),
+        # For telling a snooze that is still running from one that has ended.
+        "now_utc": pipeline.now_utc(),
     }
 
 

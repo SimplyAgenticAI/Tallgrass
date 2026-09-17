@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Comments{% endblock %}
+{% from "_pipeline.html" import pipeline_controls with context %}
 
 {% set verdict_labels = {
   "unanswered": "Unanswered",
@@ -99,6 +100,7 @@
           </div>
         </div>
         {% endif %}
+        {% if c.verdict != 'yours' and not post.is_demo %}{{ pipeline_controls("comment", c, "comments") }}{% endif %}
         {% if c.replies %}
         <ul class="cm-replies">
           {% for r in c.replies %}

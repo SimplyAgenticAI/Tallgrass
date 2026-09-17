@@ -108,6 +108,65 @@ def main():
     me.post("/messages/%d/status" % panel["entries"][0]["id"], data={"status": "open", "csrf_token": csrf})
 
     print()
+    print("the pipeline: stage, note, snooze")
+    import pipeline
+    jane = [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]
+    lee = [e for e in today.queue(1)["entries"] if e["who"] == "Lee Chan"][0]
+    r = me.post("/pipeline/comment/%d" % jane["id"], data={
+        "stage": "quoted", "note": "wants the 5-page site, ~$2k", "next": "today", "csrf_token": csrf})
+    check("saved from Today, back to that row", r.headers.get("Location"), "/today#comment-%d" % jane["id"])
+    jane = [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]
+    check("  stage and note stored", (jane["stage"], jane["note"]), ("quoted", "wants the 5-page site, ~$2k"))
+    check("  and counted in the pipeline", pipeline.summary(1)["quoted"], 1)
+    page = me.get("/today").get_data(as_text=True)
+    check("  shown on the page", "wants the 5-page site" in page and "Pipeline:" in page, True)
+    check("a made-up stage is not stored",
+          (me.post("/pipeline/comment/%d" % jane["id"], data={"stage": "hot", "csrf_token": csrf}),
+           [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]["stage"])[1], None)
+    me.post("/pipeline/comment/%d" % jane["id"], data={"stage": "quoted", "csrf_token": csrf})
+
+    before = today.waiting_count(1)
+    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "3", "csrf_token": csrf})
+    check("snoozing takes them out of Today", "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], False)
+    check("  and out of the waiting count", today.waiting_count(1), before - 1)
+    me.post("/api/messages/threads", headers=headers, json={"threads": [
+        {"key": "t:1", "name": "Lee Chan", "last_from": "them", "last_at": ago(0), "last_hash": "new-msg"}]})
+    check("a chat's snooze ends when they write again",
+          "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], True)
+    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "7", "csrf_token": csrf})
+    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "wake", "csrf_token": csrf})
+    check("  and Unsnooze brings them back", "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], True)
+
+    other_client = appmod.app.test_client()
+    other_client.post("/register", data={"email": "x@example.com", "password": "a-long-enough-pass",
+                                         "password_confirm": "a-long-enough-pass", "username": "rowan"})
+    other_client.get("/today")
+    with other_client.session_transaction() as s2:
+        x_csrf = s2.get("csrf_token")
+    other_client.post("/pipeline/comment/%d" % jane["id"], data={"stage": "lost", "csrf_token": x_csrf})
+    check("another account cannot change it",
+          [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]["stage"], "quoted")
+
+    print()
+    print("drafts know where the relationship stands")
+    import replies
+    asked = []
+
+    def fake_reply(post_title, author, comment, replies=None, instructions="", relationship=""):
+        asked.append(relationship)
+        return "ok", None
+
+    appmod.replies.draft_reply = fake_reply
+    me.post("/comments/%d/draft" % jane["id"], json={}, headers={"X-CSRF-Token": csrf})
+    check("a quoted lead's draft is told it is quoted, with the note",
+          "Stage: Quoted" in asked[-1] and "wants the 5-page site" in asked[-1], True)
+    with appmod.app.test_request_context():
+        from flask import g
+        g.user = {"id": 1}
+        prompt = replies._prompt("Post", "Jane Doe", "How much?", [], "", pipeline.draft_context("quoted", "~$2k"))
+    check("  and it reaches the prompt", "help them decide" in prompt and "~$2k" in prompt, True)
+
+    print()
     print("done from Today stays on Today")
     tom = [i for i in q["entries"] if i["who"] == "Tom Hanks"][0]
     friend = [i for i in q["entries"] if i["who"] == "Old Friend"][0]

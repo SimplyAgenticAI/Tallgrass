@@ -491,6 +491,14 @@ def _migrate(conn):
         if "is_demo" not in _columns(conn, table):
             conn.execute("ALTER TABLE %s ADD COLUMN is_demo INTEGER DEFAULT 0" % table)
 
+    # Where each relationship stands, the owner's note on it, and a snooze.
+    # See pipeline.py. On comments and on chats alike.
+    for table in ("post_comments", "message_threads"):
+        cols = _columns(conn, table)
+        for column in ("stage", "note", "snooze_until"):
+            if column not in cols:
+                conn.execute("ALTER TABLE %s ADD COLUMN %s TEXT" % (table, column))
+
     comment_cols = _columns(conn, "post_comments")
     if "draft" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")

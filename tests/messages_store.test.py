@@ -164,8 +164,8 @@ def main():
     print("drafting the next message")
     asked = []
 
-    def fake(name, msgs, instructions=""):
-        asked.append((name, msgs))
+    def fake(name, msgs, instructions="", relationship=""):
+        asked.append((name, msgs, relationship))
         return "Hi %s! The full package is [price] — want me to send details?" % name.split(" ")[0], None
 
     appmod.replies.draft_message = fake

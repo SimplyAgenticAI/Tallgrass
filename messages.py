@@ -80,6 +80,9 @@ def save_threads(user_id, payload):
                     last_at   = COALESCE(excluded.last_at, message_threads.last_at),
                     signal    = excluded.signal,
                     unread    = excluded.unread,
+                    -- A snooze ends early when they write again.
+                    snooze_until = CASE WHEN excluded.last_hash IS NOT message_threads.last_hash
+                                        THEN NULL ELSE message_threads.snooze_until END,
                     last_hash = excluded.last_hash,
                     -- Done holds until the conversation actually moves.
                     status    = CASE WHEN message_threads.status = 'done'

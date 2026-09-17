@@ -5339,7 +5339,7 @@
     }
     chrome.runtime.sendMessage({
       type: "OUTLIER_MESSAGE_DRAFT",
-      body: { name: convo.name, messages: convo.messages,
+      body: { name: convo.name, messages: convo.messages, key: "t:" + convo.id,
               instructions: toneInstruction(tone, previous) }
     }, function (response) {
       if (chrome.runtime.lastError || !response) {
