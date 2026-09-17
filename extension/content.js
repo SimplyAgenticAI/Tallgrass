@@ -4444,6 +4444,7 @@
   var POST_CHECK_SCROLL_WAIT = 1500; // after scrolling for more posts
   var postCheck = null;
   var lastPostCheck = "";
+  var lastPostCheckDetail = null;    // why posts were passed over, for the report
 
   var COMMENT_COUNT_RE = /^\d[\d,.]*\s*[KM]?\s+comments?$/i;
 
@@ -4498,12 +4499,29 @@
       return done({ checked: 0, saved: 0,
                     reason: "couldn't tell which posts here are yours, so nothing was read" });
     }
-    var state = postCheck = { checked: 0, saved: 0, stopped: false, stalls: 0,
-                              unconfirmed: !names.length };
+    var state = postCheck = { checked: 0, saved: 0, stopped: false, stalls: 0, scrolls: 0,
+                              unconfirmed: !names.length,
+                              // Every post passed over, and why — so a check that
+                              // stops early says which step it could not get past.
+                              skipped: { notMine: 0, noCount: 0, didNotOpen: 0 },
+                              samples: [] };
 
     function finishCheck(reason) {
       postCheck = null;
-      done({ checked: state.checked, saved: state.saved, reason: reason, unconfirmed: state.unconfirmed });
+      lastPostCheckDetail = { source: source, names: names, skipped: state.skipped,
+                              scrolls: state.scrolls, samples: state.samples,
+                              checked: state.checked, target: target, reason: reason };
+      done({ checked: state.checked, saved: state.saved, reason: reason, unconfirmed: state.unconfirmed,
+             skipped: state.skipped, scrolls: state.scrolls });
+    }
+
+    function sample(why, art) {
+      if (state.samples.filter(function (s) { return s.why === why; }).length >= 3) return;
+      var author = extractAuthor(art, findActionBar(art));
+      var bar = findActionBar(art);
+      state.samples.push({ why: why, author: author && author.name,
+                           text: visibleText(art.innerText || "").slice(0, 600),
+                           markup: ((bar && bar.parentElement) || art).outerHTML || "" });
     }
 
     function nextPost() {
@@ -4512,9 +4530,15 @@
         var art = arts[i];
         if (art.__tallgrassChecked) continue;
         art.__tallgrassChecked = true;
-        if (names.length && !writtenByMe(art, names)) continue;
+        if (names.length && !writtenByMe(art, names)) {
+          state.skipped.notMine++;
+          sample("not yours", art);
+          continue;
+        }
         var control = commentCountControl(art);
         if (control) return { article: art, control: control };
+        state.skipped.noCount++;
+        sample("no comment count found", art);
       }
       return null;
     }
@@ -4526,6 +4550,7 @@
       if (!next) {
         state.stalls++;
         if (state.stalls > 3) return finishCheck("no more of your posts with comments on this page");
+        state.scrolls++;
         try { window.scrollBy(0, (window.innerHeight || 800) * 0.8); } catch (e) {}
         return setTimeout(step, POST_CHECK_SCROLL_WAIT);
       }
@@ -4541,7 +4566,11 @@
         if (dialog && dialog !== hadDialog && dialog.getAttribute("role") === "dialog") return dialog;
         return holdsComments(next.article) ? next.article : null;
       }, POST_CHECK_OPEN_MAX, function (scope) {
-        if (!scope) return step();                   // nothing opened: skip this one
+        if (!scope) {                                // nothing opened: skip this one
+          state.skipped.didNotOpen++;
+          sample("clicked the comment count, nothing opened", next.article);
+          return step();
+        }
         progress(state.checked + 1, state.saved, "reading");
         expandThread(function () {}, function () {
           sendComments(function (response) {
@@ -5775,6 +5804,36 @@
     } catch (e) { console.log(text); }
   }
 
+  /* What a post check passed over, and the markup it was looking at, so an
+   * early stop can be fixed from the real page instead of a guess. */
+  function savePostCheckReport() {
+    var d = lastPostCheckDetail;
+    if (!d) return;
+    var nl = String.fromCharCode(10);
+    var version = "?";
+    try { version = chrome.runtime.getManifest().version; } catch (e) {}
+    var lines = ["TALLGRASS POST CHECK REPORT", "version  : " + version, "url      : " + location.pathname,
+                 "page     : " + (d.source ? d.source.kind + " " + JSON.stringify(d.source.name) : "none"),
+                 "your name: " + (d.names.length ? JSON.stringify(d.names) : "NOT DETECTED"),
+                 "checked  : " + d.checked + " of " + d.target, "stopped  : " + d.reason,
+                 "passed   : " + JSON.stringify(d.skipped) + ", scrolled " + d.scrolls + " times",
+                 "posts on screen now: " + feedArticles().length, ""];
+    d.samples.forEach(function (s, n) {
+      lines.push("--- " + (n + 1) + ". " + s.why + " (author read: " + JSON.stringify(s.author || null) + ") ---");
+      lines.push("text: " + JSON.stringify(s.text));
+      lines.push("markup:", s.markup.slice(0, 12000), "");
+    });
+    var text = lines.join(nl);
+    try {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      a.download = "tallgrass-post-check-report.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) { console.log(text); }
+  }
+
   function saveCommentReport() {
     var lines = [];
     var version = "?";
@@ -5920,13 +5979,19 @@
             lastPostCheck = "Checked " + result.checked + " post" + (result.checked === 1 ? "" : "s") +
               ", saved " + result.saved + " comments. Stopped: " + result.reason + "." +
               (result.unconfirmed ? " (Couldn't confirm your name, so every post on this page was checked.)" : "") +
-              (result.checked ? " Unanswered ones are in your queue above." : "");
+              (result.checked ? " Unanswered ones are in your queue above." : "") +
+              (result.skipped ? " Passed over: " + result.skipped.notMine + " not yours, " +
+                result.skipped.noCount + " with no comment count found, " +
+                result.skipped.didNotOpen + " that didn't open. Scrolled " + result.scrolls + " times." : "");
             renderHud();
           });
           renderHud();
         }));
       }
       if (lastPostCheck) hudBody.appendChild(hudNote(lastPostCheck));
+      if (!postCheck && lastPostCheckDetail && lastPostCheckDetail.checked < lastPostCheckDetail.target) {
+        hudBody.appendChild(hudButton("Save post-check report", savePostCheckReport));
+      }
     }
 
     /* Waiting, and where it would go.

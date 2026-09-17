@@ -102,6 +102,7 @@ api.checkMyPosts(10, function (n, saved, stage) { stages.push(stage); }, functio
         root.children.filter(function (c) { return c.getAttribute("role") === "dialog"; }).length, 0);
   check("it says how it finished", result.reason, "no more of your posts with comments on this page");
   check("progress was reported", stages.indexOf("saved") !== -1, true);
+  check("it says what it passed over, and why", result.skipped, { notMine: 1, noCount: 1, didNotOpen: 0 });
 
   console.log();
   console.log("a group where your name can't be found");
