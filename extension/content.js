@@ -5539,7 +5539,10 @@
    * Refreshed at most once a minute on the panel's tick, and at once after any
    * save that could change it.
    */
-  var REPLY_QUEUE = { entries: [], total: 0, index: 0, loadedAt: 0, loading: false, error: "" };
+  var REPLY_QUEUE = { entries: [], total: 0, index: 0, loadedAt: 0, loading: false, error: "", open: false };
+  try {
+    chrome.storage.local.get(["queueOpen"], function (s) { REPLY_QUEUE.open = !!(s && s.queueOpen); });
+  } catch (e) { /* closed by default */ }
 
   function refreshReplyQueue(force) {
     if (REPLY_QUEUE.loading) return;
@@ -5580,19 +5583,46 @@
     return location.href.split("?")[0].replace(/\/+$/, "") === entry.url.split("?")[0].replace(/\/+$/, "");
   }
 
+  /* One slim line — "3 waiting on you ▸" — until you open it.
+   *
+   * The full card sat at the top of the panel all the time and crowded out
+   * the scan it lives beside. Now it takes one line, says nothing at all when
+   * nobody is waiting, and remembers whether you left it open.
+   */
   function renderReplyQueue(body) {
+    if (!REPLY_QUEUE.total) return;
     var box = document.createElement("div");
-    styleEl(box, { padding: "0.55em 0.65em", marginBottom: "0.6em", borderRadius: "8px",
-                   border: "1px solid rgba(224,122,95,0.35)", background: "rgba(224,122,95,0.07)" });
+    styleEl(box, { marginBottom: "0.5em", borderRadius: "8px",
+                   border: "1px solid rgba(224,122,95,0.3)", background: "rgba(224,122,95,0.06)" });
     var head = document.createElement("div");
-    styleEl(head, { fontSize: "0.85em", fontWeight: "700", color: "#f2b8a2", marginBottom: "0.3em" });
-    head.textContent = REPLY_QUEUE.total
-      ? REPLY_QUEUE.total + " waiting on you" + (REPLY_QUEUE.entries.length > 1 ? " — " + (REPLY_QUEUE.index + 1) + " of " + REPLY_QUEUE.entries.length : "")
-      : (REPLY_QUEUE.loadedAt ? "Nobody waiting on you" : "Checking who's waiting…");
+    var hot = REPLY_QUEUE.entries.some(function (e) { return e.opportunity; });
+    styleEl(head, { display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "0.4em 0.65em", cursor: "pointer", fontSize: "0.88em",
+                    fontWeight: "700", color: "#f2b8a2" });
+    var headText = document.createElement("span");
+    headText.textContent = (hot ? "🔥 " : "") + REPLY_QUEUE.total + " waiting on you" +
+      (REPLY_QUEUE.open && REPLY_QUEUE.entries.length > 1
+        ? " · " + (REPLY_QUEUE.index + 1) + " of " + REPLY_QUEUE.entries.length : "");
+    var headArrow = document.createElement("span");
+    headArrow.textContent = REPLY_QUEUE.open ? "▾" : "▸";
+    head.appendChild(headText);
+    head.appendChild(headArrow);
+    head.addEventListener("click", function () {
+      REPLY_QUEUE.open = !REPLY_QUEUE.open;
+      try { chrome.storage.local.set({ queueOpen: REPLY_QUEUE.open }); } catch (e) {}
+      renderHud();
+    });
     box.appendChild(head);
+    body.appendChild(box);
+    if (!REPLY_QUEUE.open) return;
 
     var entry = REPLY_QUEUE.entries[REPLY_QUEUE.index];
+    styleEl(box, { paddingBottom: "0.55em" });
     if (entry) {
+      var card = document.createElement("div");
+      styleEl(card, { padding: "0 0.65em" });
+      box.appendChild(card);
+      box = card;
       var who = document.createElement("div");
       styleEl(who, { fontSize: "0.92em", color: "#e8f5ee" });
       who.textContent = (entry.opportunity ? "🔥 " : entry.question ? "❓ " : "") +
@@ -5604,11 +5634,6 @@
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
         said.textContent = "“" + entry.text + "”";
         box.appendChild(said);
-      }
-      if (queueEntryIsHere(entry)) {
-        box.appendChild(hudNote(entry.kind === "comment"
-          ? "You're here — use ✨ Suggest reply on their comment. Once you answer, it moves on."
-          : "You're here — press ✨ Suggest a message below. Once you send, it moves on."));
       }
       var actions = document.createElement("div");
       styleEl(actions, { display: "flex", gap: "0.35em", marginTop: "0.45em" });
@@ -5652,7 +5677,6 @@
       });
       box.appendChild(actions);
     }
-    body.appendChild(box);
   }
 
   /* A row of numbers to pick one from — how many chats, how many posts.
@@ -5861,12 +5885,15 @@
     // This is how many posts are rendered right now, which is a handful at
     // any moment — labelling it "posts in this group" read as a claim about
     // the group's size, and "2" was plainly wrong as one.
-    hudBody.appendChild(row("Posts on screen", String(STATS.candidates)));
-    hudBody.appendChild(row(
-      "Captured this " + sourceNoun(),
-      SEEN.size + " / " + maxPosts,
-      SEEN.size >= maxPosts ? "#6ee7b7" : null
-    ));
+    // Captured, and how many of those were new, in one line — shown once a
+    // scan has captured something rather than as a column of zeros.
+    if (autoScrolling || SEEN.size) {
+      hudBody.appendChild(row(
+        "Captured",
+        SEEN.size + " / " + maxPosts + (STATS.added ? " · " + STATS.added + " new" : ""),
+        SEEN.size >= maxPosts ? "#6ee7b7" : null
+      ));
+    }
     // The number after the slash, changeable right here. Not on Messenger,
     // which has its own picker for chats.
     if (!onMessenger()) {
@@ -5901,8 +5928,6 @@
       }
       if (lastPostCheck) hudBody.appendChild(hudNote(lastPostCheck));
     }
-    hudBody.appendChild(row("Sent to dashboard", String(STATS.sent)));
-    hudBody.appendChild(row("New (not duplicates)", String(STATS.added), "#6ee7b7"));
 
     /* Waiting, and where it would go.
      *
@@ -6032,18 +6057,6 @@
         styleEl(said, { marginTop: "0.4em", fontSize: "0.88em", color: "#9fc3b1" });
         hudBody.appendChild(said);
       }
-    }
-
-    if (STATS.lastError) {
-      var err = document.createElement("div");
-      err.textContent = STATS.lastError;
-      styleEl(err, {
-        marginTop: "0.65em", padding: "0.6em 0.75em", fontSize: "0.92em",
-        color: "#f0c274", borderRadius: "8px",
-        background: "rgba(217,180,95,0.12)",
-        border: "1px solid rgba(217,180,95,0.3)"
-      });
-      hudBody.appendChild(err);
     }
 
     // Captures that cannot be sent are the worst silent failure in the
