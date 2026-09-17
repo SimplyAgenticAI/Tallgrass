@@ -504,6 +504,9 @@ def _migrate(conn):
         conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")
     # They wrote again after your last reply — shown so "unanswered" on a
     # comment you did answer once is explained, not a mystery.
+    # The commenter's profile link, for Message them. Never the comment's link.
+    if "author_url" not in comment_cols:
+        conn.execute("ALTER TABLE post_comments ADD COLUMN author_url TEXT")
     if "came_back" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN came_back INTEGER DEFAULT 0")
     if "drafted_at" not in comment_cols:

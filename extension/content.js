@@ -4005,6 +4005,54 @@
     return "";
   }
 
+  /* The commenter's own profile link — the name link — kept for Message them.
+   * Never used as the comment's link (see commentLink); only to reach the
+   * person in Messenger. */
+  function authorLink(article, author) {
+    var links = article.querySelectorAll("a[href]");
+    var want = String(author || "").replace(/\s+/g, " ").trim();
+    for (var i = 0; i < links.length; i++) {
+      var owner = links[i].closest ? links[i].closest('div[role="article"]') : null;
+      if (owner && owner !== article) continue;
+      var text = visibleText(links[i].innerText || "").replace(/\s+/g, " ").trim();
+      if (text !== want) continue;
+      var href = absolute(links[i].getAttribute("href") || "");
+      if (POST_URL_RE.test(href.split("?")[0])) continue;
+      return href;
+    }
+    return "";
+  }
+
+  // A Messenger address for a profile link, or "" — the same rules as
+  // comments.messenger_link on the server.
+  var PROFILE_RESERVED = /^(?:watch|groups|marketplace|events|pages|p|photo|photo\.php|reel|reels|stories|story\.php|permalink\.php|messages|hashtag|search|gaming|notifications|bookmarks|friends|settings|help|login\.php|sharer\.php|profile\.php|people|share)$/i;
+
+  function messengerLink(profile) {
+    var m;
+    try { m = new URL(profile); } catch (e) { return ""; }
+    if (!/^(?:www|web|m)\.facebook\.com$/.test(m.hostname)) return "";
+    var parts = m.pathname.split("/").filter(Boolean);
+    var id = "";
+    if (parts[0] === "profile.php") id = m.searchParams.get("id") || "";
+    else if (parts[0] === "groups" && parts[2] === "user") id = parts[3] || "";
+    else if (parts[0] === "people") id = parts[2] || "";
+    else if (parts.length === 1 && !PROFILE_RESERVED.test(parts[0])) id = parts[0];
+    if (!/^[\w.]+$/.test(id)) return "";
+    return "https://www.facebook.com/messages/t/" + id;
+  }
+
+  /* Message them: keep who and why for the DM, then go to the chat. The next
+   * Suggest a message in that chat picks it up (see suggestMessage). */
+  function startHandoff(handoff, url) {
+    var note = { name: String(handoff.name || "").slice(0, 120), text: String(handoff.text || "").slice(0, 600),
+                 title: String(handoff.title || "").slice(0, 200), at: Date.now() };
+    try {
+      chrome.storage.local.set({ pendingHandoff: note }, function () { location.href = url; });
+    } catch (e) {
+      location.href = url;
+    }
+  }
+
   function readCommentThread(scopeOverride) {
     var dialog = scopeOverride || openPostDialog();
     var scope = dialog || document;
@@ -4022,6 +4070,7 @@
         kind: parsed.kind === "reply" || (parentComment && parseCommentLabel(
           parentComment.getAttribute("aria-label"))) ? "reply" : "comment",
         author: parsed.author,
+        authorUrl: authorLink(articles[i], parsed.author),
         to: parsed.to,
         mine: !!myNames[parsed.author.replace(/\s+/g, " ").toLowerCase()],
         text: commentText(articles[i], parsed.author),
@@ -4224,7 +4273,7 @@
     r.threads.forEach(function (c) {
       items.push({ key: c.key, author: c.author, text: cut(c.text, 5000), url: c.url,
                    mine: c.mine, verdict: c.verdict, hidden_replies: c.hiddenReplies,
-                   came_back: c.cameBack });
+                   came_back: c.cameBack, author_url: c.authorUrl });
       c.replies.forEach(function (rep) {
         items.push({ key: rep.key, parent_key: rep.parentKey, author: rep.author,
                      text: cut(rep.text, 5000), url: rep.url, mine: rep.mine });
@@ -4709,6 +4758,13 @@
         renderDraftCard(key);
       }));
       actions.appendChild(cardButton("Another", function () { suggestReply(key); }));
+      var thread = threadByKey(key);
+      var dm = thread && messengerLink(thread.authorUrl);
+      if (dm) {
+        actions.appendChild(cardButton("Message them", function () {
+          startHandoff({ name: thread.author, text: thread.text, title: openPostTitle(readCommentThread()) }, dm);
+        }));
+      }
     }
     card.appendChild(text);
     card.appendChild(actions);
@@ -5333,14 +5389,31 @@
     var placed = MSG_DRAFT && MSG_DRAFT.threadId === convo.id ? MSG_DRAFT.placed : "";
     MSG_DRAFT = { threadId: convo.id, busy: true, placed: placed };
     renderHud();
-    if (!convo.messages.length) {
+    // Arrived here from Message them on a comment? Then the draft knows what
+    // they said and where — and can open a brand-new chat with no messages.
+    try {
+      chrome.storage.local.get(["pendingHandoff"], function (stored) {
+        var h = stored && stored.pendingHandoff;
+        var fresh = h && Date.now() - h.at < 30 * 60 * 1000;
+        var first = function (n) { return String(n || "").split(" ")[0].toLowerCase(); };
+        var matches = fresh && (!convo.messages.length || first(h.name) === first(convo.name));
+        sendDraft(convo, tone, previous, placed, matches ? h : null);
+      });
+    } catch (e) {
+      sendDraft(convo, tone, previous, placed, null);
+    }
+  }
+
+  function sendDraft(convo, tone, previous, placed, handoff) {
+    if (!convo.messages.length && !handoff) {
       MSG_DRAFT = { threadId: convo.id, error: "Couldn't read this conversation yet — scroll it a little and try again." };
       return renderHud();
     }
     chrome.runtime.sendMessage({
       type: "OUTLIER_MESSAGE_DRAFT",
-      body: { name: convo.name, messages: convo.messages, key: "t:" + convo.id,
-              instructions: toneInstruction(tone, previous) }
+      body: { name: convo.name || (handoff && handoff.name), messages: convo.messages, key: "t:" + convo.id,
+              instructions: toneInstruction(tone, previous),
+              context: handoff ? { name: handoff.name, text: handoff.text, title: handoff.title } : null }
     }, function (response) {
       if (chrome.runtime.lastError || !response) {
         MSG_DRAFT = { threadId: convo.id, placed: placed, error: "The extension was asleep — press again." };
@@ -5552,6 +5625,11 @@
       }
       if (!queueEntryIsHere(entry)) {
         small("Open", function () { location.href = entry.url; }, true);
+      }
+      if (entry.dm_url) {
+        small("Message them", function () {
+          startHandoff({ name: entry.who, text: entry.text, title: entry.where }, entry.dm_url);
+        });
       }
       if (REPLY_QUEUE.entries.length > 1) {
         small("Skip", function () {
@@ -6149,6 +6227,8 @@
     readConversation: readConversation,
     watchConversation: watchConversation,
     chatSignal: chatSignal,
+    messengerLink: messengerLink,
+    suggestMessage: suggestMessage,
     liveSeen: function (id) { return LIVE_SEEN[id] || null; },
     chatTime: chatTime,
     saveMessengerReport: saveMessengerReport,

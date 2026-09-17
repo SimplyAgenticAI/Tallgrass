@@ -118,6 +118,11 @@
         {% if c.url or post.url %}
         <a class="filter" href="{{ c.url or post.url }}" target="_blank" rel="noopener">Open</a>
         {% endif %}
+        {% if c.dm_url %}
+        <a class="filter" href="{{ c.dm_url }}" target="_blank" rel="noopener"
+           data-handoff-name="{{ c.author }}" data-handoff-text="{{ c.body }}" data-handoff-title="{{ post.title }}"
+           title="Open a Messenger chat with {{ c.author }}; ✨ Suggest a message there knows what they commented">Message them</a>
+        {% endif %}
         {% if c.verdict != 'yours' %}
         <form method="post" action="{{ url_for('comment_status', comment_id=c.id, done=1 if show_done else None) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

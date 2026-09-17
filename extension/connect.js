@@ -73,7 +73,9 @@
    */
   window.addEventListener("outlier:open-facebook", function (event) {
     var url = String((event && event.detail && event.detail.url) || "");
-    chrome.runtime.sendMessage({ type: "OUTLIER_OPEN_FACEBOOK", url: url }, function (response) {
+    // Message them passes who and why along, for the DM draft in that chat.
+    var handoff = (event && event.detail && event.detail.handoff) || null;
+    chrome.runtime.sendMessage({ type: "OUTLIER_OPEN_FACEBOOK", url: url, handoff: handoff }, function (response) {
       var failed = chrome.runtime.lastError;
       window.dispatchEvent(new CustomEvent("outlier:open-facebook-result", {
         detail: failed || !response ? { ok: false, error: failed ? failed.message : "no answer" }

@@ -164,7 +164,7 @@ def main():
     print("drafting the next message")
     asked = []
 
-    def fake(name, msgs, instructions="", relationship=""):
+    def fake(name, msgs, instructions="", relationship="", context=None):
         asked.append((name, msgs, relationship))
         return "Hi %s! The full package is [price] — want me to send details?" % name.split(" ")[0], None
 

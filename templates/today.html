@@ -92,6 +92,11 @@
         {% if item.url %}
         <a class="filter" href="{{ item.url }}" target="_blank" rel="noopener">Open</a>
         {% endif %}
+        {% if item.dm_url %}
+        <a class="filter" href="{{ item.dm_url }}" target="_blank" rel="noopener"
+           data-handoff-name="{{ item.who }}" data-handoff-text="{{ item.text }}" data-handoff-title="{{ item.where }}"
+           title="Open a Messenger chat with {{ item.who }}; ✨ Suggest a message there knows what they commented">Message them</a>
+        {% endif %}
         <form method="post" action="{{ url_for('comment_status', comment_id=item.id, next='today') if item.kind == 'comment' else url_for('message_status', thread_id=item.id, next='today') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="status" value="done">

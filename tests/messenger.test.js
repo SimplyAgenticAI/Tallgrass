@@ -116,6 +116,31 @@ check("what was said", convo.messages[0].text, "Hi! Saw your post about websites
 check("nobody left unplaced", convo.unknown, 0);
 
 console.log();
+console.log("message them: from a comment to a chat");
+check("a vanity profile", api.messengerLink("https://www.facebook.com/dana.brooks?comment_id=abc"),
+      "https://www.facebook.com/messages/t/dana.brooks");
+check("a numeric profile", api.messengerLink("https://www.facebook.com/profile.php?id=10001234"),
+      "https://www.facebook.com/messages/t/10001234");
+check("a group member link", api.messengerLink("https://www.facebook.com/groups/cats/user/555/"),
+      "https://www.facebook.com/messages/t/555");
+check("a post is not a person", api.messengerLink("https://www.facebook.com/dana/posts/123"), "");
+check("nor a group", api.messengerLink("https://www.facebook.com/groups/cats/"), "");
+check("nor anywhere else", api.messengerLink("https://evil.test/dana"), "");
+var drafts = [];
+var realSend = chrome.runtime.sendMessage;
+chrome.runtime.sendMessage = function (m, cb) { if (m.type === "OUTLIER_MESSAGE_DRAFT") drafts.push(m.body); };
+chrome.storage.local.set({ pendingHandoff: { name: "Jane Doe", text: "How much for the full package?",
+                                             title: "Website packages", at: Date.now() } });
+api.suggestMessage();
+check("Suggest a message in their chat knows the comment it came from",
+      drafts[0] && drafts[0].context, { name: "Jane Doe", text: "How much for the full package?", title: "Website packages" });
+chrome.storage.local.set({ pendingHandoff: { name: "Somebody Else", text: "Hi", title: "", at: Date.now() } });
+drafts = [];
+api.suggestMessage();
+check("  but not a different person's comment", drafts[0] && drafts[0].context, null);
+chrome.runtime.sendMessage = realSend;
+
+console.log();
 console.log("noticing a reply as it is sent");
 var sent = [];
 var signals = [];

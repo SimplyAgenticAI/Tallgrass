@@ -29,7 +29,8 @@ def queue(user_id):
         comment_rows = conn.execute(
             """
             SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft, c.came_back,
-                   c.first_seen_at, c.stage, c.note, p.title AS post_title, p.url AS post_url, p.is_demo
+                   c.first_seen_at, c.stage, c.note, c.author_url,
+                   p.title AS post_title, p.url AS post_url, p.is_demo
             FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
             WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
               AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown')
@@ -60,6 +61,8 @@ def queue(user_id):
             "note": r["note"],
             "draft": r["draft"],
             "sample": bool(r["is_demo"]),
+            # Message them: reach the commenter in Messenger.
+            "dm_url": comments.messenger_link(r["author_url"]),
             "opportunity": bool(OPPORTUNITY_RE.search(r["body"] or "")),
             "question": (r["body"] or "").rstrip().endswith("?"),
         })
@@ -103,6 +106,7 @@ def for_panel(user_id, limit=15):
         "text": (e["text"] or "")[:160], "url": e["url"],
         "opportunity": e["opportunity"], "question": e["question"],
         "stage": pipeline.STAGE_LABELS.get(e["stage"]),
+        "dm_url": e.get("dm_url"),
     } for e in entries]
 
 

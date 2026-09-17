@@ -67,7 +67,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "27.8"
+APP_VERSION = "27.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1810,7 +1810,7 @@ def api_message_draft():
             relationship = pipeline.draft_context(row["stage"], row["note"])
     text, error = replies.draft_message(
         (body.get("name") or "")[:200], body.get("messages"), body.get("instructions", ""),
-        relationship=relationship)
+        relationship=relationship, context=body.get("context"))
     if error:
         return jsonify({"ok": False, "error": error}), 400
     return jsonify({"ok": True, "reply": text})

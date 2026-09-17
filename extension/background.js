@@ -181,6 +181,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "OUTLIER_OPEN_FACEBOOK") {
+    // Message them: remember who and why, for the draft in the chat it opens.
+    if (message.handoff && typeof message.handoff === "object") {
+      const h = message.handoff;
+      chrome.storage.local.set({ pendingHandoff: {
+        name: String(h.name || "").slice(0, 120), text: String(h.text || "").slice(0, 600),
+        title: String(h.title || "").slice(0, 200), at: Date.now() } });
+    }
     openFacebook(message.url).then(sendResponse, (error) =>
       sendResponse({ ok: false, error: String((error && error.message) || error) }));
     return true;

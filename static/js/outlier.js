@@ -2793,7 +2793,12 @@
       if (!FACEBOOK_HOST.test(host)) return;
 
       event.preventDefault();
-      window.dispatchEvent(new CustomEvent("outlier:open-facebook", { detail: { url: link.href } }));
+      var handoff = link.hasAttribute("data-handoff-name") ? {
+        name: link.getAttribute("data-handoff-name"),
+        text: link.getAttribute("data-handoff-text"),
+        title: link.getAttribute("data-handoff-title")
+      } : null;
+      window.dispatchEvent(new CustomEvent("outlier:open-facebook", { detail: { url: link.href, handoff: handoff } }));
     });
   })();
 

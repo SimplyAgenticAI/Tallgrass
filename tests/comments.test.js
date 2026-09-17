@@ -249,6 +249,8 @@ check("  and the post's link is the post", body.post.url, "https://www.facebook.
 check("the id is read even from the profile's encoded one", sent("Only Profile").key, "c:5555");
 check("  but that profile is never used as its link", sent("Only Profile").url, "");
 check("a reply never takes its parent's id", sent("Sam Lee").key === "c:4444", false);
+check("the commenter's profile is kept separately, for Message them",
+      sent("Dana Brooks").author_url.indexOf("https://www.facebook.com/dana.brooks") === 0, true);
 
 console.log();
 console.log("quick respond on Facebook");

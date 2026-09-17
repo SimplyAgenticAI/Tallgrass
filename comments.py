@@ -47,6 +47,40 @@ def post_link(url):
     return url if _POST_LINK_RE.search(probe) else None
 
 
+# A person's profile, and the Messenger address for it. Same rules as the
+# extension's messengerLink. Anything else — a post, a group, Facebook's own
+# pages — is not a person to message.
+_PROFILE_RESERVED = {
+    "watch", "groups", "marketplace", "events", "pages", "p", "photo", "photo.php", "reel",
+    "reels", "stories", "story.php", "permalink.php", "messages", "hashtag", "search", "gaming",
+    "notifications", "bookmarks", "friends", "settings", "help", "login.php", "sharer.php",
+    "profile.php", "people", "share",
+}
+
+
+def messenger_link(profile_url):
+    from urllib.parse import parse_qs, urlparse
+    try:
+        u = urlparse((profile_url or "").strip())
+    except ValueError:
+        return None
+    if u.scheme != "https" or u.hostname not in ("www.facebook.com", "web.facebook.com", "m.facebook.com"):
+        return None
+    parts = [p for p in u.path.split("/") if p]
+    person = ""
+    if parts[:1] == ["profile.php"]:
+        person = (parse_qs(u.query).get("id") or [""])[0]
+    elif len(parts) >= 4 and parts[0] == "groups" and parts[2] == "user":
+        person = parts[3]
+    elif len(parts) >= 3 and parts[0] == "people":
+        person = parts[2]
+    elif len(parts) == 1 and parts[0].lower() not in _PROFILE_RESERVED:
+        person = parts[0]
+    if not re.match(r"^[\w.]+$", person or ""):
+        return None
+    return "https://www.facebook.com/messages/t/" + person
+
+
 def _count(value):
     try:
         return max(0, min(int(value or 0), 100000))
@@ -154,8 +188,8 @@ def save_thread(user_id, payload):
                 """
                 INSERT INTO post_comments (user_id, post_id, comment_key, parent_key,
                                            author, body, url, is_mine, verdict,
-                                           hidden_replies, position, came_back)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                           hidden_replies, position, came_back, author_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, post_id, comment_key) DO UPDATE SET
                     parent_key     = excluded.parent_key,
                     author         = COALESCE(NULLIF(excluded.author, ''), post_comments.author),
@@ -169,13 +203,15 @@ def save_thread(user_id, payload):
                     verdict        = excluded.verdict,
                     hidden_replies = excluded.hidden_replies,
                     came_back      = excluded.came_back,
+                    author_url     = COALESCE(excluded.author_url, post_comments.author_url),
                     position       = excluded.position,
                     seen_at        = CURRENT_TIMESTAMP
                 """,
                 (user_id, post_id, comment_key, parent, author, body,
                  post_link(_text(item.get("url"), 500)), int(bool(item.get("mine"))),
                  verdict, _count(item.get("hidden_replies")), position,
-                 int(bool(item.get("came_back")) and parent is None)))
+                 int(bool(item.get("came_back")) and parent is None),
+                 _text(item.get("author_url"), 500) if messenger_link(item.get("author_url")) else None))
 
     return {"post_id": post_id, "comments": len(items), "new": new, "verdicts": counts}
 
@@ -228,6 +264,7 @@ def threads_for(user_id, show_done=False):
         p["url"] = post_link(p["url"])
     for row in rows:
         row["url"] = post_link(row["url"])
+        row["dm_url"] = messenger_link(row.get("author_url"))
 
     by_post = {p["id"]: p for p in posts}
     for p in posts:

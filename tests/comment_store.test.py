@@ -280,6 +280,45 @@ def main():
           "https://www.facebook.com/me/posts/77?comment_id=4444")
 
     print()
+    print("message them")
+    save({"post": {"key": "p:dm", "title": "Website packages"}, "comments": [
+        {"key": "c:8001", "author": "Dana Price", "text": "How much for 5 pages?", "verdict": "unanswered",
+         "author_url": "https://www.facebook.com/dana.price?comment_id=Y29t"},
+        {"key": "c:8002", "author": "Not A Person", "text": "Spam", "verdict": "unanswered",
+         "author_url": "https://evil.test/x"}]})
+    rows = {t["author"]: t for p in comments.threads_for(1)["posts"] for t in p["threads"]}
+    check("a commenter's profile becomes a Messenger link",
+          rows["Dana Price"]["dm_url"], "https://www.facebook.com/messages/t/dana.price")
+    check("  anything that isn't a Facebook profile is never kept", rows["Not A Person"]["dm_url"], None)
+    html = me.get("/comments").get_data(as_text=True)
+    check("  the page offers Message them, carrying what they said",
+          'data-handoff-text="How much for 5 pages?"' in html and ">Message them</a>" in html, True)
+    check("the server's rules match the extension's",
+          [comments.messenger_link(u) for u in (
+              "https://www.facebook.com/profile.php?id=10001234",
+              "https://www.facebook.com/groups/cats/user/555/",
+              "https://www.facebook.com/dana/posts/123")],
+          ["https://www.facebook.com/messages/t/10001234", "https://www.facebook.com/messages/t/555", None])
+
+    import replies as replies_real
+    from flask import g
+    captured = {}
+    real_anthropic = replies_real._anthropic
+    replies_real._anthropic = lambda cfg, prompt, system=None: (captured.update(prompt=prompt) or ("Hi Dana!", None))
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test"
+    with appmod.app.test_request_context():
+        g.user = {"id": 1}
+        text, err = replies_real.draft_message(
+            "Dana Brooks", [], context={"name": "Dana Brooks", "text": "How much for 5 pages?",
+                                        "title": "Website packages"})
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    replies_real._anthropic = real_anthropic
+    check("a first DM can be drafted from the comment alone", (text, err), ("Hi Dana!", None))
+    check("  and knows what they said and where",
+          "How much for 5 pages?" in captured["prompt"] and "Website packages" in captured["prompt"]
+          and "this is the first message" in captured["prompt"], True)
+
+    print()
     print("a comment that gains its Facebook id is not stored twice")
     save({"post": {"key": "p:links"}, "comments": [
         {"key": "h:kim", "author": "Kim Park", "text": "Do you deliver to Austin?", "verdict": "unanswered"},
