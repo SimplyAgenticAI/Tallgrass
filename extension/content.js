@@ -4452,7 +4452,7 @@
     var state = postCheck = { checked: 0, saved: 0, stopped: false, stalls: 0,
                               unconfirmed: !names.length };
 
-    function finish(reason) {
+    function finishCheck(reason) {
       postCheck = null;
       done({ checked: state.checked, saved: state.saved, reason: reason, unconfirmed: state.unconfirmed });
     }
@@ -4471,12 +4471,12 @@
     }
 
     (function step() {
-      if (state.stopped) return finish("stopped by you");
-      if (state.checked >= target) return finish("checked " + target);
+      if (state.stopped) return finishCheck("stopped by you");
+      if (state.checked >= target) return finishCheck("checked " + target);
       var next = nextPost();
       if (!next) {
         state.stalls++;
-        if (state.stalls > 3) return finish("no more of your posts with comments on this page");
+        if (state.stalls > 3) return finishCheck("no more of your posts with comments on this page");
         try { window.scrollBy(0, (window.innerHeight || 800) * 0.8); } catch (e) {}
         return setTimeout(step, POST_CHECK_SCROLL_WAIT);
       }
