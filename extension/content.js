@@ -4217,8 +4217,8 @@
     return "";
   }
 
-  function commentPayload() {
-    var r = readCommentThread();
+  function commentPayload(scope) {
+    var r = readCommentThread(scope);
     var post = openPostIdentity(r);
     var items = [];
     r.threads.forEach(function (c) {
@@ -4241,8 +4241,8 @@
   }
 
   // Send the open post's comments to the dashboard.
-  function sendComments(done) {
-    var payload = commentPayload();
+  function sendComments(done, scope) {
+    var payload = commentPayload(scope);
     var r = payload.read;
     if (!r.threads.length) return done({ ok: false, error: "No comments found on this post." });
     // What was saved is the new baseline for the reply watcher. Without this,
@@ -4300,13 +4300,14 @@
     return out;
   }
 
-  function expandThread(progress, done) {
+  function expandThread(progress, done, scope) {
     var clicked = [];
     var rounds = 0;
     var empty = 0;
     commentExpanding = { clicks: 0 };
     (function round() {
-      var dialog = openPostDialog();
+      // A given scope (a post being checked in a batch) or the open post.
+      var dialog = scope ? (scope.isConnected === false ? null : scope) : openPostDialog();
       if (!dialog) { commentExpanding = null; return done(clicked.length, "the post was closed"); }
       var controls = expandControls(dialog, clicked);
       if (!controls.length) {
@@ -4370,6 +4371,140 @@
       renderHud();
     });
     return true;
+  }
+
+  /* Checking the comments on your recent posts, one after another.
+   *
+   * Saving comments meant opening a post, pressing Save, closing it, and doing
+   * that again for every post. From your profile, your Page, or a group, this
+   * does it for your last few posts: it clicks each post's "N comments", waits
+   * for the comments to open (a pop-up, or in place under the post), opens
+   * everything folded, saves, closes the pop-up, and moves on — scrolling down
+   * for more posts when it runs out of ones on screen.
+   *
+   * It only reads, like Save. It never clicks Reply, Like or anything that
+   * changes a post. Only posts written by you: in a group that means a post
+   * whose author is your name, so if your name cannot be found there it stops
+   * rather than reading other people's posts. On your own profile or Page,
+   * where the posts are yours, it goes ahead and says it could not confirm it.
+   */
+  var POST_CHECK_TARGETS = [5, 10, 20];
+  var postCheckTarget = 10;
+  var POST_CHECK_WAIT = 300;         // polling while comments open or a dialog closes
+  var POST_CHECK_OPEN_MAX = 8000;    // how long a post gets to open its comments
+  var POST_CHECK_SCROLL_WAIT = 1500; // after scrolling for more posts
+  var postCheck = null;
+  var lastPostCheck = "";
+
+  var COMMENT_COUNT_RE = /^\d[\d,.]*\s*[KM]?\s+comments?$/i;
+
+  function commentCountControl(article) {
+    var nodes = article.querySelectorAll('[role="button"], span, div, a');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.children && el.children.length) continue;
+      if (!COMMENT_COUNT_RE.test(visibleText(el.innerText || "").replace(/\s+/g, " ").trim())) continue;
+      if (!owned(article, el)) continue;
+      return (el.closest && el.closest('[role="button"]')) || el;
+    }
+    return null;
+  }
+
+  function myFullNames() {
+    return Object.keys(viewerNames()).filter(function (n) { return n.indexOf(" ") !== -1; });
+  }
+
+  function writtenByMe(article, names) {
+    var author = extractAuthor(article, findActionBar(article));
+    return !!(author && author.name && names.indexOf(author.name.toLowerCase()) !== -1);
+  }
+
+  function waitFor(test, max, then) {
+    var waited = 0;
+    (function poll() {
+      var found = test();
+      if (found || waited >= max) return then(found || null);
+      waited += POST_CHECK_WAIT;
+      setTimeout(poll, POST_CHECK_WAIT);
+    })();
+  }
+
+  function closeDialog(dialog, then) {
+    var close = dialog.querySelector('[aria-label="Close" i], [aria-label="Close"]');
+    try {
+      if (close && close.click) close.click();
+      else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    } catch (e) { /* nothing to close with */ }
+    waitFor(function () { return dialog.isConnected === false || !openPostDialog(); }, 3000, then);
+  }
+
+  function checkMyPosts(target, progress, done) {
+    var source = detectSource() || lastKnownSource;
+    if (!source || source.isFeed || onMessenger()) {
+      return done({ checked: 0, saved: 0, reason: "open your profile, your Page or a group first" });
+    }
+    var names = myFullNames();
+    var mineByPage = source.kind === "profile" || source.kind === "page";
+    if (!names.length && !mineByPage) {
+      return done({ checked: 0, saved: 0,
+                    reason: "couldn't tell which posts here are yours, so nothing was read" });
+    }
+    var state = postCheck = { checked: 0, saved: 0, stopped: false, stalls: 0,
+                              unconfirmed: !names.length };
+
+    function finish(reason) {
+      postCheck = null;
+      done({ checked: state.checked, saved: state.saved, reason: reason, unconfirmed: state.unconfirmed });
+    }
+
+    function nextPost() {
+      var arts = feedArticles();
+      for (var i = 0; i < arts.length; i++) {
+        var art = arts[i];
+        if (art.__tallgrassChecked) continue;
+        art.__tallgrassChecked = true;
+        if (names.length && !writtenByMe(art, names)) continue;
+        var control = commentCountControl(art);
+        if (control) return { article: art, control: control };
+      }
+      return null;
+    }
+
+    (function step() {
+      if (state.stopped) return finish("stopped by you");
+      if (state.checked >= target) return finish("checked " + target);
+      var next = nextPost();
+      if (!next) {
+        state.stalls++;
+        if (state.stalls > 3) return finish("no more of your posts with comments on this page");
+        try { window.scrollBy(0, (window.innerHeight || 800) * 0.8); } catch (e) {}
+        return setTimeout(step, POST_CHECK_SCROLL_WAIT);
+      }
+      state.stalls = 0;
+      try { if (next.article.scrollIntoView) next.article.scrollIntoView({ block: "center" }); } catch (e) {}
+      var hadDialog = openPostDialog();
+      try { next.control.click(); } catch (e) { return step(); }
+      progress(state.checked + 1, state.saved, "opening");
+
+      // Comments open in a new pop-up, or in place under the post.
+      waitFor(function () {
+        var dialog = openPostDialog();
+        if (dialog && dialog !== hadDialog && dialog.getAttribute("role") === "dialog") return dialog;
+        return holdsComments(next.article) ? next.article : null;
+      }, POST_CHECK_OPEN_MAX, function (scope) {
+        if (!scope) return step();                   // nothing opened: skip this one
+        progress(state.checked + 1, state.saved, "reading");
+        expandThread(function () {}, function () {
+          sendComments(function (response) {
+            state.checked++;
+            if (response && response.ok) state.saved += response.comments || 0;
+            progress(state.checked, state.saved, "saved");
+            if (scope.getAttribute("role") === "dialog") closeDialog(scope, function () { step(); });
+            else step();
+          }, scope);
+        }, scope);
+      });
+    })();
   }
 
   /* ------------------------------------------------ quick respond, on Facebook
@@ -5659,6 +5794,35 @@
     if (!onMessenger()) {
       hudBody.appendChild(hudPicker("Posts to scan:", POST_TARGETS, maxPosts, setPostTarget));
     }
+
+    // Check the comments on your recent posts, one after another.
+    if (!onMessenger() && !autoScrolling && source && !source.isFeed && !openPostDialog() ||
+        postCheck) {
+      if (postCheck) {
+        hudBody.appendChild(hudButton("Stop checking posts", function () {
+          if (postCheck) postCheck.stopped = true;
+        }));
+      } else {
+        hudBody.appendChild(hudPicker("My posts to check:", POST_CHECK_TARGETS, postCheckTarget,
+                                      function (n) { postCheckTarget = n; }));
+        hudBody.appendChild(hudButton("Check comments on my recent posts", function () {
+          var target = postCheckTarget;
+          lastPostCheck = "Looking for your posts…";
+          checkMyPosts(target, function (n, saved, stage) {
+            lastPostCheck = "Post " + n + " of " + target + ": " + stage + " · " + saved + " comments saved";
+            renderHud();
+          }, function (result) {
+            lastPostCheck = "Checked " + result.checked + " post" + (result.checked === 1 ? "" : "s") +
+              ", saved " + result.saved + " comments. Stopped: " + result.reason + "." +
+              (result.unconfirmed ? " (Couldn't confirm your name, so every post on this page was checked.)" : "") +
+              (result.checked ? " Unanswered ones are in your queue above." : "");
+            renderHud();
+          });
+          renderHud();
+        }));
+      }
+      if (lastPostCheck) hudBody.appendChild(hudNote(lastPostCheck));
+    }
     hudBody.appendChild(row("Sent to dashboard", String(STATS.sent)));
     hudBody.appendChild(row("New (not duplicates)", String(STATS.added), "#6ee7b7"));
 
@@ -5972,6 +6136,10 @@
     postLimits: function () { return { maxPosts: maxPosts, maxMinutes: maxMinutes }; },
     expandThread: expandThread,
     saveComments: sendComments,
+    checkMyPosts: checkMyPosts,
+    setPostCheckWaits: function (poll, open, scroll) {
+      POST_CHECK_WAIT = poll; POST_CHECK_OPEN_MAX = open; POST_CHECK_SCROLL_WAIT = scroll;
+    },
     watchComments: watchComments,
     setExpandWait: function (ms) { EXPAND_WAIT = ms; },
     readChatList: readChatList,
