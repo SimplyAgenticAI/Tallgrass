@@ -3964,13 +3964,28 @@
 
   // The post that is open, if one is: the dialog that actually holds comments.
   // Facebook keeps other dialogs mounted, so the first one is not necessarily it.
+  function holdsComments(el) {
+    var inner = el.querySelectorAll('div[role="article"]');
+    for (var j = 0; j < inner.length; j++) {
+      if (parseCommentLabel(inner[j].getAttribute("aria-label"))) return true;
+    }
+    return false;
+  }
+
+  /* The open post: a dialog holding comments, or — on a post's own page,
+   * which is where Open from the reply queue lands — the page itself.
+   *
+   * Saving and Suggest reply only looked in dialogs, so a comment opened by
+   * its link showed none of them: the post was on its own page, not in a pop-up.
+   */
   function openPostDialog() {
     var dialogs = document.querySelectorAll('[role="dialog"]');
     for (var i = 0; i < dialogs.length; i++) {
-      var inner = dialogs[i].querySelectorAll('div[role="article"]');
-      for (var j = 0; j < inner.length; j++) {
-        if (parseCommentLabel(inner[j].getAttribute("aria-label"))) return dialogs[i];
-      }
+      if (holdsComments(dialogs[i])) return dialogs[i];
+    }
+    if (!onMessenger() && POST_URL_RE.test(location.href)) {
+      var main = document.querySelector('[role="main"]');
+      if (main && holdsComments(main)) return main;
     }
     return null;
   }
@@ -3990,8 +4005,8 @@
     return "";
   }
 
-  function readCommentThread() {
-    var dialog = openPostDialog();
+  function readCommentThread(scopeOverride) {
+    var dialog = scopeOverride || openPostDialog();
     var scope = dialog || document;
     var myNames = myNamesIn(scope);
     var articles = scope.querySelectorAll('div[role="article"]');
@@ -4058,7 +4073,7 @@
     });
 
     return {
-      scope: dialog ? "post dialog" : "page",
+      scope: !dialog ? "page" : dialog.getAttribute("role") === "dialog" ? "post dialog" : "post page",
       dialog: dialog,
       viewer: Object.keys(myNames),
       viewerFrom: myNames,
@@ -4223,6 +4238,7 @@
       if (chrome.runtime.lastError || !response) {
         return done({ ok: false, error: "Extension worker asleep — press again." });
       }
+      if (response.ok) refreshReplyQueue(true);
       response.viewerFound = r.viewer.length > 0;
       response.moreComments = r.moreComments;
       done(response);
@@ -4919,6 +4935,7 @@
       if (chrome.runtime.lastError || !response) {
         return done({ ok: false, error: "The extension was asleep — press again." });
       }
+      if (response.ok) refreshReplyQueue(true);
       response.read = threads.length;
       done(response);
     });
@@ -5119,6 +5136,7 @@
           return;
         }
         seen(convo.id, { decision: "saved" });
+        refreshReplyQueue(true);
         var first = String(convo.name || "them").split(" ")[0];
         LIVE_NOTE[convo.id] = last.from === "me"
           ? "✓ Saw your reply — moved to Replied in Tallgrass."
@@ -5258,6 +5276,129 @@
       }
     }
     return true;
+  }
+
+  /* ------------------------------------------------ the reply queue, on Facebook
+   *
+   * Everyone waiting on an answer lived on the dashboard's Today page, so
+   * working through them meant going back and forth between Facebook and
+   * Tallgrass. The panel now carries the queue: who is next, what they said,
+   * and Open, Skip or Done. Open goes to the comment or chat in this tab; once
+   * you answer, the reply watchers save it, the queue refreshes, and the next
+   * person is up — without leaving Facebook.
+   *
+   * Refreshed at most once a minute on the panel's tick, and at once after any
+   * save that could change it.
+   */
+  var REPLY_QUEUE = { entries: [], total: 0, index: 0, loadedAt: 0, loading: false, error: "" };
+
+  function refreshReplyQueue(force) {
+    if (REPLY_QUEUE.loading) return;
+    if (!force && Date.now() - REPLY_QUEUE.loadedAt < 60000) return;
+    REPLY_QUEUE.loading = true;
+    try {
+      chrome.runtime.sendMessage({ type: "OUTLIER_TODAY" }, function (response) {
+        void chrome.runtime.lastError;
+        REPLY_QUEUE.loading = false;
+        REPLY_QUEUE.loadedAt = Date.now();
+        if (response && response.ok) {
+          var current = REPLY_QUEUE.entries[REPLY_QUEUE.index];
+          REPLY_QUEUE.entries = response.entries || [];
+          REPLY_QUEUE.total = response.waiting_total || 0;
+          REPLY_QUEUE.error = "";
+          // Stay on the same person if they are still waiting; otherwise the
+          // next one takes the slot.
+          var keep = current ? REPLY_QUEUE.entries.findIndex(function (e) {
+            return e.kind === current.kind && e.id === current.id;
+          }) : -1;
+          REPLY_QUEUE.index = keep >= 0 ? keep : Math.min(REPLY_QUEUE.index, Math.max(0, REPLY_QUEUE.entries.length - 1));
+        } else {
+          REPLY_QUEUE.error = (response && response.error) || "";
+        }
+        renderHud();
+      });
+    } catch (e) {
+      REPLY_QUEUE.loading = false;
+    }
+  }
+
+  function queueEntryIsHere(entry) {
+    if (!entry || !entry.url) return false;
+    if (entry.kind === "message") {
+      var id = currentThreadId();
+      return !!id && entry.url.indexOf("/t/" + id) !== -1;
+    }
+    return location.href.split("?")[0].replace(/\/+$/, "") === entry.url.split("?")[0].replace(/\/+$/, "");
+  }
+
+  function renderReplyQueue(body) {
+    var box = document.createElement("div");
+    styleEl(box, { padding: "0.55em 0.65em", marginBottom: "0.6em", borderRadius: "8px",
+                   border: "1px solid rgba(224,122,95,0.35)", background: "rgba(224,122,95,0.07)" });
+    var head = document.createElement("div");
+    styleEl(head, { fontSize: "0.85em", fontWeight: "700", color: "#f2b8a2", marginBottom: "0.3em" });
+    head.textContent = REPLY_QUEUE.total
+      ? REPLY_QUEUE.total + " waiting on you" + (REPLY_QUEUE.entries.length > 1 ? " — " + (REPLY_QUEUE.index + 1) + " of " + REPLY_QUEUE.entries.length : "")
+      : (REPLY_QUEUE.loadedAt ? "Nobody waiting on you" : "Checking who's waiting…");
+    box.appendChild(head);
+
+    var entry = REPLY_QUEUE.entries[REPLY_QUEUE.index];
+    if (entry) {
+      var who = document.createElement("div");
+      styleEl(who, { fontSize: "0.92em", color: "#e8f5ee" });
+      who.textContent = (entry.opportunity ? "🔥 " : entry.question ? "❓ " : "") +
+        entry.who + " · " + (entry.kind === "comment" ? "comment" : "message");
+      box.appendChild(who);
+      if (entry.text) {
+        var said = document.createElement("div");
+        styleEl(said, { fontSize: "0.84em", color: "#9fc3b1", marginTop: "0.15em",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" });
+        said.textContent = "“" + entry.text + "”";
+        box.appendChild(said);
+      }
+      if (queueEntryIsHere(entry)) {
+        box.appendChild(hudNote(entry.kind === "comment"
+          ? "You're here — use ✨ Suggest reply on their comment. Once you answer, it moves on."
+          : "You're here — press ✨ Suggest a message below. Once you send, it moves on."));
+      }
+      var actions = document.createElement("div");
+      styleEl(actions, { display: "flex", gap: "0.35em", marginTop: "0.45em" });
+      function small(label, onClick, primary) {
+        var b = document.createElement("button");
+        b.textContent = label;
+        styleEl(b, { flex: "1", padding: "0.4em", borderRadius: "6px", cursor: "pointer", fontSize: "0.85em",
+                     fontWeight: primary ? "700" : "500",
+                     border: "1px solid rgba(110,231,183," + (primary ? "0.6" : "0.22") + ")",
+                     background: primary ? "rgba(52,211,153,0.2)" : "transparent",
+                     color: primary ? "#6ee7b7" : "#7fa693" });
+        b.addEventListener("click", onClick);
+        actions.appendChild(b);
+      }
+      if (!queueEntryIsHere(entry)) {
+        small("Open", function () { location.href = entry.url; }, true);
+      }
+      if (REPLY_QUEUE.entries.length > 1) {
+        small("Skip", function () {
+          REPLY_QUEUE.index = (REPLY_QUEUE.index + 1) % REPLY_QUEUE.entries.length;
+          renderHud();
+        });
+      }
+      small("Done", function () {
+        chrome.runtime.sendMessage({ type: "OUTLIER_TODAY_DONE", body: { kind: entry.kind, id: entry.id } },
+          function (response) {
+            void chrome.runtime.lastError;
+            if (response && response.ok) {
+              REPLY_QUEUE.entries = response.entries || [];
+              REPLY_QUEUE.total = response.waiting_total || 0;
+              REPLY_QUEUE.index = Math.min(REPLY_QUEUE.index, Math.max(0, REPLY_QUEUE.entries.length - 1));
+              REPLY_QUEUE.loadedAt = Date.now();
+            }
+            renderHud();
+          });
+      });
+      box.appendChild(actions);
+    }
+    body.appendChild(box);
   }
 
   /* A row of numbers to pick one from — how many chats, how many posts.
@@ -5435,6 +5576,9 @@
   function renderHud() {
     if (!hud) return;
     hudBody.textContent = "";
+
+    // Who is next, at the top, whenever a scan is not running.
+    if (!autoScrolling) renderReplyQueue(hudBody);
 
     /* What this page is, by its real name.
      *
@@ -5718,6 +5862,8 @@
     try { if (!autoScrolling) injectQuickRespond(); } catch (e) { /* page changed underneath */ }
     // A reply sent in an open Messenger chat moves it on the dashboard.
     try { if (!autoScrolling) watchConversation(); } catch (e) { /* page changed underneath */ }
+    // Who is waiting, for the panel's queue — at most once a minute.
+    try { if (!autoScrolling) refreshReplyQueue(false); } catch (e) { /* worker asleep */ }
   }, 2500);
 
   // Exposed for debugging against live Facebook: select a post in devtools and

@@ -66,7 +66,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "27.3"
+APP_VERSION = "27.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -185,7 +185,7 @@ app.config.update(
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
 # need permissive CORS. Everything else is same-origin.
 INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft",
-                "/api/messages/threads", "/api/messages/draft")
+                "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1527,6 +1527,41 @@ def today_page():
     )
 
 
+def _panel_queue(user_id):
+    return jsonify({"ok": True, "entries": today.for_panel(user_id),
+                    "waiting_total": today.waiting_count(user_id)})
+
+
+@app.route("/api/today", methods=["POST", "OPTIONS"])
+def api_today():
+    """Who is waiting, for the reply queue in the extension's panel."""
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = _api_user()
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    return _panel_queue(api_user["id"])
+
+
+@app.route("/api/today/done", methods=["POST", "OPTIONS"])
+def api_today_done():
+    """Set someone aside from the panel. Returns the queue as it now stands."""
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = _api_user()
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    body = request.get_json(silent=True) or {}
+    try:
+        if body.get("kind") == "comment":
+            comments.set_status(api_user["id"], int(body.get("id")), "done")
+        elif body.get("kind") == "message":
+            messages.set_status(api_user["id"], int(body.get("id")), "done")
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Nothing to mark done"}), 400
+    return _panel_queue(api_user["id"])
+
+
 # ---------------------------------------------------------------- comments
 
 
@@ -1840,7 +1875,7 @@ def _waiting_count_for_nav():
 # with an API key or its own header, and Stripe signs its webhooks.
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
                "/api/extension/key", "/api/comments", "/api/comments/draft",
-               "/api/messages/threads", "/api/messages/draft"}
+               "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done"}
 
 
 @app.before_request

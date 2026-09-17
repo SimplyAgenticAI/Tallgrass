@@ -83,6 +83,20 @@ def queue(user_id):
     }
 
 
+def for_panel(user_id, limit=15):
+    """The top of the queue for the extension's panel: real people only.
+
+    Examples have no link to open and nobody behind them, so the panel never
+    offers one. Text is trimmed to what fits on a card.
+    """
+    entries = [e for e in queue(user_id)["entries"] if not e["sample"] and e["url"]][:limit]
+    return [{
+        "kind": e["kind"], "id": e["id"], "who": e["who"], "where": e["where"],
+        "text": (e["text"] or "")[:160], "url": e["url"],
+        "opportunity": e["opportunity"], "question": e["question"],
+    } for e in entries]
+
+
 def waiting_count(user_id):
     """How many people are waiting on an answer. Cheap: two counts.
 

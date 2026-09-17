@@ -94,6 +94,20 @@ def main():
     check("the nav shows the count", 'class="nav-count"' in html and ">5</span>" in html, True)
 
     print()
+    print("the queue in the extension's panel")
+    panel = me.post("/api/today", headers=headers).get_json()
+    check("needs a key", me.post("/api/today", headers={"X-Outlier-Key": "olk_wrong"}).status_code, 401)
+    check("real people with somewhere to open, opportunities first",
+          [e["who"] for e in panel["entries"]][:1], ["Lee Chan"])
+    check("  only entries that can be opened", all(e["url"] for e in panel["entries"]), True)
+    check("  and the total for the badge", panel["waiting_total"], 5)
+    after = me.post("/api/today/done", headers=headers,
+                    json={"kind": "message", "id": panel["entries"][0]["id"]}).get_json()
+    check("Done from the panel returns the queue without them",
+          ("Lee Chan" in [e["who"] for e in after["entries"]], after["waiting_total"]), (False, 4))
+    me.post("/messages/%d/status" % panel["entries"][0]["id"], data={"status": "open", "csrf_token": csrf})
+
+    print()
     print("done from Today stays on Today")
     tom = [i for i in q["entries"] if i["who"] == "Tom Hanks"][0]
     friend = [i for i in q["entries"] if i["who"] == "Old Friend"][0]

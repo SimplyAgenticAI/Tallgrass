@@ -154,6 +154,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  // The reply queue shown in the panel, and setting someone aside from it.
+  if (message.type === "OUTLIER_TODAY") {
+    postToDashboard("/api/today", {}).then(sendResponse);
+    return true;
+  }
+  if (message.type === "OUTLIER_TODAY_DONE") {
+    postToDashboard("/api/today/done", message.body).then(sendResponse);
+    return true;
+  }
+
   if (message.type === "OUTLIER_PING") {
     testConnection().then(sendResponse);
     return true;

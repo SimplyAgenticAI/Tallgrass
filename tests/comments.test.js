@@ -148,6 +148,22 @@ check("a folded reply is unclear", verdictOf("Daniel Medina"), "unknown");
 check("and an unreplied comment is unanswered", verdictOf("Chris M Utter"), "unanswered");
 
 console.log();
+console.log("a post on its own page, where the reply queue's Open lands");
+D = H.makeDoc();
+root = D.el("div");
+var pageMain = add(root, "div", { role: "main" });
+add(pageMain, "div", { dir: "auto" }, "New website packages are live this week");
+comment(pageMain, "Comment by Dana Brooks 2h", "Dana Brooks", "How much is it?");
+add(pageMain, "div", {}, "Comment as Jeff Randle");
+api = runScan({ doc: D, root: root }, "/jeffrandle/posts/pfbid02abc");
+api.resetViewerNames();
+r = api.readCommentThread();
+check("its comments are read from the page", [r.scope, r.threads.length], ["post page", 1]);
+check("  and Suggest reply is offered there", api.injectQuickRespond(), 1);
+api = runScan({ doc: D, root: root }, "/jeffrandle");
+check("but a profile's comments are not treated as an open post", api.readCommentThread().scope, "page");
+
+console.log();
 console.log("what is sent to the dashboard");
 D = H.makeDoc();
 root = D.el("div");
@@ -261,6 +277,7 @@ chrome.runtime.sendMessage = function (m, cb) { saved.push(m); if (cb) cb({ ok: 
 check("nothing new, nothing saved", api.watchComments(api.readCommentThread()), false);
 comment(post.children[2], "Reply by Jeff Randle to Mark Twain's comment 1m", "Jeff Randle", "Yes! DM me");
 check("your reply to Mark is noticed", api.watchComments(api.readCommentThread()), true);
+saved = saved.filter(function (m) { return m.type !== "OUTLIER_TODAY"; });
 check("  and the thread is saved at once", [saved.length, saved[0] && saved[0].type], [1, "OUTLIER_COMMENTS"]);
 check("  with Mark now answered",
       saved[0].body.comments.filter(function (c) { return c.author === "Mark Twain"; })[0].verdict, "answered");

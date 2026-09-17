@@ -118,7 +118,8 @@ check("nobody left unplaced", convo.unknown, 0);
 console.log();
 console.log("noticing a reply as it is sent");
 var sent = [];
-chrome.runtime.sendMessage = function (m, cb) { sent.push(m); if (cb) cb({ ok: true }); };
+// Only the saves are counted; the panel's queue refresh also messages the worker.
+chrome.runtime.sendMessage = function (m, cb) { if (m.type !== "OUTLIER_TODAY") sent.push(m); if (cb) cb({ ok: true }); };
 check("the first look only records where the chat stands", api.watchConversation(), null);
 check("  and sends nothing", sent.length, 0);
 check("  and the panel says it is watching",
