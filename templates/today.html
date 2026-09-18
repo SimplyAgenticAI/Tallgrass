@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Today{% endblock %}
 {% from "_pipeline.html" import pipeline_controls with context %}
+{% from "_avatar.html" import avatar %}
 
 {% block content %}
 <section class="feed-head">
@@ -9,16 +10,16 @@
     <p class="sub">
       Everyone waiting on an answer from you — comments on your posts and
       Messenger chats — in one list, likely opportunities first.
-      {% if queue.entries %}
-        <b>{{ queue.entries|length }}</b> waiting:
+      {% if queue.entries %}<span data-waiting-detail>
+        <b data-waiting-num>{{ queue.entries|length }}</b> waiting:
         {{ queue.comments }} comment{{ '' if queue.comments == 1 else 's' }},
         {{ queue.messages }} chat{{ '' if queue.messages == 1 else 's' }}
         {%- if queue.opportunities %}, {{ queue.opportunities }} that look like opportunities{% endif %}.
-      {% endif %}
+      </span>{% endif %}
     </p>
   </div>
   {% if queue.entries and queue.entries[0].url %}
-  <div class="filters">
+  <div class="filters" data-start-first>
     <a class="filter cm-suggest" href="{{ queue.entries[0].url }}" target="_blank" rel="noopener">Start with the first →</a>
   </div>
   {% endif %}
@@ -51,9 +52,10 @@
     Answered somebody? It leaves this list by itself the next time {{ app_name }}
     sees your reply. <b>Done</b> is for setting someone aside.
   </p>
-  <ul class="cm-list">
+  <ul class="cm-list" data-today-list>
     {% for item in queue.entries %}
-    <li class="cm-item" id="{{ item.kind }}-{{ item.id }}">
+    <li class="cm-item" id="{{ item.kind }}-{{ item.id }}"{% if item.sample %} data-sample{% endif %}>
+      {{ avatar(item.who) }}
       <div class="cm-main">
         {% if item.intent_label %}<span class="cm-chip cm-intent-{{ item.intent }}" title="{{ item.intent_reason or '' }}">{{ item.intent_label }}</span>
         {% elif item.opportunity %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
@@ -101,12 +103,13 @@
         <form method="post" action="{{ url_for('comment_status', comment_id=item.id, next='today') if item.kind == 'comment' else url_for('message_status', thread_id=item.id, next='today') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="status" value="done">
-          <button class="filter" type="submit">Done</button>
+          <button class="filter" type="submit" data-swipe-done>Done</button>
         </form>
       </div>
     </li>
     {% endfor %}
   </ul>
 </section>
+{% include "_caught_up.html" %}
 {% endif %}
 {% endblock %}

@@ -1,0 +1,6 @@
+{# A face for a person: their initials on a colour that is always theirs.
+   Today, Comments and Messages are lists of people, and read as rows of text
+   without one. #}
+{% macro avatar(name) -%}
+<span class="avatar" style="--h: {{ name | avatar_hue }}" aria-hidden="true">{{ name | initials }}</span>
+{%- endmacro %}

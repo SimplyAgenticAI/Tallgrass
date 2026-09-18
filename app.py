@@ -68,7 +68,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "28.4"
+APP_VERSION = "28.5"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1883,6 +1883,21 @@ def _field_scores(limit=90):
 
 
 app.add_template_filter(age_of, "ago")
+
+
+@app.template_filter("initials")
+def initials_filter(name):
+    """"Dana Brooks" → "DB", "Cher" → "C", nothing readable → "?"."""
+    words = [w for w in (name or "").split() if w[:1].isalnum()]
+    if not words:
+        return "?"
+    return (words[0][0] + (words[-1][0] if len(words) > 1 else "")).upper()
+
+
+@app.template_filter("avatar_hue")
+def avatar_hue_filter(name):
+    """A hue from the name, so a person is the same colour on every page."""
+    return sum((i + 1) * ord(ch) for i, ch in enumerate(name or "")) % 360
 
 
 @app.template_filter("audience")

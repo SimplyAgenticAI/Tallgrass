@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ app_name }} — Messages{% endblock %}
 {% from "_pipeline.html" import pipeline_controls with context %}
+{% from "_avatar.html" import avatar %}
 
 {% macro thread_row(t, stage="waiting") %}
 <li class="cm-item" id="t{{ t.id }}">
+  {{ avatar(t.name) }}
   <div class="cm-main">
     {% if t.signal == 'opportunity' %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
     {% elif t.signal == 'question' %}<span class="cm-chip cm-chip-unknown">Question</span>

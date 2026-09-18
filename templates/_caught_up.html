@@ -1,0 +1,13 @@
+{# Shown the moment the last person on Today is answered: the meadow grows
+   back in, and one blade breaks away — the product's own picture. #}
+<div class="glass empty-panel caught-up" data-caught-up hidden>
+  <svg class="cu-grass" viewBox="0 0 240 72" aria-hidden="true">
+    {% for i in range(29) %}
+    {% set x = 6 + i * 8 %}{% set h = 22 + (i * 37) % 26 %}{% set lean = (i * 13) % 9 - 4 %}
+    <path class="cu-blade" style="--i: {{ i }}" d="M{{ x - 2 }} 72 Q{{ x + lean * 0.5 }} {{ 72 - h * 0.55 }} {{ x + lean }} {{ 72 - h }} Q{{ x + lean * 0.3 + 1 }} {{ 72 - h * 0.5 }} {{ x + 2 }} 72 Z"/>
+    {% endfor %}
+    <path class="cu-blade is-tall" style="--i: 15" d="M119 72 Q122 36 126 4 Q126 40 124 72 Z"/>
+  </svg>
+  <h2>All caught up</h2>
+  <p>Nobody is waiting on you right now. Nice work.</p>
+</div>

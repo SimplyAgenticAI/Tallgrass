@@ -2802,6 +2802,94 @@
     });
   })();
 
+  var CALM = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  /* A finished draft arrives word by word, over under a second, rather than
+   * appearing all at once. The whole text is kept on the element for Copy. */
+  function typeOut(el, text) {
+    clearTimeout(el.__typing);
+    el.setAttribute("data-full", text);
+    if (CALM) { el.textContent = text; return; }
+    var parts = text.split(/(\s+)/);
+    var step = Math.max(8, Math.min(32, 850 / Math.max(1, parts.length)));
+    var n = 0;
+    el.textContent = "";
+    (function next() {
+      n = Math.min(parts.length, n + 2);
+      el.textContent = parts.slice(0, n).join("");
+      if (n < parts.length) el.__typing = setTimeout(next, step);
+    })();
+  }
+
+  /* ------------------------------------------------ Today: Done, with a swipe
+   *
+   * Done posted the form and reloaded the whole page. Now the person slides
+   * out, the list closes up, the count in the top bar ticks down — and when
+   * the last one goes, the meadow grows back in. If anything fails the form
+   * is simply submitted the old way.
+   */
+  (function () {
+    var list = document.querySelector("[data-today-list]");
+    if (!list || !window.fetch || !window.FormData) return;
+
+    function tick(el, by) {
+      if (!el) return;
+      var n = Math.max(0, (parseInt(el.textContent, 10) || 0) - by);
+      el.textContent = String(n);
+      el.classList.remove("is-ticking");
+      void el.offsetWidth;
+      el.classList.add("is-ticking");
+      return n;
+    }
+
+    function caughtUp() {
+      var panel = document.querySelector("[data-caught-up]");
+      var section = list.closest("section");
+      var first = document.querySelector("[data-start-first]");
+      if (first) first.hidden = true;
+      var detail = document.querySelector("[data-waiting-detail]");
+      if (detail) detail.hidden = true;
+      if (!panel) return;
+      if (section) section.hidden = true;
+      panel.hidden = false;
+      requestAnimationFrame(function () { panel.classList.add("is-shown"); });
+    }
+
+    function clear(item) {
+      var counted = !item.hasAttribute("data-sample");
+      var finish = function () {
+        item.remove();
+        tick(document.querySelector("[data-waiting-num]"), 1);
+        if (counted) {
+          var badge = document.querySelector(".nav-count");
+          if (badge && tick(badge, 1) === 0) badge.remove();
+        }
+        if (!list.querySelector(".cm-item")) caughtUp();
+      };
+      if (CALM) return finish();
+      item.style.height = item.offsetHeight + "px";
+      item.classList.add("is-leaving");
+      setTimeout(function () {
+        item.classList.add("is-collapsing");
+        setTimeout(finish, 260);
+      }, 280);
+    }
+
+    list.addEventListener("submit", function (event) {
+      var form = event.target;
+      if (!form.querySelector("[data-swipe-done]")) return;
+      event.preventDefault();
+      var item = form.closest(".cm-item");
+      form.querySelector("[data-swipe-done]").disabled = true;
+      fetch(form.action, { method: "POST", body: new FormData(form), credentials: "same-origin" })
+        .then(function (response) {
+          if (!response.ok) throw new Error("status " + response.status);
+          clear(item);
+        })
+        .catch(function () { form.submit(); });
+    });
+  })();
+
   /* ------------------------------------------------ comments: suggest a reply
    *
    * The same draft the extension writes on Facebook, asked for from the
@@ -2839,17 +2927,22 @@
         var text = box.querySelector(".cm-draft-text");
         box.hidden = false;
         box.classList.remove("is-error");
+        box.classList.add("is-writing");
+        clearTimeout(text.__typing);
+        text.removeAttribute("data-full");
         text.textContent = "✨ Writing a reply…";
         ask.disabled = true;
         post("/comments/" + id + "/draft", { instructions: instructions }).then(function (data) {
+          box.classList.remove("is-writing");
           if (data && data.ok) {
-            text.textContent = data.reply;
+            typeOut(text, data.reply);
             ask.textContent = "Another reply";
           } else {
             box.classList.add("is-error");
             text.textContent = (data && data.error) || "Could not draft a reply.";
           }
         }).catch(function (error) {
+          box.classList.remove("is-writing");
           box.classList.add("is-error");
           text.textContent = error.message || "Could not draft a reply.";
         }).then(function () { ask.disabled = false; });
@@ -2859,8 +2952,10 @@
       var copy = event.target.closest("[data-draft-copy]");
       if (copy) {
         var draft = copy.closest(".cm-draft");
-        var words = draft && draft.querySelector(".cm-draft-text").textContent;
-        if (!words || draft.classList.contains("is-error")) return;
+        var shown = draft && draft.querySelector(".cm-draft-text");
+        // Copy takes the whole draft even while it is still typing out.
+        var words = shown && (shown.getAttribute("data-full") || shown.textContent);
+        if (!words || draft.classList.contains("is-error") || draft.classList.contains("is-writing")) return;
         navigator.clipboard.writeText(words).then(function () {
           copy.textContent = "Copied";
           setTimeout(function () { copy.textContent = "Copy"; }, 1500);

@@ -3338,3 +3338,84 @@ h2 { font-weight: 700; }
 
 /* The top bar: solid enough to have an edge of its own. */
 .topbar { background: rgba(5, 13, 9, 0.9); }
+
+
+/* ---------------------------------------------------------------- people and motion
+ *
+ * Motion here answers something you did — Done, a draft, a page change — and
+ * nothing loops for its own sake. All of it stops for reduced motion.
+ */
+
+/* A face per person. Saturation is held low so twenty of them still read as
+   one forest rather than a bag of sweets. */
+.avatar {
+  flex: 0 0 auto; width: 34px; height: 34px; margin-top: 2px;
+  display: grid; place-items: center; border-radius: 50%;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.3px;
+  color: hsl(var(--h) 60% 86%);
+  background: hsl(var(--h) 32% 20%);
+  border: 1px solid hsl(var(--h) 40% 36%);
+}
+.cm-item { justify-content: flex-start; }
+.cm-item > .cm-main { flex: 1; }
+
+/* Done: slide out, then close the gap. */
+.cm-item.is-leaving {
+  transition: transform 0.28s var(--ease), opacity 0.28s var(--ease), background 0.2s;
+  transform: translateX(56px); opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.12));
+}
+.cm-item.is-collapsing {
+  transition: height 0.26s var(--ease), padding 0.26s var(--ease);
+  height: 0 !important; padding-top: 0; padding-bottom: 0;
+  overflow: hidden; border-top-color: transparent;
+}
+
+/* A count that changed says so. */
+.is-ticking { display: inline-block; animation: countTick 0.45s var(--ease); }
+@keyframes countTick {
+  0%   { transform: translateY(0) scale(1); }
+  35%  { transform: translateY(-3px) scale(1.22); color: var(--emerald-bright); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* All caught up: the meadow grows back, one blade breaks away. */
+.caught-up[hidden] { display: none; }
+.caught-up h2 { font-size: 22px; margin: 0 0 6px; color: var(--text); }
+.cu-grass { display: block; width: min(320px, 80%); height: auto; margin: 0 auto 14px; overflow: visible; }
+.cu-blade {
+  fill: var(--emerald-dim); opacity: 0.8;
+  transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(0);
+}
+.cu-blade.is-tall { fill: var(--emerald-bright); opacity: 1; }
+.caught-up.is-shown .cu-blade {
+  animation: cuGrow 0.7s var(--ease) forwards, cuSway 5s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 22ms), calc(700ms + var(--i) * 70ms);
+}
+@keyframes cuGrow { to { transform: scaleY(1); } }
+@keyframes cuSway {
+  0%, 100% { transform: scaleY(1) skewX(0deg); }
+  50%      { transform: scaleY(1) skewX(3deg); }
+}
+
+/* A draft being written shimmers; a finished one types itself in (script). */
+.cm-draft.is-writing .cm-draft-text {
+  background: linear-gradient(90deg, var(--text-muted) 0%, var(--emerald-bright) 50%, var(--text-muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: writeShimmer 1.4s linear infinite;
+}
+@keyframes writeShimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* Page to page: a quick cross-fade with the top bar held still, instead of a
+   white-flash reload. Browsers without it simply navigate as before. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 180ms; }
+.topbar { view-transition-name: topbar; }
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .cu-blade { transform: none; }
+  .caught-up.is-shown .cu-blade, .is-ticking, .cm-draft.is-writing .cm-draft-text { animation: none; }
+  .cm-draft.is-writing .cm-draft-text { color: var(--text-muted); background: none; }
+}

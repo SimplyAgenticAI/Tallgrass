@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import avatar %}
 {% block title %}{{ app_name }} — Comments{% endblock %}
 {% from "_pipeline.html" import pipeline_controls with context %}
 
@@ -78,6 +79,7 @@
   <ul class="cm-list">
     {% for c in post.threads %}
     <li class="cm-item cm-{{ c.verdict }}{{ ' cm-done' if c.status == 'done' }}" id="c{{ c.id }}">
+      {{ avatar(c.author) }}
       <div class="cm-main">
         <span class="cm-chip cm-chip-{{ c.verdict }}">{{ verdict_labels.get(c.verdict, c.verdict) }}</span>
         {% if c.intent_label %}<span class="cm-chip cm-intent-{{ c.intent }}" title="{{ c.intent_reason or '' }}">{{ c.intent_label }}</span>{% endif %}
