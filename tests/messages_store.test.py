@@ -128,6 +128,54 @@ def main():
     label("t:4", None)
 
     print()
+    print("AI sorting, only when turned on")
+    def sort(items, basis="preview"):
+        return me.post("/api/messages/sort", headers={"X-Outlier-Key": key_},
+                       json={"basis": basis, "items": items})
+    preview = "As much as I would love to purchase this year Sadly I'm going through a rough time"
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test"
+    body = save(chats()).get_json()
+    check("off: the dashboard asks for no text", (body["ai_sort"], body["classify"]), (False, []))
+    check("  and refuses any that is sent", sort([{"key": "t:1", "text": preview}]).status_code, 403)
+
+    seen_by_ai = []
+    def fake_chats(cfg, brand, items):
+        seen_by_ai.append([(i["id"], i["text"]) for i in items])
+        return [{"id": i["id"], "label": "not_now" if "rough time" in i["text"] else "question",
+                 "reason": "said no for now" if "rough time" in i["text"] else "asks something"} for i in items]
+    real_chats = appmod.replies.classify_chats
+    appmod.replies.classify_chats = fake_chats
+    messages.SORT_ASYNC = False
+    with db.get_db() as conn:
+        conn.execute("INSERT INTO user_settings (user_id, key, value) VALUES (1, ?, '1')", (messages.AI_SETTING,))
+    body = save(chats()).get_json()
+    check("on: it asks for the chats waiting on you, and only those", sorted(body["classify"]), ["t:1", "t:4"])
+    got = sort([{"key": "t:1", "name": "Jane Doe", "text": preview},
+                {"key": "t:2", "name": "Mark Twain", "text": "You: sure"}]).get_json()
+    check("  one AI call, for the chat that needed it", (got["sorting"], len(seen_by_ai)), (1, 1))
+    jane = [t for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"][0]
+    check("  labelled from what they said", (jane["signal"], jane["signal_reason"]), ("not_now", "said no for now"))
+    with db.get_db() as conn:
+        everything = " ".join(str(v) for r in conn.execute("SELECT * FROM message_threads") for v in tuple(r))
+    check("  and the text itself was not kept", "rough time" in everything, False)
+    save(chats())
+    jane = [t for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"][0]
+    check("a rescan's keyword guess never overwrites the AI's label", jane["signal"], "not_now")
+    check("  nor does the open-chat keyword check", label("t:1", "opportunity")["changed"], False)
+    check("  and it is not asked for again", "t:1" in save(chats()).get_json()["classify"], False)
+    check("the whole chat, once opened, is judged again",
+          sort([{"key": "t:1", "text": "Them: " + preview}], "conversation").get_json()["sorting"], 1)
+    check("  but only once", sort([{"key": "t:1", "text": "Them: hi"}], "conversation").get_json()["sorting"], 0)
+    body = save(chats(jane_hash="h1-new")).get_json()
+    check("when they write again, the label is theirs to earn again",
+          ("t:1" in body["classify"], [t["signal"] for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"]),
+          (True, ["opportunity"]))
+    save(chats())                       # back where the next section expects
+    appmod.replies.classify_chats = real_chats
+    messages.SORT_ASYNC = True
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+
+    print()
     print("a chat moves on its own")
     live = {"threads": [{"key": "t:4", "name": "Tom Hanks", "last_from": "me",
                          "last_at": ago(0), "last_hash": "me-reply"}]}

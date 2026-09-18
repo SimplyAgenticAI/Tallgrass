@@ -171,6 +171,31 @@
   <div class="msg-line" id="kit-msg"></div>
 </section>
 
+<section class="glass panel reveal" id="messenger-ai">
+  <h2>Let AI sort my Messenger chats</h2>
+  <p class="sub">
+    Off, chats are labelled by a word list in your browser and no message text
+    ever leaves it — which is how "as much as I'd love to purchase… I'm broke"
+    can look like an opportunity. On, the AI reads each waiting chat's preview
+    line when you scan, and the recent messages of a chat you open, and labels
+    it <b>Opportunity</b>, <b>Question</b>, <b>Not now</b> or nothing. The text is
+    sent to the AI provider once and not stored; only the label and a
+    few-word reason are kept. Each scan uses one AI draft from your allowance
+    per 60 chats. <a href="{{ url_for('privacy') }}#messenger">Privacy details</a>.
+  </p>
+  <form method="post" action="{{ url_for('settings_messenger_ai') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if messenger_ai %}
+    <input type="hidden" name="on" value="0">
+    <p class="fine"><b>On.</b> {% if not sage_config.has_key %}No AI provider is set up yet, so nothing is sorted until one is.{% endif %}</p>
+    <button class="btn btn-ghost" type="submit">Turn off</button>
+    {% else %}
+    <input type="hidden" name="on" value="1">
+    <button class="btn btn-primary" type="submit">Turn on AI sorting</button>
+    {% endif %}
+  </form>
+</section>
+
 <section class="settings-grid">
   <div class="glass panel reveal">
     <h2>Sample data</h2>

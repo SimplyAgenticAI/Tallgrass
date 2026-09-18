@@ -68,7 +68,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "28.6"
+APP_VERSION = "28.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -188,7 +188,7 @@ app.config.update(
 # need permissive CORS. Everything else is same-origin.
 INGEST_PATHS = ("/api/capture", "/api/ping", "/api/comments", "/api/comments/draft",
                 "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done",
-                "/api/messages/signal")
+                "/api/messages/signal", "/api/messages/sort")
 
 
 # Every page here renders text captured from strangers on Facebook. The
@@ -1136,6 +1136,7 @@ def settings():
         openai_model=sage.OPENAI_MODEL,
         brand=sage.get_brand(),
         kit=sage.get_kit(),
+        messenger_ai=_messenger_ai_on(),
         # The same link the emails carry. A plain link rather than a toggle
         # calling an endpoint: it reuses the one page that already does this
         # job, including the undo, and adds no JavaScript to a page whose
@@ -1557,7 +1558,9 @@ def today_page():
 
 def _panel_queue(user_id):
     return jsonify({"ok": True, "entries": today.for_panel(user_id),
-                    "waiting_total": today.waiting_count(user_id)})
+                    "waiting_total": today.waiting_count(user_id),
+                    # So the panel knows whether an opened chat may be sorted.
+                    "messenger_ai": _messenger_ai_on() and sage.get_config()["has_key"]})
 
 
 @app.route("/api/today", methods=["POST", "OPTIONS"])
@@ -1796,7 +1799,72 @@ def api_message_threads():
         result = messages.save_threads(api_user["id"], request.get_json(silent=True))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"])})
+    # With AI sorting on, which of these chats the extension should send the
+    # preview line of, to be labelled. Off, nothing is asked for.
+    ai = _messenger_ai_on()
+    keys = [t.get("key") for t in (request.get_json(silent=True) or {}).get("threads") or []
+            if isinstance(t, dict)]
+    classify = messages.needs_sort(api_user["id"], keys, "preview") \
+        if ai and sage.get_config()["has_key"] else []
+    return jsonify({"ok": True, **result, "waiting_total": today.waiting_count(api_user["id"]),
+                    "ai_sort": ai, "classify": classify})
+
+
+def _messenger_ai_on():
+    return sage.get_setting(messages.AI_SETTING) == "1"
+
+
+@app.route("/api/messages/sort", methods=["POST", "OPTIONS"])
+def api_message_sort():
+    """Label waiting chats with the AI — only when the owner turned it on.
+
+    The text arrives, is sent to the AI provider once, and is dropped; only the
+    label, a short reason and the fingerprint it was judged on are kept. One
+    AI call per sixty chats, each counted like any other generation.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    api_user = _api_user()
+    if not api_user:
+        return jsonify({"ok": False, "error": "Invalid or missing API key"}), 401
+    if not _messenger_ai_on():
+        return jsonify({"ok": False, "error": "AI sorting for Messenger is off in Settings."}), 403
+    cfg = sage.get_config()
+    if not cfg["has_key"]:
+        return jsonify({"ok": False, "error": "No AI provider is set up."}), 400
+    body = request.get_json(silent=True) or {}
+    basis = "conversation" if body.get("basis") == "conversation" else "preview"
+    items = messages.sortable(api_user["id"], body.get("items"), basis)
+    batches = []
+    for start in range(0, len(items), messages.SORT_BATCH):
+        if _ai_gate("chat_sort"):
+            break                           # the allowance ran out: sort what fits
+        batches.append(items[start:start + messages.SORT_BATCH])
+    if not batches:
+        return jsonify({"ok": True, "sorting": 0})
+    brand = sage.brand_summary()
+    user_id = api_user["id"]
+
+    def work():
+        for batch in batches:
+            try:
+                labels = replies.classify_chats(cfg, brand, batch)
+                messages.store_sort(user_id, labels, {i["id"]: i["hash"] for i in batch}, basis)
+            except Exception:                               # noqa: BLE001
+                log.exception("chat sort failed")
+
+    if messages.SORT_ASYNC:
+        threading.Thread(target=work, daemon=True).start()
+    else:
+        work()
+    return jsonify({"ok": True, "sorting": sum(len(b) for b in batches)})
+
+
+@app.route("/settings/messenger-ai", methods=["POST"])
+@auth.login_required
+def settings_messenger_ai():
+    sage.set_setting(messages.AI_SETTING, "1" if request.form.get("on") == "1" else "0")
+    return redirect(url_for("settings") + "#messenger-ai")
 
 
 @app.route("/api/messages/signal", methods=["POST", "OPTIONS"])
@@ -1972,7 +2040,7 @@ def _waiting_count_for_nav():
 CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
                "/api/extension/key", "/api/comments", "/api/comments/draft",
                "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done",
-               "/api/messages/signal"}
+               "/api/messages/signal", "/api/messages/sort"}
 
 
 @app.before_request

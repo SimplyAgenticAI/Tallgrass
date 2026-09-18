@@ -54,13 +54,18 @@
       you have open and sends them to the AI provider once, to write a draft.
       The conversation is not stored by {{ app_name }}, and the draft is put in
       Messenger's box for you to send — {{ app_name }} never sends a message.</li>
+    <li><b>AI sorting</b> is off unless you turn it on in Settings. When it is
+      on, the preview line the chat list shows for each chat waiting on you,
+      and the recent messages of a chat you open, are sent to the AI provider
+      once so it can label the chat (opportunity, question, not now). The text
+      is not stored; the label and a reason of a few words are.</li>
   </ul>
 
   <h3>What it does not collect</h3>
   <ul>
     <li>Your Facebook password, or any Facebook credential. The extension never sees the login form.</li>
     <li>Your Facebook cookies or session token.</li>
-    <li>The text of your messages, except as described under Messenger above: sent to the AI provider for one draft when you ask, and never stored.</li>
+    <li>The text of your messages, except as described under Messenger above: sent to the AI provider for a draft when you ask, or to be sorted if you turned AI sorting on — and never stored.</li>
     <li>Your friend list, your notifications, or your own profile data.</li>
     <li>Comment text during a scan. A scan reads only the comment <i>count</i>; comments themselves are read only from a post you open and save, as described above.</li>
     <li>Private groups you are not a member of. The extension can only see what your own logged-in account can already see on screen.</li>
@@ -75,7 +80,7 @@
     <li><b>Your account:</b> your email address and a password hash. Your password is stored using scrypt and is never stored, logged or transmitted in readable form.</li>
     <li><b>Your API key:</b> stored as a hash, not as the key itself. We cannot read your key back — a lost key has to be reissued, not recovered.</li>
     <li><b>Your captured posts:</b> the fields listed above, kept under your account and visible only to you.</li>
-    <li><b>Messenger chats:</b> the chat summaries described above — names, links, who spoke last and when, never message text. <b>Forget all chats</b> on the Messages page removes them immediately.</li>
+    <li><b>Messenger chats:</b> the chat summaries described above — names, links, who spoke last and when, and with AI sorting on a label and a few-word reason; never message text. <b>Forget all chats</b> on the Messages page removes them immediately.</li>
     <li><b>Comments you save:</b> the commenter names, comment text and links described above, kept under your account and visible only to you. <b>Forget</b> on the Comments page removes a post's comments immediately.</li>
   </ul>
 

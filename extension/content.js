@@ -4866,7 +4866,10 @@
         // on the dashboard, without the line itself ever being sent. "You: "
         // is dropped so the list and the open conversation hash the same line
         // the same way.
-        last_hash: hashString((fromMe ? "me|" : "them|") + last.replace(/^you:\s*/i, ""))
+        last_hash: hashString((fromMe ? "me|" : "them|") + last.replace(/^you:\s*/i, "")),
+        // Kept in the page only. Sent nowhere unless AI sorting is on and the
+        // dashboard asks for this chat (see sortChats).
+        preview: fromMe ? "" : last
       });
     }
     return threads;
@@ -5029,8 +5032,46 @@
       }
       if (response.ok) refreshReplyQueue(true);
       response.read = threads.length;
+      if (response.ok) MESSENGER_AI = !!response.ai_sort;
+      response.aiSorting = response.ok ? sortChats(threads, response.classify || []) : 0;
       done(response);
     });
+  }
+
+  /* AI sorting, when the owner turned it on in Settings.
+   *
+   * The dashboard names the chats it has no AI label for; only their preview
+   * lines are sent, once, to be labelled and dropped. An opened chat's recent
+   * messages go the same way, once per chat per page load, for a better read
+   * than one line. Off, MESSENGER_AI is false and nothing here sends text.
+   */
+  var MESSENGER_AI = false;
+  var CHAT_SORT_SENT = {};
+
+  function sortChats(threads, keys) {
+    if (!keys.length) return 0;
+    var wanted = {};
+    keys.forEach(function (k) { wanted[k] = true; });
+    var items = threads.filter(function (t) { return wanted[t.key] && t.preview; })
+      .map(function (t) { return { key: t.key, name: t.name, text: t.preview }; });
+    if (!items.length) return 0;
+    chrome.runtime.sendMessage({ type: "OUTLIER_MESSAGE_SORT", body: { basis: "preview", items: items } },
+      function () { void chrome.runtime.lastError; });
+    return items.length;
+  }
+
+  function sortOpenChat(convo) {
+    if (!MESSENGER_AI || CHAT_SORT_SENT[convo.id]) return;
+    CHAT_SORT_SENT[convo.id] = true;
+    var text = convo.messages.slice(-12).map(function (m) {
+      return (m.from === "me" ? "You: " : m.from === "them" ? "Them: " : "") + m.text;
+    }).join(String.fromCharCode(10));
+    chrome.runtime.sendMessage({ type: "OUTLIER_MESSAGE_SORT", body: { basis: "conversation",
+      items: [{ key: "t:" + convo.id, name: convo.name, text: text }] } },
+      function (response) {
+        void chrome.runtime.lastError;
+        if (response && response.sorting) setTimeout(function () { refreshReplyQueue(true); }, 15000);
+      });
   }
 
   function threadName(id) {
@@ -5211,6 +5252,7 @@
             void chrome.runtime.lastError;
             if (response && response.ok && response.changed) refreshReplyQueue(true);
           });
+        sortOpenChat(convo);
       }
       return null;
     }
@@ -5347,6 +5389,7 @@
                 r.waiting + " waiting on you" +
                 (r.opportunities ? " (" + r.opportunities + " look like opportunities)" : "") +
                 ", " + r.replied + " replied, " + r.quiet + " gone quiet." + why +
+                (r.aiSorting ? " AI is sorting " + r.aiSorting + " — refresh Messages in a minute." : "") +
                 " See Messages on the dashboard.";
             renderHud();
           });
@@ -5445,6 +5488,7 @@
           REPLY_QUEUE.entries = response.entries || [];
           REPLY_QUEUE.total = response.waiting_total || 0;
           REPLY_QUEUE.error = "";
+          MESSENGER_AI = !!response.messenger_ai;
           // Stay on the same person if they are still waiting; otherwise the
           // next one takes the slot.
           var keep = current ? REPLY_QUEUE.entries.findIndex(function (e) {

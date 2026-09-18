@@ -155,6 +155,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   // A chat's opportunity label, judged on the open conversation. No text.
+  if (message.type === "OUTLIER_MESSAGE_SORT") {
+    postToDashboard("/api/messages/sort", message.body).then(sendResponse);
+    return true;
+  }
   if (message.type === "OUTLIER_SIGNAL") {
     postToDashboard("/api/messages/signal", message.body).then(sendResponse);
     return true;

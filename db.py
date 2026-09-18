@@ -499,6 +499,14 @@ def _migrate(conn):
             if column not in cols:
                 conn.execute("ALTER TABLE %s ADD COLUMN %s TEXT" % (table, column))
 
+    # The AI's label for a chat, when Messenger AI sorting is on: a few-word
+    # reason, and the last-message fingerprint and basis it was judged on, so
+    # a rescan's keyword guess never overwrites it until they write again.
+    thread_cols = _columns(conn, "message_threads")
+    for column in ("signal_reason", "ai_hash", "ai_basis"):
+        if column not in thread_cols:
+            conn.execute("ALTER TABLE message_threads ADD COLUMN %s TEXT" % column)
+
     comment_cols = _columns(conn, "post_comments")
     if "draft" not in comment_cols:
         conn.execute("ALTER TABLE post_comments ADD COLUMN draft TEXT")
