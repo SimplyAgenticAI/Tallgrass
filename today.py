@@ -23,6 +23,20 @@ OPPORTUNITY_RE = re.compile(
     r"|deposit|call me|text me|dm me|pm me|inbox me|more info|details)\b",
     re.IGNORECASE)
 
+# Someone saying no, or not yet — the extension's DECLINE_RE, for comments that
+# have no AI label. A comment that matches is never called an opportunity.
+DECLINE_RE = re.compile(
+    r"as much as i(?:'d|’d| would)? (?:love|like)|wish i could|i(?:'d|’d| would) love to,? but"
+    r"|(?:can't|can’t|cannot|can not|won't be able to|unable to|not able to) (?:afford|swing|do it|buy|purchase|right now)"
+    r"|\bbroke\b|no money|out of money|money(?:'s|’s| is) tight|tight budget|on a budget|not in (?:my|the) budget"
+    r"|between jobs|unemployed|(?:lost|lose|losing) (?:my|our) (?:job|work)|until i (?:get|find) (?:a |another )?(?:job|work)"
+    r"|(?:rough|hard|tough|difficult) (?:time|year|patch|few months)"
+    r"|not (?:right now|now|this (?:year|month|time|season)|at (?:the|this) (?:moment|time)|interested|for me|ready)"
+    r"|(?:maybe|perhaps) (?:next|later|another time|down the road|in the future)"
+    r"|no,? thank(?:s| you)|i(?:'ll|’ll| will) pass|(?:going|gonna) (?:to )?pass"
+    r"|(?:changed|change) my mind|found someone else|went with (?:someone|another)|already (?:found|hired|bought|booked)",
+    re.IGNORECASE)
+
 
 def queue(user_id):
     with db.get_db() as conn:
@@ -70,7 +84,8 @@ def queue(user_id):
             "intent_label": comments.INTENT_LABELS.get(r["intent"]),
             "intent_reason": r["intent_reason"],
             "opportunity": r["intent"] == "hot_lead" if r["intent"]
-                           else bool(OPPORTUNITY_RE.search(r["body"] or "")),
+                           else bool(OPPORTUNITY_RE.search(r["body"] or ""))
+                           and not DECLINE_RE.search(r["body"] or ""),
             "question": r["intent"] == "question" if r["intent"]
                         else (r["body"] or "").rstrip().endswith("?"),
             "low": r["intent"] in ("praise", "tag", "other"),
@@ -90,7 +105,8 @@ def queue(user_id):
             "note": r["note"],
             "opportunity": r["signal"] == "opportunity",
             "question": r["signal"] == "question",
-            "low": False,
+            "not_now": r["signal"] == "not_now",
+            "low": r["signal"] == "not_now",
         })
 
     items.sort(key=lambda i: i["when"] or "", reverse=True)

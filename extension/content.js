@@ -4750,6 +4750,23 @@
     "|interested|book|booking|appointment|schedule|order|buy|purchase|still (?:have|available|for sale)" +
     "|ship|shipping|deliver|delivery|invoice|payment|deposit|call me|text me|dm me" +
     "|more info|details)\\b", "i");
+  /* "Not now": someone turning you down, however much buying language they
+   * use doing it. "As much as I would love to purchase this year… broke until
+   * I get a job" named a purchase and was filed as an opportunity. Checked
+   * before the opportunity words, on what they said last. Not a dead end — a
+   * lead to snooze and come back to, which is what the label says.
+   */
+  var DECLINE_RE = new RegExp(
+    "as much as i(?:'d|\u2019d| would)? (?:love|like)|wish i could|i(?:'d|\u2019d| would) love to,? but" +
+    "|(?:can't|can\u2019t|cannot|can not|won't be able to|unable to|not able to) (?:afford|swing|do it|buy|purchase|right now)" +
+    "|\\bbroke\\b|no money|out of money|money(?:'s|\u2019s| is) tight|tight budget|on a budget|not in (?:my|the) budget" +
+    "|between jobs|unemployed|(?:lost|lose|losing) (?:my|our) (?:job|work)|until i (?:get|find) (?:a |another )?(?:job|work)" +
+    "|(?:rough|hard|tough|difficult) (?:time|year|patch|few months)" +
+    "|not (?:right now|now|this (?:year|month|time|season)|at (?:the|this) (?:moment|time)|interested|for me|ready)" +
+    "|(?:maybe|perhaps) (?:next|later|another time|down the road|in the future)" +
+    "|no,? thank(?:s| you)|i(?:'ll|\u2019ll| will) pass|(?:going|gonna) (?:to )?pass" +
+    "|(?:changed|change) my mind|found someone else|went with (?:someone|another)|already (?:found|hired|bought|booked)",
+    "i");
   var CHAT_NOISE_RE = /^(?:active now|active \d+\s*\w+ ago|unread|new message|·|\||muted|pinned)$/i;
 
   function onMessenger() {
@@ -4842,6 +4859,7 @@
         when_text: whenText,
         unread: /\bunread\b|mark as read/i.test(label),
         signal: fromMe ? null
+          : DECLINE_RE.test(last) ? "not_now"
           : OPPORTUNITY_RE.test(last) ? "opportunity"
           : /\?\s*$/.test(last) ? "question" : null,
         // The last line, once — so a new message can reopen a chat marked done
@@ -5148,6 +5166,9 @@
     var theirs = convo.messages.slice(lastMine + 1).filter(function (m) { return m.from !== "me"; });
     if (!theirs.length) return null;
     var words = theirs.map(function (m) { return m.text; }).join(" / ");
+    // Where they landed decides it: "how much?… sorry, can't afford it now"
+    // is a no; "can't right now… actually, how much is the small one?" is not.
+    if (DECLINE_RE.test(theirs[theirs.length - 1].text)) return "not_now";
     if (OPPORTUNITY_RE.test(words)) return "opportunity";
     return /\?\s*$/.test(theirs[theirs.length - 1].text) ? "question" : null;
   }

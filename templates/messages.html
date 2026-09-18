@@ -9,6 +9,7 @@
   <div class="cm-main">
     {% if t.signal == 'opportunity' %}<span class="cm-chip cm-chip-unanswered">Opportunity</span>
     {% elif t.signal == 'question' %}<span class="cm-chip cm-chip-unknown">Question</span>
+    {% elif t.signal == 'not_now' %}<span class="cm-chip" title="They said not now — a good one to snooze and check back on.">Not now</span>
     {% elif stage == "quiet" %}<span class="cm-chip">Gone quiet</span>
     {% elif stage == "replied" %}<span class="cm-chip cm-chip-answered">Replied</span>
     {% else %}<span class="cm-chip">Waiting</span>{% endif %}

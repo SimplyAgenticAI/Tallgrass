@@ -163,6 +163,18 @@ check("  but not from before your last message",
       api.chatSignal({ messages: [{ from: "them", text: "How much?" },
                                   { from: "me", text: "It's $300" },
                                   { from: "them", text: "Thanks!" }] }), null);
+check("someone saying no is not an opportunity, however they word it",
+      api.chatSignal({ messages: [{ from: "them", text: "As much as I would love to purchase this year Sadly I'm " +
+        "going through a rough time after 26 yrs marriage and Broke until I get a job I'm really sorry" }] }),
+      "not_now");
+check("  a no after asking the price is a no",
+      api.chatSignal({ messages: [{ from: "them", text: "How much for the big one?" },
+                                  { from: "them", text: "Ah sorry, can't afford it right now" }] }), "not_now");
+check("  but asking again after a no is an opportunity",
+      api.chatSignal({ messages: [{ from: "them", text: "Can't right now" },
+                                  { from: "them", text: "Actually how much is the small one?" }] }), "opportunity");
+check("  and ordinary buying words still are",
+      api.chatSignal({ messages: [{ from: "them", text: "I'd like to purchase two please" }] }), "opportunity");
 check("  and the panel says it is watching",
       /^watching/.test(api.liveSeen("1001").decision) && api.liveSeen("1001").from, "them");
 check("nothing new, nothing sent", api.watchConversation(), null);

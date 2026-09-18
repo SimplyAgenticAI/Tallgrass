@@ -116,6 +116,15 @@ def main():
     check("  and unchanged is not a change", label("t:4", "opportunity")["changed"], False)
     check("never on a chat you spoke last in", label("t:2", "opportunity")["changed"], False)
     check("never creates a chat", label("t:nope", "opportunity")["changed"], False)
+    check("a chat can be labelled not now", label("t:4", "not_now")["changed"], True)
+    import today as today_mod
+    check("  and sits below the rest on Today, marked as such",
+          [(i["not_now"], i["opportunity"]) for i in today_mod.queue(1)["entries"] if i["who"] == "Tom Hanks"],
+          [(True, False)])
+    check("a comment turning you down is not an opportunity either",
+          [bool(today_mod.OPPORTUNITY_RE.search(t)) and not today_mod.DECLINE_RE.search(t) for t in (
+              "Love it, as much as I'd love to buy one money is tight right now", "How much for two?")],
+          [False, True])
     label("t:4", None)
 
     print()

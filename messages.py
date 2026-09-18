@@ -30,7 +30,7 @@ import db
 
 QUIET_DAYS = 3
 MAX_THREADS = 500
-SIGNALS = ("opportunity", "question")
+SIGNALS = ("opportunity", "question", "not_now")
 
 
 def _text(value, limit):
