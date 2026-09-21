@@ -171,6 +171,56 @@
   <div class="msg-line" id="kit-msg"></div>
 </section>
 
+<section class="glass panel reveal" id="my-posts">
+  <h2>Your posts</h2>
+  <p class="sub">
+    Your own posts are usually captured already — they sit in the groups you
+    scan. Tell Tallgrass the name you post under and it scores them against
+    each group's usual, the same way it scores everyone else's.
+    {% if not mine.confirmed and mine.names %}
+    <b>{{ mine.names[0] }}</b> is from the comments you've written — save it
+    if that's you.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('settings_my_name') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="fine">
+      Your name on Facebook (separate more than one with commas)
+      <input type="text" name="names" maxlength="300"
+             value="{{ mine.names | join(', ') }}"
+             placeholder="Jane Smith">
+    </label>
+    <button class="btn btn-primary" type="submit">Save</button>
+  </form>
+
+  {% if mine.names %}
+    {% if mine.posts %}
+    <p class="fine" style="margin-top:12px">
+      Found <b>{{ mine.posts | length }}</b> post{{ '' if mine.posts|length == 1 else 's' }}
+      by {{ mine.names | join(' or ') }} in {{ mine.groups }}
+      group{{ '' if mine.groups == 1 else 's' }}{% if mine.scored %} —
+      <b>{{ mine.beat }} of {{ mine.scored }}</b> scored beat the group's usual{% endif %}.
+      If any of these aren't yours, somebody in that group shares your name.
+    </p>
+    <ul class="fine" style="margin:8px 0 0;padding-left:18px">
+      {% for p in mine.posts[:10] %}
+      <li>
+        <a href="{{ url_for('post_detail', post_id=p.id) }}">
+          {% if p.outlier_multiple is not none %}{{ p.outlier_multiple }}×{% else %}Needs more data{% endif %}</a>
+        · {{ p.source_name or 'a group' }}
+        · {{ (p.body or '')[:80] }}{% if (p.body or '')|length > 80 %}…{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="fine" style="margin-top:12px">
+      No captured posts by {{ mine.names | join(' or ') }} yet. Scan a group
+      you've posted in and they'll show up here.
+    </p>
+    {% endif %}
+  {% endif %}
+</section>
+
 <section class="glass panel reveal" id="messenger-ai">
   <h2>Let AI sort my Messenger chats</h2>
   <p class="sub">

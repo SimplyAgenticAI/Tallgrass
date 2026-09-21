@@ -20,6 +20,7 @@ import billing
 import db
 import comments
 import messages
+import mine
 import pipeline
 import reply_samples
 import today
@@ -68,7 +69,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "28.8"
+APP_VERSION = "28.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1137,6 +1138,7 @@ def settings():
         brand=sage.get_brand(),
         kit=sage.get_kit(),
         messenger_ai=_messenger_ai_on(),
+        mine=mine.summary(_uid()),
         # The same link the emails carry. A plain link rather than a toggle
         # calling an endpoint: it reuses the one page that already does this
         # job, including the undo, and adds no JavaScript to a page whose
@@ -1858,6 +1860,13 @@ def api_message_sort():
     else:
         work()
     return jsonify({"ok": True, "sorting": sum(len(b) for b in batches)})
+
+
+@app.route("/settings/my-name", methods=["POST"])
+@auth.login_required
+def settings_my_name():
+    mine.set_names(_uid(), request.form.get("names", ""))
+    return redirect(url_for("settings") + "#my-posts")
 
 
 @app.route("/settings/messenger-ai", methods=["POST"])

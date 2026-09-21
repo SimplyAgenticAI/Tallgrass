@@ -74,6 +74,8 @@ echo "--- onboarding email ---"
 python tests/outreach.test.py
 echo "--- weekly brief ---"
 python tests/brief.test.py
+echo "--- your own posts ---"
+python tests/mine.test.py
 echo "--- real posts as sample data ---"
 python tests/snapshot.test.py
 echo "--- streamed json ---"
