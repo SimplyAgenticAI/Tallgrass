@@ -68,7 +68,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "28.7"
+APP_VERSION = "28.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2496,6 +2496,10 @@ def api_admin_outreach():
         if kind not in outreach.KINDS:
             return jsonify({"ok": False, "error": "Unknown email"}), 400
         outreach.set_kind_enabled(kind, bool(payload.get("on")))
+    elif action == "test_brief":
+        ok, error = outreach.send_test_brief(auth.current_user(), request.url_root)
+        if not ok:
+            return jsonify({"ok": False, "error": error or "Could not send it"}), 400
     elif action in ("save", "reset"):
         kind = payload.get("kind")
         if kind not in outreach.KINDS:

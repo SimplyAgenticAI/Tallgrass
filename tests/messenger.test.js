@@ -97,8 +97,11 @@ var days = (Date.now() - Date.parse(byName("Mark Twain").last_at + "Z")) / 864e5
 check("  about five days back", days > 4.9 && days < 5.1, true);
 check("a clock time is today", api.chatTime("12:30 PM").slice(0, 10),
       new Date(new Date().setHours(12, 30, 0, 0)).toISOString().slice(0, 10));
+// On the same weekday "Mon" is exactly seven days back, and the clock has
+// moved on a few milliseconds by the time this reads it — so a minute's slack,
+// or the test fails every Monday while the code is right.
 check("a weekday is within the last week",
-      (Date.now() - Date.parse(api.chatTime("Mon") + "Z")) / 864e5 <= 7, true);
+      (Date.now() - Date.parse(api.chatTime("Mon") + "Z")) / 864e5 <= 7 + 1 / 1440, true);
 check("nothing in the summary is the message itself",
       JSON.stringify(list.map(function (t) {
         return { key: t.key, name: t.name, url: t.url, last_from: t.last_from, last_at: t.last_at,

@@ -46,7 +46,9 @@ import hmac
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 
+import brief
 import db
 import mailer
 
@@ -54,8 +56,20 @@ log = logging.getLogger("tallgrass.outreach")
 
 WELCOME = "welcome"
 NUDGE = "nudge"
+# The weekly brief — the one message for people who are already using it.
+# Claimed per ISO week as "brief:2026-W38", so it goes out once a week rather
+# than once ever. The content is built in brief.py.
+BRIEF = "brief"
 
-KINDS = (WELCOME, NUDGE)
+KINDS = (WELCOME, NUDGE, BRIEF)
+
+# Never two briefs closer together than this, whatever the calendar says: a
+# Sunday send followed by a Monday one is technically two different weeks.
+BRIEF_GAP_DAYS = 6
+
+# Nobody gets a brief in their first few days — the welcome is still fresh
+# and there is not a week of their own data to talk about.
+BRIEF_AFTER_DAYS = 3
 
 # How long to leave somebody alone before the nudge. Long enough that it is
 # not nagging a person who is mid-install, short enough to arrive while they
@@ -118,7 +132,10 @@ def set_enabled(on):
 
 
 # Which messages are on when nobody has said otherwise.
-DEFAULT_ON = {WELCOME: True, NUDGE: True}
+# The brief starts OFF: the master switch is already on in production, and a
+# new kind of email must not start going out the moment it deploys, before
+# anybody has read one. Send yourself a test from /admin, then switch it on.
+DEFAULT_ON = {WELCOME: True, NUDGE: True, BRIEF: False}
 
 
 def kind_on(kind):
@@ -231,8 +248,17 @@ DEFAULTS = {
             "useful to me."
         ),
     },
-    # The third one, and the one that was missing.
-    #
+    BRIEF: {
+        "subject": "Your Tallgrass week: {headline}",
+        "body": (
+            "Here's what your groups rewarded this week.\n\n"
+            "{summary}\n\n"
+            "Everything's on your dashboard:\n\n"
+            "{dashboard}\n\n"
+            "If a number here looks wrong, reply and tell me. Accurate "
+            "numbers are the whole point."
+        ),
+    },
 }
 
 # What an editable body may refer to. Substituted by plain replacement rather
@@ -241,11 +267,14 @@ TOKENS = {
     "{dashboard}": "the dashboard's address",
     "{install}": "the install instructions page",
     "{store}": "the Chrome Web Store listing",
+    "{summary}": "weekly brief only: their top posts and who is waiting",
+    "{headline}": "weekly brief only: one short line, e.g. 7.2× in Group Name",
 }
 
 LABELS = {
     WELCOME: "Welcome",
     NUDGE: "Nudge",
+    BRIEF: "Weekly brief",
 }
 
 NOTES = {
@@ -253,6 +282,10 @@ NOTES = {
     NUDGE: "Sent once, %d–%d days after signing up, and only to somebody who "
            "still has not captured a real post." % (NUDGE_AFTER_DAYS,
                                                     NUDGE_BEFORE_DAYS),
+    BRIEF: "Once a week to anyone who has scanned in the last %d days: their "
+           "top posts from recent scans, who is waiting on a reply, or a "
+           "prompt to rescan. Skipped for anyone with nothing real to show."
+           % brief.ACTIVE_DAYS,
 }
 
 
@@ -282,7 +315,7 @@ def reset_template(kind):
     return get_template(kind)
 
 
-def _footer(base_url, user_id):
+def _footer(base_url, user_id, kind=None):
     """Appended to every message, and deliberately not editable.
 
     A way out is not a stylistic choice. Somebody who cannot find one presses
@@ -291,7 +324,9 @@ def _footer(base_url, user_id):
     """
     link = "%sunsubscribe/%s" % (base_url, unsubscribe_token(user_id))
     return ("\n\n—\nTallgrass, by MacRandle Acres\n"
-            "No more emails about getting started: %s\n" % link)
+            "%s: %s\n" % ("Stop the weekly brief and all other emails"
+                          if kind == BRIEF else
+                          "No more emails about getting started", link))
 
 
 def app_store_url():
@@ -339,8 +374,13 @@ def render(text, base_url, facts=None):
 
 # -------------------------------------------------------------------- sending
 
-def _send(user, kind, base_url, facts=None):
-    """Claim, send, and release the claim if it failed. Returns (sent, reason)."""
+def _send(user, kind, base_url, facts=None, claim=None):
+    """Claim, send, and release the claim if it failed. Returns (sent, reason).
+
+    `claim` is the row that marks it sent, when that is not just the kind —
+    the brief claims one row per week.
+    """
+    claim = claim or kind
     if user.get("email_optout"):
         return False, "opted out"
     if not mailer.is_configured():
@@ -352,12 +392,10 @@ def _send(user, kind, base_url, facts=None):
     if not kind_enabled(kind):
         return False, "this email is switched off"
 
-    if not db.claim_outreach(user["id"], kind):
+    if not db.claim_outreach(user["id"], claim):
         return False, "already sent"
 
-    template = get_template(kind)
-    subject = render(template["subject"], base_url, facts)
-    body = render(template["body"], base_url, facts) + _footer(base_url, user["id"])
+    subject, body = _compose(kind, base_url, user["id"], facts)
 
     link = "%sunsubscribe/%s" % (base_url, unsubscribe_token(user["id"]))
     ok, error = mailer.send(
@@ -369,12 +407,25 @@ def _send(user, kind, base_url, facts=None):
     if not ok:
         # Give the claim back. A provider having a bad minute must not cost
         # somebody their only welcome email.
-        db.release_outreach(user["id"], kind)
+        db.release_outreach(user["id"], claim)
         log.warning("%s email failed for user %s: %s", kind, user["id"], error)
         return False, error
 
     log.info("sent %s email to user %s", kind, user["id"])
     return True, None
+
+
+def _compose(kind, base_url, user_id, facts=None):
+    """(subject, body) for one message, footer included."""
+    template = get_template(kind)
+    body_text = template["body"]
+    # Copy edited in /admin that dropped {summary} would send a brief with
+    # nothing in it. The content is the email; put it back.
+    if kind == BRIEF and "{summary}" not in body_text:
+        body_text = "{summary}\n\n" + body_text
+    subject = render(template["subject"], base_url, facts)
+    body = render(body_text, base_url, facts) + _footer(base_url, user_id, kind)
+    return subject, body
 
 
 def welcome(user, base_url):
@@ -432,6 +483,78 @@ def dormant():
         return []
 
 
+def brief_claim(now=None):
+    """This week's claim row for the brief, e.g. "brief:2026-W38"."""
+    year, week, _ = (now or datetime.now(timezone.utc)).isocalendar()
+    return "%s:%d-W%02d" % (BRIEF, year, week)
+
+
+def brief_due():
+    """Accounts owed this week's brief.
+
+    Somebody with real posts seen on a scan in the last ACTIVE_DAYS, who has
+    had no brief in BRIEF_GAP_DAYS. Admins included — the operator should get
+    the same email everybody else does. Whether there is anything to SAY is
+    decided per account by brief.compose, which can still skip them.
+    """
+    try:
+        with db.get_db() as conn:
+            return [dict(r) for r in conn.execute(
+                """
+                SELECT u.id, u.email, u.email_optout
+                FROM users u
+                WHERE COALESCE(u.email_optout, 0) = 0
+                  AND u.created_at <= datetime('now', ?)
+                  AND EXISTS (SELECT 1 FROM posts p
+                               WHERE p.user_id = u.id AND p.is_demo = 0
+                                 AND (p.captured_at >= datetime('now', ?)
+                                      OR p.updated_at >= datetime('now', ?)))
+                  AND NOT EXISTS (SELECT 1 FROM outreach o
+                                   WHERE o.user_id = u.id
+                                     AND o.kind LIKE 'brief:%'
+                                     AND o.sent_at >= datetime('now', ?))
+                ORDER BY u.id
+                """,
+                ("-%d days" % BRIEF_AFTER_DAYS,
+                 "-%d days" % brief.ACTIVE_DAYS,
+                 "-%d days" % brief.ACTIVE_DAYS,
+                 "-%d days" % BRIEF_GAP_DAYS)).fetchall()]
+    except Exception:                         # noqa: BLE001
+        log.warning("brief_due query failed", exc_info=True)
+        return []
+
+
+def send_brief(user, base_url):
+    """This week's brief for one account. Returns (sent, reason)."""
+    facts = brief.compose(user["id"], base_url)
+    if not facts:
+        return False, "nothing to report"
+    return _send(user, BRIEF, base_url,
+                 facts={"{summary}": facts["summary"],
+                        "{headline}": facts["headline"]},
+                 claim=brief_claim())
+
+
+def send_test_brief(user, base_url):
+    """The brief as this account would get it, sent now, to them.
+
+    For the admin page: no claim, and it ignores the switches, so the copy can
+    be read in a real inbox BEFORE it is switched on for anybody.
+    """
+    if not mailer.is_configured():
+        return False, "email is not configured"
+    facts = brief.compose(user["id"], base_url) or {
+        "headline": "(no real scans in the last %d days)" % brief.ACTIVE_DAYS,
+        "summary": "This account has no real posts seen in the last %d days, "
+                   "so its real brief would be skipped. This is the copy "
+                   "around it." % brief.ACTIVE_DAYS,
+    }
+    subject, body = _compose(BRIEF, base_url, user["id"],
+                             {"{summary}": facts["summary"],
+                              "{headline}": facts["headline"]})
+    return mailer.send(user["email"], "[Test] " + subject, body)
+
+
 def sweep(base_url, limit=BATCH):
     """Send what is due. Returns how many went out."""
     if not enabled() or not mailer.is_configured():
@@ -441,6 +564,18 @@ def sweep(base_url, limit=BATCH):
     if kind_enabled(NUDGE):
         for user in dormant()[:limit]:
             ok, _ = _send(user, NUDGE, base_url)
+            if ok:
+                sent += 1
+
+    if kind_enabled(BRIEF):
+        for user in brief_due():
+            if sent >= limit:
+                break
+            try:
+                ok, _ = send_brief(user, base_url)
+            except Exception:                 # noqa: BLE001 - one account's data
+                log.warning("brief failed for user %s", user["id"], exc_info=True)
+                ok = False
             if ok:
                 sent += 1
 
@@ -489,6 +624,9 @@ def maybe_sweep(base_url):
 def status():
     """What the admin page needs to say about all this."""
     summary = db.outreach_summary()
+    # One claim row per week per person; the admin page wants the total.
+    summary["sent"][BRIEF] = sum(n for k, n in summary["sent"].items()
+                                 if k.startswith(BRIEF + ":"))
     on = enabled()
     return {
         "enabled": on,

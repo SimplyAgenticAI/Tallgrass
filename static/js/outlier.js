@@ -726,6 +726,29 @@
     });
   }
 
+  /* The weekly brief, built from the admin's own data and sent only to them,
+     so it can be read in a real inbox before it goes to anybody else. */
+  var testButtons = document.querySelectorAll(".outreach-test");
+  for (var ti = 0; ti < testButtons.length; ti++) {
+    testButtons[ti].addEventListener("click", function (event) {
+      var button = event.currentTarget;
+      button.disabled = true;
+      outreachMsg.className = "msg-line";
+      outreachMsg.textContent = "Sending you a test brief…";
+      post("/api/admin/outreach", { action: "test_brief" })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not send it");
+          outreachMsg.textContent = "Sent. Check your inbox.";
+          button.disabled = false;
+        })
+        .catch(function (error) {
+          outreachMsg.className = "msg-line error";
+          outreachMsg.textContent = error.message;
+          button.disabled = false;
+        });
+    });
+  }
+
   /* ------------------------------------- admin: sample data for new users */
 
   var sampleSave = document.getElementById("sample-save");

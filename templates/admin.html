@@ -401,6 +401,11 @@
       <button class="btn btn-ghost outreach-reset" type="button">
         Reset to original
       </button>
+      {% if email.kind == 'brief' %}
+      <button class="btn btn-ghost outreach-test" type="button">
+        Send me this week's
+      </button>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
