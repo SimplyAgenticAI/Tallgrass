@@ -69,7 +69,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "28.9"
+APP_VERSION = "29.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1860,6 +1860,13 @@ def api_message_sort():
     else:
         work()
     return jsonify({"ok": True, "sorting": sum(len(b) for b in batches)})
+
+
+@app.route("/results")
+@auth.login_required
+def results_page():
+    return render_template("results.html", r=mine.results(_uid()),
+                           version=APP_VERSION, active="results")
 
 
 @app.route("/settings/my-name", methods=["POST"])

@@ -18,6 +18,7 @@ nothing true to say about a week the email says that instead of padding.
 from datetime import datetime, timedelta, timezone
 
 import db
+import mine
 import outliers
 
 # What counts as "this week". A post seen on any scan in the window — first
@@ -147,12 +148,35 @@ def compose(user_id, base_url):
                      "scan shows what's winning right now.")
         headline = "time for a fresh scan"
 
+    # Their own posts, only under a name they confirmed in Settings — an email
+    # saying "your post" about somebody else's would end the trust in it.
+    own = mine.recent(user_id, week)
+    own_hit = False
+    if own:
+        scored_own = [p for p in own if p["outlier_multiple"] is not None]
+        lines.append("")
+        if scored_own:
+            best = scored_own[0]
+            lines.append("Your own posts this week: %d. Your best did %s× "
+                         "its group's usual, in %s." % (
+                             len(own), best["outlier_multiple"],
+                             best.get("source_name") or "a group"))
+            # Only a win goes in the subject line; a 0.6× is said plainly
+            # in the body, not announced.
+            if best["outlier_multiple"] >= 1:
+                headline = "your post hit %s×" % best["outlier_multiple"]
+                own_hit = True
+        else:
+            lines.append("Your own posts this week: %d — not enough scanned "
+                         "in those groups yet to score them." % len(own))
+        lines.append("%sresults" % base_url)
+
     if waiting:
         lines.append("")
         lines.append("%d %s waiting on a reply from you:" % (
             waiting, "person is" if waiting == 1 else "people are"))
         lines.append("%stoday" % base_url)
-        if not top:
+        if not top and not own_hit:
             headline = "%d waiting on a reply" % waiting
 
     return {"headline": headline, "summary": "\n".join(lines)}

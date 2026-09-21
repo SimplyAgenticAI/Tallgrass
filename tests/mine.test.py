@@ -125,6 +125,39 @@ def main():
     check("shows the multiple", "6.0×" in html, True)
     check("and says when there is not enough data", "Needs more data" in html, True)
 
+    print()
+    print("my results")
+    r = mine.results(jane["id"])
+    check("overall: two found, one scored", (r["overall"]["count"], r["overall"]["scored"]), (2, 1))
+    check("typical and best are the one real multiple",
+          (r["overall"]["median"], r["overall"]["best"]), (6.0, 6.0))
+    check("the scored group ranks first", [g["name"] for g in r["by_group"]], ["Bakers", "Tiny"])
+    check("the thin group has no typical", r["by_group"][1]["median"], None)
+    check("a month is labelled", bool(r["by_month"] and r["by_month"][0]["label"][:3].isalpha()), True)
+    check("a suggested name alone builds no results",
+          mine.results(other["id"])["posts"], [])
+    page = client.get("/results")
+    html = page.get_data(as_text=True)
+    check("the page renders", page.status_code, 200)
+    check("  with the typical post", "Your typical post" in html, True)
+    check("  and the unscored post explained", "Needs more data" in html, True)
+    with client.session_transaction() as sess:
+        sess["user_id"] = other["id"]
+    html = client.get("/results").get_data(as_text=True)
+    check("no name yet points to Settings", "Set your name" in html, True)
+
+    print()
+    print("the weekly brief mentions your own posts")
+    import brief
+    facts = brief.compose(jane["id"], "https://x/")
+    check("your best own post is in the brief",
+          "Your best did 6.0×" in (facts or {}).get("summary", ""), True)
+    check("and leads the subject", (facts or {}).get("headline"), "your post hit 6.0×")
+    check("with a link to results", "https://x/results" in (facts or {}).get("summary", ""), True)
+    facts = brief.compose(other["id"], "https://x/")
+    check("no confirmed name, no own-post line",
+          "Your own posts" in (facts or {}).get("summary", ""), False)
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print()

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — My results{% endblock %}
+
+{% block content %}
+<section class="feed-head">
+  <div>
+    <h1>My results</h1>
+    <p class="sub">
+      Your own posts, scored against the usual in the group you posted them
+      in. 1× is a typical post there; 3× means three times the engagement.
+    </p>
+  </div>
+</section>
+
+{% if not r.names %}
+<div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
+  <p>
+    Tell Tallgrass the name you post under and it will find your posts in
+    everything you've scanned.
+    {% if r.suggested %}From your comments it looks like
+    <b>{{ r.suggested[0] }}</b>.{% endif %}
+  </p>
+  <a class="btn btn-primary" href="{{ url_for('settings') }}#my-posts">Set your name</a>
+</div>
+
+{% elif not r.posts %}
+<div class="glass empty-panel">
+  {% include "_empty_mark.html" %}
+  <p>
+    No captured posts by {{ r.names | join(' or ') }} yet. Scan a group you've
+    posted in — your posts are picked up with everybody else's.
+  </p>
+  <a class="btn btn-ghost" href="{{ url_for('settings') }}#my-posts">Check your name</a>
+</div>
+
+{% else %}
+<section class="stat-row">
+  <div class="stat glass reveal spotlight">
+    {% if r.overall.median is not none %}
+    <span class="stat-value">{{ r.overall.median }}</span><span class="stat-unit">×</span>
+    {% else %}
+    <span class="stat-value stat-none">—</span>
+    {% endif %}
+    <span class="stat-label">Your typical post</span>
+  </div>
+  <div class="stat glass reveal">
+    {% if r.overall.best is not none %}
+    <span class="stat-value">{{ r.overall.best }}</span><span class="stat-unit">×</span>
+    {% else %}
+    <span class="stat-value stat-none">—</span>
+    {% endif %}
+    <span class="stat-label">Your best</span>
+  </div>
+  <div class="stat glass reveal">
+    <span class="stat-value">{{ r.overall.beat }}<span class="stat-unit">/{{ r.overall.scored }}</span></span>
+    <span class="stat-label">Beat their group's usual</span>
+  </div>
+  <div class="stat glass reveal">
+    <span class="stat-value">{{ r.overall.count }}</span>
+    <span class="stat-label">Posts found</span>
+  </div>
+</section>
+
+{% if r.overall.scored < r.overall.count %}
+<p class="fine">
+  {{ r.overall.count - r.overall.scored }} of your posts are in groups without
+  enough captured posts to know what's usual there yet, so they have no score.
+  Scanning those groups further fixes that.
+</p>
+{% endif %}
+
+{% if r.by_month | length > 1 %}
+<section class="glass panel reveal">
+  <h2>Month by month</h2>
+  <div style="overflow-x:auto"><table class="data-table">
+    <tr><th>Month</th><th>Posts</th><th>Typical</th><th>Best</th><th>Beat the group</th></tr>
+    {% for m in r.by_month | reverse %}
+    <tr>
+      <td>{{ m.label }}</td>
+      <td>{{ m.count }}</td>
+      <td>{% if m.median is not none %}{{ m.median }}×{% else %}—{% endif %}</td>
+      <td>{% if m.best is not none %}{{ m.best }}×{% else %}—{% endif %}</td>
+      <td>{% if m.scored %}{{ m.beat }} of {{ m.scored }}{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+
+<section class="glass panel reveal">
+  <h2>By group</h2>
+  <div style="overflow-x:auto"><table class="data-table">
+    <tr><th>Group</th><th>Posts</th><th>Typical</th><th>Best</th></tr>
+    {% for g in r.by_group %}
+    <tr>
+      <td>{{ g.name }}</td>
+      <td>{{ g.count }}</td>
+      <td>{% if g.median is not none %}{{ g.median }}×{% else %}Needs more data{% endif %}</td>
+      <td>{% if g.best is not none %}{{ g.best }}×{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<section class="glass panel reveal">
+  <h2>Every post</h2>
+  <div style="overflow-x:auto"><table class="data-table">
+    <tr><th>Score</th><th>Group</th><th>Post</th></tr>
+    {% for p in r.posts %}
+    <tr>
+      <td><a href="{{ url_for('post_detail', post_id=p.id) }}">
+        {% if p.outlier_multiple is not none %}{{ p.outlier_multiple }}×{% else %}Needs more data{% endif %}</a></td>
+      <td>{{ p.source_name or 'a group' }}</td>
+      <td>{{ (p.body or '')[:90] }}{% if (p.body or '') | length > 90 %}…{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+
+{% endblock %}

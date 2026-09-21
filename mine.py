@@ -18,6 +18,8 @@ Accuracy rules as everywhere: a post with no usable baseline gets no multiple,
 and demo posts are never anybody's.
 """
 
+from datetime import datetime
+
 import db
 import outliers
 
@@ -103,6 +105,76 @@ def my_posts(user_id, names=None):
     mine.sort(key=lambda s: (s["outlier_multiple"] is not None,
                              s["outlier_multiple"] or 0), reverse=True)
     return mine
+
+
+def _median(values):
+    values = sorted(values)
+    if not values:
+        return None
+    mid = len(values) // 2
+    if len(values) % 2:
+        return round(values[mid], 1)
+    return round((values[mid - 1] + values[mid]) / 2, 1)
+
+
+def _month_label(month):
+    try:
+        return datetime.strptime(month, "%Y-%m").strftime("%b %Y")
+    except ValueError:
+        return month
+
+
+def _rollup(posts):
+    scored = [p["outlier_multiple"] for p in posts if p["outlier_multiple"] is not None]
+    return {
+        "count": len(posts),
+        "scored": len(scored),
+        "beat": sum(1 for m in scored if m >= 1),
+        "median": _median(scored),
+        "best": max(scored) if scored else None,
+    }
+
+
+def results(user_id):
+    """Everything the My results page shows. Only confirmed names count here —
+    a page titled "your results" must not be built on a guess."""
+    names = get_names(user_id)
+    posts = my_posts(user_id, names) if names else []
+
+    groups = {}
+    for p in posts:
+        groups.setdefault(p["source_id"], {"name": p.get("source_name") or "a group",
+                                           "posts": []})["posts"].append(p)
+    by_group = sorted(
+        ({"name": g["name"], **_rollup(g["posts"])} for g in groups.values()),
+        key=lambda g: (g["median"] is not None, g["median"] or 0), reverse=True)
+
+    months = {}
+    for p in posts:
+        month = (p.get("posted_at") or p.get("captured_at") or "")[:7]
+        if month:
+            months.setdefault(month, []).append(p)
+    by_month = [{"month": m, "label": _month_label(m), **_rollup(months[m])}
+                for m in sorted(months)][-12:]
+
+    return {
+        "names": names,
+        "suggested": suggested_names(user_id),
+        "overall": _rollup(posts),
+        "by_group": by_group,
+        "by_month": by_month,
+        "posts": posts,
+    }
+
+
+def recent(user_id, since):
+    """Confirmed-name posts first seen on or after `since` (SQLite timestamp
+    text). For the weekly brief."""
+    names = get_names(user_id)
+    if not names:
+        return []
+    return [p for p in my_posts(user_id, names)
+            if (p.get("captured_at") or "")[:19].replace("T", " ") >= since]
 
 
 def summary(user_id):

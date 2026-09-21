@@ -46,8 +46,9 @@
     <a href="{{ url_for('write_page') }}" class="{{ 'active' if active == 'write' }}">Write</a>
     <a href="{{ url_for('sage_page') }}" class="{{ 'active' if active == 'sage' }}">Sage</a>
     <details class="nav-menu">
-      <summary class="{{ 'active' if active in ('comments', 'messages', 'library', 'playbook') }}">More</summary>
+      <summary class="{{ 'active' if active in ('results', 'comments', 'messages', 'library', 'playbook') }}">More</summary>
       <div class="nav-menu-panel">
+        <a href="{{ url_for('results_page') }}" class="{{ 'active' if active == 'results' }}">My results</a>
         <a href="{{ url_for('comments_page') }}" class="{{ 'active' if active == 'comments' }}">Comments</a>
         <a href="{{ url_for('messages_page') }}" class="{{ 'active' if active == 'messages' }}">Messages</a>
         <a href="{{ url_for('library') }}" class="{{ 'active' if active == 'library' }}">Library</a>

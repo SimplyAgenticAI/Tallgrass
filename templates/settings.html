@@ -201,6 +201,7 @@
       group{{ '' if mine.groups == 1 else 's' }}{% if mine.scored %} —
       <b>{{ mine.beat }} of {{ mine.scored }}</b> scored beat the group's usual{% endif %}.
       If any of these aren't yours, somebody in that group shares your name.
+      {% if mine.confirmed %}<a href="{{ url_for('results_page') }}">See My results</a>.{% endif %}
     </p>
     <ul class="fine" style="margin:8px 0 0;padding-left:18px">
       {% for p in mine.posts[:10] %}
