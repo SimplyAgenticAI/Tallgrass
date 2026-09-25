@@ -2986,4 +2986,148 @@
       }
     });
   })();
+
+  /* --------------------------------------------------- the walkthrough
+
+     A spotlight on real elements, driven by /api/guide. Rules it follows,
+     because a tour that breaks a page is worse than no tour:
+
+       - a step whose target is not on this page is skipped, never pointed at
+         nothing
+       - nothing is ever disabled or covered: the overlay lets the highlighted
+         element through and Escape leaves at any point
+       - leaving is remembered server-side, so it does not come back
+       - with reduced motion, it still works, it just does not move */
+  (function () {
+    var body = document.body;
+    if (!body || body.getAttribute("data-guide") === null) return;
+
+    var steps = [];
+    var at = 0;
+    var layer = null;
+
+    function done(again) {
+      if (layer) { layer.remove(); layer = null; }
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place);
+      // Failing to record it is not worth an error in the user's face; the
+      // worst case is being offered the walkthrough again.
+      post("/api/guide", again ? { again: true } : {}).catch(function () {});
+    }
+
+    function onKey(event) {
+      if (event.key === "Escape") done(false);
+      else if (event.key === "Enter" || event.key === "ArrowRight") next();
+    }
+
+    function target() {
+      var step = steps[at];
+      if (!step || !step.target) return null;
+      var el = null;
+      try { el = document.querySelector(step.target); } catch (e) { el = null; }
+      if (!el) return null;
+      // A target inside the More menu is real but folded away: open it, or the
+      // spotlight lands on a closed summary.
+      var holder = el.closest ? el.closest("details") : null;
+      if (holder && !holder.open) holder.open = true;
+      return el;
+    }
+
+    function next() {
+      at += 1;
+      if (at >= steps.length) { done(false); return; }
+      if (!target()) { next(); return; }      // nothing here to point at
+      place();
+    }
+
+    function place() {
+      if (!layer) return;
+      var el = target();
+      var step = steps[at];
+      if (!el || !step) return;
+      var box = el.getBoundingClientRect();
+      var hole = layer.querySelector(".gd-hole");
+      var card = layer.querySelector(".gd-card");
+      var pad = 6;
+      hole.style.top = (box.top - pad) + "px";
+      hole.style.left = (box.left - pad) + "px";
+      hole.style.width = (box.width + pad * 2) + "px";
+      hole.style.height = (box.height + pad * 2) + "px";
+
+      layer.querySelector(".gd-title").textContent = step.title;
+      layer.querySelector(".gd-body").textContent = step.body;
+      layer.querySelector(".gd-count").textContent = (at + 1) + " of " + steps.length;
+      var go = layer.querySelector(".gd-go");
+      go.textContent = at === steps.length - 1 ? "Done" : "Next";
+
+      // Below the target, or above it when there is no room underneath.
+      var width = Math.min(320, window.innerWidth - 24);
+      card.style.width = width + "px";
+      var left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12));
+      var below = box.bottom + 14;
+      var fits = below + card.offsetHeight < window.innerHeight - 12;
+      card.style.left = left + "px";
+      card.style.top = (fits ? below : Math.max(12, box.top - card.offsetHeight - 14)) + "px";
+    }
+
+    function build() {
+      layer = document.createElement("div");
+      layer.className = "gd-layer" + (reduceMotion ? " gd-calm" : "");
+      layer.innerHTML =
+        '<div class="gd-hole"></div>' +
+        '<div class="gd-card" role="dialog" aria-modal="false" aria-live="polite">' +
+        '  <span class="gd-count"></span>' +
+        '  <h3 class="gd-title"></h3>' +
+        '  <p class="gd-body"></p>' +
+        '  <div class="gd-actions">' +
+        '    <button type="button" class="btn btn-ghost gd-skip">Skip</button>' +
+        '    <button type="button" class="btn btn-primary gd-go">Next</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(layer);
+      layer.querySelector(".gd-skip").addEventListener("click", function () { done(false); });
+      layer.querySelector(".gd-go").addEventListener("click", next);
+      // A click on the dimmed area moves on, which is what people try first.
+      layer.addEventListener("click", function (event) {
+        if (event.target === layer) next();
+      });
+      document.addEventListener("keydown", onKey);
+      window.addEventListener("resize", place);
+      window.addEventListener("scroll", place, { passive: true });
+      place();
+    }
+
+    function start(list) {
+      steps = (list || []).filter(function (s) { return s && s.title; });
+      if (!steps.length) return;
+      at = 0;
+      if (!target()) { at = -1; next(); return; }
+      build();
+    }
+
+    function load(force) {
+      fetch("/api/guide", { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data || !data.ok) return;
+          if (force || data.run) start(data.steps);
+        })
+        .catch(function () { /* a walkthrough is never worth an error */ });
+    }
+
+    // "Show me around" anywhere on the page replays it on demand.
+    document.addEventListener("click", function (event) {
+      var ask = event.target.closest && event.target.closest("[data-guide-start]");
+      if (!ask) return;
+      event.preventDefault();
+      if (layer) done(false);
+      load(true);
+    });
+
+    if (body.getAttribute("data-guide") === "1") {
+      // After first paint, so it points at a settled layout.
+      window.setTimeout(function () { load(false); }, 600);
+    }
+  })();
 })();

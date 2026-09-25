@@ -15,7 +15,10 @@
    so the tall blades are their actual breakouts rather than an arbitrary
    rhythm. Empty when signed out or when nothing is scored yet, and field.js
    falls back to the old pattern, because then there is nothing to draw. #}
-<body data-field-scores="{{ field_scores }}">
+{# data-guide is "1" only when this account has never been shown the
+   walkthrough. The steps themselves are fetched, not inlined: the CSP blocks
+   inline script and a JSON island is not worth the argument. #}
+<body data-field-scores="{{ field_scores }}"{% if user %} data-guide="{{ '1' if guide_run else '0' }}"{% endif %}>
 
 <div class="ambient"></div>
 <canvas id="field" class="field" aria-hidden="true"></canvas>

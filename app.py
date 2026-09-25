@@ -26,6 +26,7 @@ import reply_samples
 import today
 import demo_snapshot
 import funnel
+import guide
 import hooks
 import images
 import mailer
@@ -69,7 +70,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.1"
+APP_VERSION = "29.2"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1893,6 +1894,48 @@ def api_message_sort():
     return jsonify({"ok": True, "sorting": sum(len(b) for b in batches)})
 
 
+def _guide_urls():
+    """The routes the walkthrough points at. url_for lives here, so a renamed
+    page cannot leave a step highlighting a link that no longer exists."""
+    return {
+        "feed": url_for("feed"),
+        "capture": url_for("capture"),
+        "groups": url_for("groups"),
+        "write": url_for("write_page"),
+        "today": url_for("today_page"),
+        "playbook": url_for("playbook"),
+    }
+
+
+def _guide_run():
+    """Whether this account has still to be shown the walkthrough."""
+    user = auth.current_user()
+    if not user:
+        return False
+    try:
+        return not guide.seen(user["id"])
+    except Exception:                         # noqa: BLE001 - never break a page
+        return False
+
+
+@app.route("/api/guide")
+@auth.login_required
+def api_guide():
+    """The steps for this account, fetched when the client decides to run."""
+    return jsonify({"ok": True, **guide.state(auth.current_user(), _guide_urls())})
+
+
+@app.route("/api/guide", methods=["POST"])
+@auth.login_required
+def api_guide_done():
+    """Remember that it has been shown — or, from Settings, that it should run
+    again. Stored per account rather than in the browser, so finishing it on a
+    laptop does not mean sitting through it again on a phone."""
+    payload = request.get_json(silent=True) or {}
+    guide.mark_seen(_uid(), not payload.get("again"))
+    return jsonify({"ok": True})
+
+
 @app.route("/results")
 @auth.login_required
 def results_page():
@@ -2044,6 +2087,10 @@ def inject_globals():
     """Values every page needs, so no route can forget them."""
     return {
         "ephemeral": db.storage_is_ephemeral(),
+        # One cheap settings lookup, and only for a signed-in page. The steps
+        # cost a few queries and are fetched by the client when it decides to
+        # run, so a page load nobody is being walked through pays nothing.
+        "guide_run": _guide_run(),
         "field_scores": json.dumps(_field_scores()),
         "user": auth.current_user(),
         "csrf_token": auth.csrf_token,

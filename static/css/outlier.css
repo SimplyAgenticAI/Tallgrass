@@ -3419,3 +3419,76 @@ h2 { font-weight: 700; }
   .caught-up.is-shown .cu-blade, .is-ticking, .cm-draft.is-writing .cm-draft-text { animation: none; }
   .cm-draft.is-writing .cm-draft-text { color: var(--text-muted); background: none; }
 }
+
+/* ------------------------------------------------- the walkthrough (V29.2)
+
+   A spotlight, built from two parts: a dimming layer that is pointer-
+   transparent, and a "hole" whose enormous box-shadow IS the dim. That way the
+   highlighted control is never covered by anything, so nothing the user can
+   see is unclickable, and no z-index war with the header is needed. */
+.gd-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  pointer-events: none;
+}
+
+.gd-hole {
+  position: absolute;
+  border-radius: 10px;
+  border: 1.5px solid var(--emerald-bright);
+  box-shadow: 0 0 0 9999px rgba(3, 10, 7, 0.72),
+              0 0 22px rgba(110, 231, 183, 0.45);
+  transition: top 0.28s ease, left 0.28s ease, width 0.28s ease, height 0.28s ease;
+}
+
+/* The dimmed area takes clicks (to move on); the lit element does not sit
+   under anything, so it keeps its own. */
+.gd-layer { pointer-events: auto; }
+.gd-hole  { pointer-events: none; }
+
+.gd-card {
+  position: absolute;
+  background: var(--glass-solid);
+  border: 1px solid var(--border-lit);
+  border-radius: 12px;
+  padding: 15px 16px 13px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5), var(--edge-light);
+  transition: top 0.28s ease, left 0.28s ease;
+}
+
+.gd-count {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.gd-card h3 {
+  margin: 4px 0 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.gd-card p {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.gd-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.gd-actions .btn { padding: 6px 14px; font-size: 13px; }
+
+/* Nothing moves, but it still points. */
+.gd-calm .gd-hole,
+.gd-calm .gd-card { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gd-hole, .gd-card { transition: none; }
+}
