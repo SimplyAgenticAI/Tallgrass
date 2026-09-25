@@ -3528,3 +3528,32 @@ h2 { font-weight: 700; }
   .pattern-list li { padding: 10px 11px; }
   .pattern-ratio { font-size: 15px; }
 }
+
+/* ------------------------------------- remix: what the variants should be (V29.6) */
+.remix-mode {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px 9px;
+  margin: 0 0 12px;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.remix-mode legend { padding: 0 4px; }
+
+.remix-mode-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.remix-mode-choice input { margin: 0; flex: 0 0 auto; }
+.remix-mode-note { margin: 6px 0 0; }
+
+/* The independent graphic is the second choice where an original exists, so it
+   reads as the alternative rather than the main action. */
+.graphic-btn.is-fresh { opacity: 0.82; }
+.graphic-btn.is-fresh:hover { opacity: 1; }

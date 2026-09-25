@@ -547,8 +547,8 @@
         var echo = document.createElement("button");
         echo.type = "button";
         echo.className = "graphic-btn is-echo";
-        echo.textContent = "Same style";
-        echo.title = "Make a new graphic in the style of the post you are beating";
+        echo.textContent = "Graphic like the original";
+        echo.title = "A new graphic of the same subject, in the style of the post you are beating";
         echo.dataset.hook = item.hook || item.body || "";
         echo.dataset.body = item.body || "";
         echo.dataset.likePostId = writeEchoPostId;
@@ -2574,10 +2574,15 @@
       // The chosen opening, same as Write sends. Clicking a selected card
       // again clears it, so "let the model decide" stays reachable.
       var chosen = document.querySelector(".remix-hooks .hook-card.selected");
+      // Which job this is: another post about the same thing (default), or the
+      // mechanic moved onto the operator's own subject. The server defaults the
+      // same way if this is missing.
+      var modePick = document.querySelector('input[name="remix-mode"]:checked');
       post("/api/remix/" + remixBtn.dataset.postId, {
         angles: angles,
         hook: chosen ? (chosen.dataset.hook || "") : "",
-        instructions: steer ? steer.value.trim() : ""
+        instructions: steer ? steer.value.trim() : "",
+        mode: modePick ? modePick.value : ""
       })
         .then(function (data) {
           if (!data.ok) throw new Error(data.error || "Remix failed");
@@ -2631,34 +2636,39 @@
       copy.dataset.copyTarget = id;
       copy.textContent = "Copy";
 
-      // Same markup the server renders for a saved variant, so one delegated
-      // handler drives both. The hook and body ride on the button as data.
-      var graphic = document.createElement("button");
-      graphic.type = "button";
-      graphic.className = "graphic-btn";
-      graphic.textContent = "Generate graphic";
-      graphic.dataset.hook = variant.hook || variant.body || "";
-      graphic.dataset.body = variant.body || "";
-
       head.appendChild(angle);
       head.appendChild(copy);
-      head.appendChild(graphic);
 
-      // Offered only when the page says this post actually had a graphic worth
-      // echoing — the same condition the server-rendered path uses, read off
-      // the page rather than guessed.
+      // Same markup and same ORDER the server renders for a saved variant, so
+      // one delegated handler drives both. Where the original carried a
+      // graphic, following it is the default and goes first: the independent
+      // button knows nothing about that picture, and on a post whose image did
+      // the work it draws something unrelated.
       var echoable = document.getElementById("remix-btn");
-      if (echoable && echoable.dataset.graphicBrief === "1") {
+      var canEcho = !!(echoable && echoable.dataset.graphicBrief === "1");
+
+      if (canEcho) {
         var echo = document.createElement("button");
         echo.type = "button";
         echo.className = "graphic-btn is-echo";
-        echo.textContent = "Same style";
-        echo.title = "Make a new graphic in the style of the one on this post";
+        echo.textContent = "Graphic like the original";
+        echo.title = "A new graphic of the same subject, in the style of this post's image";
         echo.dataset.hook = variant.hook || variant.body || "";
         echo.dataset.body = variant.body || "";
         echo.dataset.likePostId = echoable.dataset.postId || "";
         head.appendChild(echo);
       }
+
+      var graphic = document.createElement("button");
+      graphic.type = "button";
+      graphic.className = "graphic-btn" + (canEcho ? " is-fresh" : "");
+      graphic.textContent = canEcho ? "Different graphic" : "Generate graphic";
+      if (canEcho) {
+        graphic.title = "Ignore this post's image and illustrate the words instead";
+      }
+      graphic.dataset.hook = variant.hook || variant.body || "";
+      graphic.dataset.body = variant.body || "";
+      head.appendChild(graphic);
 
       var body = document.createElement("p");
       body.className = "variant-body";

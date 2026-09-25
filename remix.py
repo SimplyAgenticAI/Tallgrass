@@ -12,6 +12,32 @@ import jsonstream
 
 MODEL = "claude-opus-5"
 
+# What a remix IS, and it turns out there are two different jobs here.
+#
+# "like_this" is the default, and it is what somebody means when they press
+# Remix on a post about bees: another post about bees, the same kind of post,
+# worded differently. The old behaviour produced satellites — because with a
+# brand profile filled in, _subject_anchor told the model the operator's own
+# subject was the one that mattered and the original was "only where the
+# mechanic came from". That is a real and useful job, but it is not what the
+# button appears to promise, and it was happening silently.
+#
+# "my_business" keeps that job, named, chosen and no longer the default.
+LIKE_THIS = "like_this"
+MY_BUSINESS = "my_business"
+MODES = (LIKE_THIS, MY_BUSINESS)
+DEFAULT_MODE = LIKE_THIS
+
+MODE_LABELS = {
+    LIKE_THIS: "Another post like this one",
+    MY_BUSINESS: "Use this idea for my business",
+}
+
+
+def clean_mode(value):
+    """Whatever arrived from the client, as a mode this module understands."""
+    return value if value in MODES else DEFAULT_MODE
+
 # What actually made the post work varies, so generate across distinct angles
 # rather than N rewrites of the same idea.
 # Three, not five.
@@ -51,6 +77,37 @@ ANGLES = {
         "finish reading it, and would rather type than not."
     ),
 }
+
+# The same three angles, worded for "another post like this one".
+#
+# Same keys, so nothing that validates an angle name has to know about modes.
+# The difference is only ever about SUBJECT: above, "change the story, the
+# examples and the specifics" is an invitation to write about something else,
+# which is right when the point is to move the mechanic onto the operator's own
+# world and wrong when the point is another post about bees.
+ANGLES_LIKE_THIS = {
+    "same_hook": (
+        "Keep the exact hook mechanic that worked AND keep what the post is "
+        "about — the same opening move, the same promise, the same shape of "
+        "first line, the same subject. Change the wording and the particular "
+        "details within that subject. Same topic, said again, better."
+    ),
+    "personal": (
+        "Tell it in the first person, about the same subject as the original. "
+        "You do not know this operator's life, so every personal specific is a "
+        "square-bracket blank for them to fill in — [the morning I first saw "
+        "it] — with finished, publishable copy around the blanks."
+    ),
+    "question": (
+        "Lead with a question about the original's subject that the reader "
+        "answers in their head before they finish reading it, and would rather "
+        "type than not."
+    ),
+}
+
+
+def angles_for(mode):
+    return ANGLES_LIKE_THIS if clean_mode(mode) == LIKE_THIS else ANGLES
 
 VARIANT_SCHEMA = {
     "type": "object",
@@ -207,14 +264,32 @@ def _material(post):
     return body, image_text, image_desc, copy_len
 
 
-def _subject_anchor(post, brand):
+def _subject_anchor(post, brand, mode=DEFAULT_MODE):
     """What the variants have to stay about.
 
     Without this the only topic signal in the whole prompt was a "Posted in:"
-    line the model was free to ignore, and it did. Three sources in descending
-    order of authority: what the operator told us they do, the group the post
-    came from, and — failing both — the original's own subject.
+    line the model was free to ignore, and it did.
+
+    In LIKE_THIS the answer is simple and absolute: the original's subject, and
+    the brand profile does not get a say in it. A post about bees travelling
+    came back as a post about satellites in the sky, because the branch below
+    handed the subject to the operator's offer — correct for MY_BUSINESS, and a
+    non-sequitur when somebody pressed Remix expecting another bee post.
     """
+    if clean_mode(mode) == LIKE_THIS:
+        source = (post.get("source_name") or "").strip()
+        going_back = (f' These are going back into "{source}".' if source else "")
+        return (
+            "KEEP THE SUBJECT OF THE ORIGINAL. These are more posts about the "
+            "same thing, for the same readers, in the same format — a different "
+            "telling, not a different topic." + going_back + " The subject is "
+            "part of why the post worked, so changing it throws away the "
+            "evidence. If the original is about bees swarming, every variant is "
+            "about bees swarming. Do not transpose it onto marketing, business, "
+            "technology or anything else, whatever else this prompt says about "
+            "who the operator is."
+        )
+
     offer = (brand.get("offer") or "").strip()
     audience = (brand.get("audience") or "").strip()
     if offer or audience:
@@ -243,7 +318,7 @@ def _subject_anchor(post, brand):
     )
 
 
-def remix_post(post, angles=None, count=3, instructions=""):
+def remix_post(post, angles=None, count=3, instructions="", mode=DEFAULT_MODE):
     """Generate variants of a winning post.
 
     `instructions` is the operator's own direction and OUTRANKS everything
@@ -259,7 +334,7 @@ def remix_post(post, angles=None, count=3, instructions=""):
         return None, "Add an AI key on the Settings page to enable remixing."
 
     prompt, error = _remix_prompt(post, angles=angles, count=count,
-                                  instructions=instructions)
+                                  instructions=instructions, mode=mode)
     if error:
         return None, error
 
@@ -268,7 +343,7 @@ def remix_post(post, angles=None, count=3, instructions=""):
     return _remix_anthropic(cfg, prompt)
 
 
-def _remix_prompt(post, angles=None, count=3, instructions=""):
+def _remix_prompt(post, angles=None, count=3, instructions="", mode=DEFAULT_MODE):
     """Build the user message. Returns (prompt, error).
 
     Shared by the blocking and streaming paths, so the two cannot drift into
@@ -292,8 +367,10 @@ def _remix_prompt(post, angles=None, count=3, instructions=""):
             "added, scan it again and the graphic's words will come with it."
         )
 
-    chosen = angles or list(ANGLES.keys())[:count]
-    angle_text = "\n".join(f"- {a}: {ANGLES[a]}" for a in chosen if a in ANGLES)
+    mode = clean_mode(mode)
+    catalogue = angles_for(mode)
+    chosen = angles or list(catalogue.keys())[:count]
+    angle_text = "\n".join(f"- {a}: {catalogue[a]}" for a in chosen if a in catalogue)
 
     engagement = (
         f"{post.get('likes', 0)} reactions, "
@@ -348,10 +425,39 @@ def _remix_prompt(post, angles=None, count=3, instructions=""):
     brand = sage.get_brand()
     summary = sage.brand_summary()
     brand_block = f"\n\nWho these are for:\n{summary}" if summary else ""
-    anchor = _subject_anchor(post, brand)
+    # In LIKE_THIS the profile is a voice, not a topic. Without this line the
+    # model reads "what they do: X" as permission to write about X, which is
+    # precisely how the bee post became a satellite post.
+    if brand_block and mode == LIKE_THIS:
+        brand_block += (
+            "\n(This is who will be posting, for voice and vocabulary only. It "
+            "must NOT change what the post is about.)"
+        )
+    anchor = _subject_anchor(post, brand, mode)
 
     # Goes FIRST and is named as authoritative. Buried at the end it reads as
     # an afterthought the model is free to average against everything else.
+    # The last thing the model reads, so it is the instruction with the most
+    # pull. "Still work if every noun changed" belongs only to the mode that
+    # wants the nouns changed.
+    if mode == LIKE_THIS:
+        closing = (
+            "Before writing, decide what the ONE mechanic was that made this "
+            "land — the move, not the topic. Name it in why_it_worked, then use "
+            "it to tell the SAME subject three more ways.\n\n"
+            "Check each variant before you return it: could a reader tell it is "
+            "about the same thing as the original? If not, it is wrong, however "
+            "good it reads."
+        )
+    else:
+        closing = (
+            "Before writing, decide what the ONE transferable mechanic was — the "
+            "thing that would still work if every noun changed. Name it in "
+            "why_it_worked, then build all three variants on it, on the "
+            "operator's own subject. Three variants of one mechanic beat three "
+            "unrelated posts that each did something clever."
+        )
+
     instructions = (instructions or "").strip()[:600]
     lead = ""
     if instructions:
@@ -375,10 +481,7 @@ What the variants must be about:
 Write one variant for each of these angles:
 {angle_text}
 
-Before writing, decide what the ONE transferable mechanic was — the thing that
-would still work if every noun changed. Name it in why_it_worked, then build
-all three variants on it. Three variants of one mechanic beat three unrelated
-posts that each did something clever."""
+{closing}"""
 
     return user_content, None
 
@@ -505,7 +608,7 @@ def _stream_anthropic(cfg, user_content, array_key="variants",
         yield {"type": "error", "error": "Could not parse the model's response."}
 
 
-def remix_post_stream(post, angles=None, count=3, instructions=""):
+def remix_post_stream(post, angles=None, count=3, instructions="", mode=DEFAULT_MODE):
     """Streaming twin of remix_post. Yields events, never raises."""
     cfg = _config()
     if not cfg["has_key"]:
@@ -514,7 +617,7 @@ def remix_post_stream(post, angles=None, count=3, instructions=""):
         return
 
     prompt, error = _remix_prompt(post, angles=angles, count=count,
-                                  instructions=instructions)
+                                  instructions=instructions, mode=mode)
     if error:
         yield {"type": "error", "error": error}
         return
@@ -835,39 +938,13 @@ def original_graphic_brief(post):
 MAX_CAPTION_ON_IMAGE = 120
 
 
-def generate_graphic(hook, instructions="", body="", like_original=None,
-                     caption_text=""):
-    """Turn a post's hook into a shareable illustration. Returns (image, error).
-
-    `like_original` is the brief from a graphic that already worked — see
-    original_graphic_brief. With it, the model is asked for a fresh image in
-    the same vein rather than a fresh idea: same kind of scene, same treatment,
-    different execution. Without it, nothing changes.
-
-    `image` is a data: URL (gpt-image-1 returns base64) or an https URL (DALL-E).
-
-    `instructions` is the operator's own direction, and it OUTRANKS everything
-    generated here. Previously there was no way to say anything at all: the
-    prompt was assembled from the hook and the brand profile and the model did
-    whatever it inferred from that, which is fine until it is wrong and then
-    there is no lever to pull. Where the instructions conflict with the house
-    style, the instructions win — that is the whole point of them.
-
-    Text is kept OUT of the image by default, because image models render
-    lettering as garbage. That default lifts if the instructions ask for text.
-    """
+def _graphic_prompt(hook, instructions="", body="", like_original=None,
+                    caption_text=""):
+    """The whole image brief, assembled. Separated from the API call so the
+    prompt can be asserted on in tests — the rules in here (no lettering, keep
+    the original's subject, show a real scene) are the feature, and an API call
+    is the one thing a test must not make."""
     instructions = (instructions or "").strip()[:600]
-    key = _openai_key()
-    if not key:
-        return None, "Add an OpenAI key on the Settings page to generate graphics."
-
-    try:
-        import openai
-    except ImportError:
-        return None, "The openai package is not installed. Run: pip install openai"
-
-    client = openai.OpenAI(api_key=key)
-
     # Art-directed and brand-aware. A one-line "make it nice" prompt is why the
     # first version looked generic; this gives the model real direction and,
     # when the operator has filled in a brand profile, steers it to their look.
@@ -980,12 +1057,18 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
             "MAKE ANOTHER ONE LIKE THE GRAPHIC THAT ALREADY WORKED.\n"
             f"The original post carried a graphic and it performed.{did}\n"
             + "\n".join(parts) + "\n\n"
-            "Match its KIND: the same sort of scene, the same visual treatment, "
-            "the same energy and framing. Do NOT reproduce it — this is a "
-            "sibling, not a copy, and a near-duplicate posted into the same "
-            "room would be recognised immediately. Change the specifics: a "
-            "different moment, a different angle, a different subject within "
-            "the same idea.\n\n"
+            "Match its KIND *and its subject matter*: the same sort of scene, "
+            "the same thing pictured, the same visual treatment, the same "
+            "energy and framing. Do NOT reproduce it — this is a sibling, not a "
+            "copy, and a near-duplicate posted into the same room would be "
+            "recognised immediately. Change the EXECUTION only: a different "
+            "moment, a different angle, a different arrangement of the same "
+            "subject.\n\n"
+            # "a different subject within the same idea" used to close that
+            # line, and it undid the entire point of the button: asked for
+            # another graphic like the bees one, the model was authorised to
+            # draw something else entirely, in the bees one's style.
+            "If the original showed bees, this one shows bees.\n\n"
         )
 
     prompt = (
@@ -1010,6 +1093,45 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
         f"Mood: {mood}.{brand_ctx}\n"
         f"{text_rule}"
     )
+    return prompt
+
+
+def generate_graphic(hook, instructions="", body="", like_original=None,
+                     caption_text=""):
+    """Turn a post's hook into a shareable illustration. Returns (image, error).
+
+    `like_original` is the brief from a graphic that already worked — see
+    original_graphic_brief. With it, the model is asked for a fresh image in
+    the same vein rather than a fresh idea: same kind of scene, same treatment,
+    different execution. Without it, nothing changes.
+
+    `image` is a data: URL (gpt-image-1 returns base64) or an https URL (DALL-E).
+
+    `instructions` is the operator's own direction, and it OUTRANKS everything
+    generated here. Previously there was no way to say anything at all: the
+    prompt was assembled from the hook and the brand profile and the model did
+    whatever it inferred from that, which is fine until it is wrong and then
+    there is no lever to pull. Where the instructions conflict with the house
+    style, the instructions win — that is the whole point of them.
+
+    Text is kept OUT of the image by default, because image models render
+    lettering as garbage. That default lifts if the instructions ask for text.
+    """
+    instructions = (instructions or "").strip()[:600]
+    key = _openai_key()
+    if not key:
+        return None, "Add an OpenAI key on the Settings page to generate graphics."
+
+    try:
+        import openai
+    except ImportError:
+        return None, "The openai package is not installed. Run: pip install openai"
+
+    client = openai.OpenAI(api_key=key)
+
+    prompt = _graphic_prompt(hook, instructions=instructions, body=body,
+                             like_original=like_original,
+                             caption_text=caption_text)
 
     last_err = None
     # gpt-image-1 first (best quality, returns base64); fall back to dall-e-3,

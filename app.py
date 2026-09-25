@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.5"
+APP_VERSION = "29.6"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -960,7 +960,10 @@ def api_write_stream():
                 '"%s"\n%s' % (hook, instructions)).strip()
 
         events = remix.remix_post_stream(
-            post, angles=body.get("angles") or None, instructions=instructions)
+            post, angles=body.get("angles") or None, instructions=instructions,
+            # Anything unrecognised becomes the default, which is "another post
+            # like this one" — the safe answer for a client that did not say.
+            mode=remix.clean_mode(body.get("mode")))
         saved_post_id = post_id
 
     else:
@@ -1321,6 +1324,8 @@ def post_detail(post_id):
         replies=replies,
         remixes=remix_rows,
         angles=remix.ANGLES,
+        remix_modes=[(key, remix.MODE_LABELS[key]) for key in remix.MODES],
+        remix_default_mode=remix.DEFAULT_MODE,
         remix_ready=remix.is_configured(),
         # Whether this post's graphic left us anything to echo. None means no
         # words were read from the image and no description was captured, so
@@ -3519,7 +3524,8 @@ def api_remix(post_id):
     if not post:
         return jsonify({"ok": False, "error": "Post not found"}), 404
 
-    result, error = remix.remix_post(post, angles=angles, instructions=instructions)
+    result, error = remix.remix_post(post, angles=angles, instructions=instructions,
+                                     mode=remix.clean_mode(body.get("mode")))
     if error:
         return jsonify({"ok": False, "error": error}), 400
 

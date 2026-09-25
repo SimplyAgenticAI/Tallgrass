@@ -208,6 +208,27 @@
     </div>
     {% endif %}
 
+    {# What a remix IS, asked out loud.
+       This used to be decided silently by whether a brand profile existed: with
+       one filled in, a post about bees came back as a post about satellites,
+       because the prompt was told the operator's subject outranked the
+       original's. Both jobs are useful. Only one of them is what the button
+       looks like it does, and that one is the default. #}
+    <fieldset class="remix-mode">
+      <legend class="remix-steer-label">What should the variants be?</legend>
+      {% for key, label in remix_modes %}
+      <label class="remix-mode-choice">
+        <input type="radio" name="remix-mode" value="{{ key }}"
+               {% if key == remix_default_mode %}checked{% endif %}>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+      <p class="fine remix-mode-note">
+        The first keeps the subject — a post about bees stays about bees. The
+        second borrows only the mechanic and writes about what you do.
+      </p>
+    </fieldset>
+
     <label class="remix-steer">
       <span class="remix-steer-label">Steer it (optional)</span>
       <input type="text" id="remix-instructions" maxlength="600"
@@ -239,20 +260,26 @@
             <div class="variant-head">
               <span class="variant-angle">{{ variant.angle.replace('_', ' ') }}</span>
               <button class="copy-btn" data-copy-target="v{{ loop.index }}-{{ row.id }}">Copy</button>
-              <button type="button" class="graphic-btn"
-                      data-hook="{{ variant.hook or variant.body }}"
-                      data-body="{{ variant.body }}">Generate graphic</button>
-              {# Only when something about the original graphic was actually
-                 captured. With no words read from it and no description there
-                 is nothing to be "like", and the button would be offering to
-                 invent an original rather than echo one. #}
+              {# When this post HAS a graphic, following it is the default and
+                 comes first: the plain button knows nothing about the original
+                 picture, so on a post whose image did the work it produced
+                 something unrelated. The independent one stays, second. #}
               {% if graphic_brief %}
               <button type="button" class="graphic-btn is-echo"
                       data-hook="{{ variant.hook or variant.body }}"
                       data-body="{{ variant.body }}"
                       data-like-post-id="{{ post.id }}"
-                      title="Make a new graphic in the style of the one on this post">
-                Same style</button>
+                      title="A new graphic of the same subject, in the style of this post's image">
+                Graphic like the original</button>
+              <button type="button" class="graphic-btn is-fresh"
+                      data-hook="{{ variant.hook or variant.body }}"
+                      data-body="{{ variant.body }}"
+                      title="Ignore this post's image and illustrate the words instead">
+                Different graphic</button>
+              {% else %}
+              <button type="button" class="graphic-btn"
+                      data-hook="{{ variant.hook or variant.body }}"
+                      data-body="{{ variant.body }}">Generate graphic</button>
               {% endif %}
             </div>
             <p class="variant-body" id="v{{ loop.index }}-{{ row.id }}">{{ variant.body }}</p>
