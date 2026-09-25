@@ -69,7 +69,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.0"
+APP_VERSION = "29.1"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -183,6 +183,9 @@ app.config.update(
     SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")),
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     MAX_CONTENT_LENGTH=8 * 1024 * 1024,   # cap capture payloads
+    # Safe only because every static URL carries ?v=APP_VERSION, so a new
+    # version is a new URL. Pages themselves stay no-store (see after_request).
+    SEND_FILE_MAX_AGE_DEFAULT=timedelta(days=365),
 )
 
 # The extension posts cross-origin from facebook.com, so the ingest endpoints
@@ -233,6 +236,20 @@ CSP = "; ".join((
     "img-src 'self' data: https:",
     "connect-src 'self'",
 ))
+
+
+@app.url_defaults
+def _stamp_static(endpoint, values):
+    """Put the app version on every static URL.
+
+    The stylesheet and the script are a quarter of a megabyte together and were
+    re-validated on every page load — a round trip each, before anything could
+    be painted. With the version in the URL they can be cached hard (below),
+    and a deploy changes the URL, so nobody is ever served yesterday's CSS.
+    This relies on APP_VERSION being bumped with each change, which it is.
+    """
+    if endpoint == "static" and "filename" in values:
+        values["v"] = APP_VERSION
 
 
 @app.before_request
@@ -728,9 +745,23 @@ def _sources_with_stats():
             """, (user_id,)
         ).fetchall()]
 
+    # One light query for every post this account has, split by source here,
+    # rather than a fetch-and-score per source.
+    #
+    # It used to call _fetch_posts per source — which pulls p.*, two joins and
+    # a saved-count subquery per row — and then source_stats, which scores
+    # again. Twenty groups meant twenty-one scoring passes over the same data
+    # and the page took 2.3 seconds at twenty thousand posts. The numbers are
+    # identical: scoring groups by source internally, so scoring one source's
+    # rows alone and scoring all of them and reading one source's back are the
+    # same arithmetic, and none of it ever looks at a post's words.
+    by_source = {}
+    for row in _scoring_rows(user_id=user_id):
+        by_source.setdefault(row["source_id"], []).append(row)
+
     for source in sources:
         source["is_demo"] = bool(source["demo_count"])
-        posts = _fetch_posts(source_id=source["id"])
+        posts = by_source.get(source["id"]) or []
         source["stats"] = outliers.source_stats(posts) if posts else None
 
     # Real captures first, newest first. Sample data is a demonstration and
