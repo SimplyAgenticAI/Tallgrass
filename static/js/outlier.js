@@ -1697,6 +1697,15 @@
       .then(function (data) {
         if (!data.ok) throw new Error(data.error || "Could not generate a graphic");
         stop();
+        // A partial success: the picture exists but not in the way it was
+        // asked for — usually the original's own image could not be read.
+        // Said out loud, because a silent substitution looks like a bad model.
+        if (data.note) {
+          var noted = document.createElement("p");
+          noted.className = "fine graphic-note";
+          noted.textContent = data.note;
+          block.appendChild(noted);
+        }
         var img = document.createElement("img");
         img.alt = "Generated graphic";
         var dl = document.createElement("a");

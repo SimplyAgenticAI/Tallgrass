@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.6"
+APP_VERSION = "29.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3560,6 +3560,7 @@ def api_graphic():
     # and never invented: a post with neither yields None, and the button that
     # sends this is not offered in the first place.
     like_original = None
+    note = ""
     if body.get("like_post_id"):
         original, scored = _scored_post(body["like_post_id"])
         if not original:
@@ -3588,10 +3589,21 @@ def api_graphic():
             else:
                 log.warning("could not read the original graphic on post %s: %s",
                             original["id"], describe_error)
-                # Only the thin alt-text brief is left. Saying so beats
-                # silently producing something that will not resemble it.
+                # Nothing left to be "like": no readable picture, no alt text,
+                # no description. This used to refuse outright, which turned a
+                # degraded result into no result — somebody who asked for a
+                # picture got an error about expired Facebook links instead.
+                #
+                # The words are still worth illustrating, and since variants now
+                # stay on the original's subject, a graphic built from them is
+                # about the right thing. So it goes ahead and says what it could
+                # not do, rather than dead-ending.
                 if not like_original.get("image_text") and not like_original.get("image_desc"):
-                    return jsonify({"ok": False, "error": describe_error}), 400
+                    like_original = None
+                    note = (
+                        "Couldn't read the original picture, so this one "
+                        "illustrates the words instead. " + (describe_error or "")
+                    ).strip()
 
     if not hook and not instructions and not copy and not like_original:
         return jsonify({"ok": False, "error": "Nothing to illustrate."}), 400
@@ -3606,7 +3618,9 @@ def api_graphic():
         like_original=like_original, caption_text=caption_text)
     if error:
         return jsonify({"ok": False, "error": error}), 400
-    return jsonify({"ok": True, "image": image})
+    # `note` is how a partial success reports itself: the picture was made, but
+    # not in the way that was asked for.
+    return jsonify({"ok": True, "image": image, "note": note})
 
 
 @app.route("/api/demo", methods=["POST", "DELETE"])

@@ -19,6 +19,7 @@ lives — no model is called.
 
 Run: python tests/remix_mode.test.py
 """
+import io
 import json
 import logging
 import os
@@ -157,8 +158,7 @@ def main():
     check("  unless the operator asks for it",
           "ABSOLUTELY NO text" in asked, False)
 
-    print()
-    print("the page offers the choice, with the subject-keeping one first")
+    # The post and a saved remix, needed by everything below.
     with db.get_db() as conn:
         sid = conn.execute(
             "INSERT INTO sources (user_id, fb_id, kind, name) "
@@ -178,6 +178,93 @@ def main():
                               "body": "Don't panic if you see this cluster.",
                               "hook": "Don't panic if you see this cluster."}],
             })))
+    print()
+    print("reading the original picture does not depend on Facebook's link")
+    # The whole point: image_url is signed and expires in a day or two, so any
+    # post older than that could never be echoed. images.py has been keeping a
+    # downscaled copy of every picture it has shown all along.
+    import images
+    seen = {}
+
+    def never_fetch(url):
+        seen["asked_facebook"] = True
+        raise Exception("410 Gone - that is what an expired link does")
+
+    real_fetch = remix._fetch_image
+    remix._fetch_image = never_fetch
+    try:
+        # A real JPEG, written by the same library images.py uses to store
+        # them, rather than hand-rolled bytes it would reject.
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 48), (120, 90, 30)).save(buf, "JPEG")
+        tiny = buf.getvalue()
+        stored, store_error = images.store(pid, tiny)
+        check("a picture the app has shown is on disk", bool(stored), True)
+
+        described = {"called_with": None}
+
+        def fake_vision(raw, media_type, key):
+            described["called_with"] = (len(raw), media_type)
+            return "a close photograph of a swarm on a branch"
+
+        # Only the network is faked; everything that decides WHERE the bytes
+        # come from is the real code.
+        with appmod.app.test_request_context("/"):
+            from flask import session
+            session["user_id"] = uid
+            with db.get_db() as conn:
+                row = dict(conn.execute(
+                    "SELECT * FROM posts WHERE id = ?", (pid,)).fetchone())
+            text, err = remix.describe_original_graphic(row)
+        check("it did not ask Facebook", seen.get("asked_facebook"), None)
+        # No AI key that works here, so the call itself fails — what matters is
+        # that it got as far as HAVING the bytes rather than refusing early.
+        check("and the failure is not about an expired link",
+              "links expire" in (err or ""), False)
+    finally:
+        remix._fetch_image = real_fetch
+
+    print()
+    print("when the picture really is gone, it still makes something")
+    with db.get_db() as conn:
+        gone_id = conn.execute(
+            "INSERT INTO posts (user_id, fb_post_id, source_id, body, likes, post_type, "
+            "image_url, posted_at, is_demo, item_type, engagement_read) VALUES "
+            "(?, 'bee-gone', ?, 'Bees again, no picture left', 90, 'photo', "
+            "'https://scontent.example.com/expired.jpg', datetime('now','-40 days'), "
+            "0, 'post', 1)", (uid, sid)).lastrowid
+    client_gone = appmod.app.test_client()
+    with client_gone.session_transaction() as sess:
+        sess["user_id"] = uid
+        sess["csrf_token"] = "known-token"
+    made = {"like_original": "unset"}
+
+    def fake_graphic(hook, instructions="", body="", like_original=None, caption_text=""):
+        made["like_original"] = like_original
+        return "data:image/png;base64,AAAA", None
+
+    real_graphic = remix.generate_graphic
+    real_describe = remix.describe_original_graphic
+    remix.generate_graphic = fake_graphic
+    remix.describe_original_graphic = lambda post: (None, "Facebook's links expire.")
+    try:
+        r = client_gone.post("/api/graphic", json={
+            "hook": "Don't be alarmed", "body": "Bees again, no picture left",
+            "like_post_id": gone_id,
+        }, headers={"X-CSRF-Token": "known-token"})
+        data = r.get_json()
+        check("it does not refuse", r.status_code, 200)
+        check("a picture comes back", bool(data.get("image")), True)
+        check("it says what it could not do",
+              "illustrates the words instead" in (data.get("note") or ""), True)
+        check("  and did not pretend to echo anything", made["like_original"], None)
+    finally:
+        remix.generate_graphic = real_graphic
+        remix.describe_original_graphic = real_describe
+
+    print()
+    print("the page offers the choice, with the subject-keeping one first")
     client = appmod.app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = uid

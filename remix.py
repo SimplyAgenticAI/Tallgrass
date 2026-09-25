@@ -838,6 +838,7 @@ def describe_original_graphic(post):
     not a prompt problem. There was no information.
     """
     url = (post or {}).get("image_url")
+    post_id = (post or {}).get("id")
     if not url:
         return None, "That post has no image."
 
@@ -850,17 +851,46 @@ def describe_original_graphic(post):
     except ImportError:
         return None, "The anthropic package is not installed."
 
-    # Fetched with the stdlib rather than a new dependency, and only from a
-    # public host — image_url comes from the capture payload, so it is
-    # whatever the caller put there. Facebook's CDN links are public but they
-    # expire, so an ordinary failure here is reported rather than raised.
-    try:
-        raw, media_type = _fetch_image(url)
-    except _BlockedURL as exc:
-        return None, "That image link cannot be read: %s." % exc
-    except Exception as exc:                  # noqa: BLE001 - reported, not raised
-        return None, ("Could not fetch the original image — Facebook's image "
-                      "links expire, so this one may simply be too old. (%s)" % exc)
+    # The copy this app already keeps comes FIRST.
+    #
+    # This went straight to Facebook's CDN, and those links are signed with an
+    # expiry of a day or two — so asking for a graphic like the original failed
+    # on any post more than about a day old, which is most of them. The whole
+    # of images.py exists because of that expiry: every post's picture is
+    # downscaled and stored here the first time anybody looks at it, and the
+    # feed's thumbnails have been served from that copy all along. The one
+    # feature that actually needed to SEE the picture was the one still asking
+    # Facebook for it.
+    raw = media_type = None
+    if post_id is not None:
+        try:
+            import images
+            path = images.cached(post_id)
+            if not path:
+                # Not looked at yet — fetch it once, exactly as a page view
+                # would, so this also leaves the thumbnail cached.
+                path, _store_error = images.fetch_and_store(post_id, url)
+            if path:
+                with open(path, "rb") as handle:
+                    raw = handle.read()
+                media_type = "image/jpeg"     # images.store always writes JPEG
+        except Exception:                     # noqa: BLE001 - fall through to the link
+            raw = media_type = None
+
+    # No stored copy and none obtainable: the link itself is the last resort,
+    # and an ordinary failure here is reported rather than raised.
+    if raw is None:
+        try:
+            raw, media_type = _fetch_image(url)
+        except _BlockedURL as exc:
+            return None, "That image link cannot be read: %s." % exc
+        except Exception as exc:              # noqa: BLE001 - reported, not raised
+            return None, (
+                "Could not read the original image. Facebook's image links "
+                "expire after a day or two, and this app only has a copy of "
+                "pictures it has shown you — so if this post was captured a "
+                "while ago and never opened, the picture is gone. Scan that "
+                "group again to refresh it, then try once more. (%s)" % exc)
 
     if len(raw) > VISION_MAX_BYTES:
         return None, "That image is too large to read."
