@@ -80,6 +80,8 @@ echo "--- optimisations changed no numbers ---"
 python tests/perf.test.py
 echo "--- the walkthrough ---"
 python tests/guide.test.py
+echo "--- what works in a group ---"
+python tests/patterns.test.py
 echo "--- real posts as sample data ---"
 python tests/snapshot.test.py
 echo "--- streamed json ---"

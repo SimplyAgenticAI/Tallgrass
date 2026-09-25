@@ -1,0 +1,44 @@
+{# What works in a group, from that group's own measured posts. Included by
+   group_detail and the Playbook.
+
+   Silence is a real answer here: with nothing measured on both sides of a
+   split, the panel says what it is still short of rather than filling the
+   space with advice nobody derived from anything. #}
+{% if patterns.findings %}
+<section class="glass panel reveal pattern-panel">
+  <h2>What works in {{ where }}</h2>
+  <p class="sub">
+    From {{ patterns.measured }} posts in {{ where }} whose engagement could
+    actually be read{% if across %}, each compared against its own group's
+    median so a big group can't skew it{% endif %}. Comparisons only — nothing
+    is predicted.
+  </p>
+  <ul class="pattern-list">
+    {% for f in patterns.findings %}
+    <li>
+      <span class="pattern-ratio">{{ f.ratio }}×</span>
+      <span class="pattern-says">
+        {{ f.sentence }}
+        <span class="fine">
+          {% for label, n in f.counts.items() %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </span>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="fine pattern-caveat">
+    These describe what has already happened in {{ where }}, not a rule. A
+    format that wins on average still loses to a better post.
+  </p>
+</section>
+{% elif patterns.measured %}
+<section class="glass panel reveal pattern-panel">
+  <h2>What works in {{ where }}</h2>
+  <p class="sub">
+    Nothing to report yet. {{ patterns.measured }} post{{ '' if patterns.measured == 1 else 's' }}
+    here have readable engagement, and a comparison needs at least
+    {{ min_per_side }} on each side of it before it means anything. Keep
+    scanning and this fills in on its own.
+  </p>
+</section>
+{% endif %}

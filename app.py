@@ -32,6 +32,7 @@ import images
 import mailer
 import outliers
 import outreach
+import patterns
 import remix
 import replies
 import sage
@@ -70,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.2"
+APP_VERSION = "29.3"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1209,6 +1210,10 @@ def group_detail(source_id):
         blades=blades,
         meadow_width=meadow_width,
         stats=outliers.source_stats(posts) if posts else None,
+        # What works in THIS group, from this group's own measured posts. Built
+        # from the already-fetched rows, so the page pays nothing for it.
+        patterns=patterns.findings(posts),
+        min_per_side=patterns.MIN_PER_SIDE,
         tier_labels=outliers.TIER_LABELS,
         version=APP_VERSION,
         active="groups",
@@ -2841,7 +2846,16 @@ def playbook():
     suits your voice. Leaving that unsaid implies the top row is always the
     right row, which is the most common way to use this badly.
     """
-    return render_template("playbook.html", active="playbook")
+    # The written advice is the same for everybody, which is exactly why their
+    # own numbers go at the top of it: a comparison drawn from the groups they
+    # actually scan outranks any general rule underneath it. Signed-out
+    # visitors see the writing alone.
+    own = {"findings": [], "measured": 0, "needed": 0}
+    if auth.current_user():
+        own = patterns.findings(_fetch_posts(), across=True)
+    return render_template("playbook.html", patterns=own,
+                           min_per_side=patterns.MIN_PER_SIDE,
+                           active="playbook")
 
 
 @app.route("/welcome")

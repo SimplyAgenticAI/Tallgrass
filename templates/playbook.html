@@ -14,6 +14,12 @@
   </p>
 </section>
 
+{# Their own numbers first. Everything below this is written advice that applies
+   to everybody; this is the part that is only true of them. #}
+{% if user %}
+  {% with where = 'your groups', across = true %}{% include "_patterns.html" %}{% endwith %}
+{% endif %}
+
 <section class="pb">
 
   <article class="glass pb-block reveal">

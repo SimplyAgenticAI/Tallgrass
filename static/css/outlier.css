@@ -3492,3 +3492,39 @@ h2 { font-weight: 700; }
 @media (prefers-reduced-motion: reduce) {
   .gd-hole, .gd-card { transition: none; }
 }
+
+/* ------------------------------------ what works in a group (V29.3) */
+.pattern-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.pattern-list li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 13px;
+  background: rgba(16, 185, 129, 0.07);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.pattern-ratio {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--emerald-bright);
+  flex: 0 0 auto;
+}
+
+.pattern-says { font-size: 14px; line-height: 1.5; color: var(--text); }
+.pattern-says .fine { display: block; margin-top: 3px; }
+.pattern-caveat { margin: 11px 0 0; }
+
+@media (max-width: 560px) {
+  .pattern-list li { padding: 10px 11px; }
+  .pattern-ratio { font-size: 15px; }
+}
