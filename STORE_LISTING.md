@@ -4,7 +4,12 @@
 
 - **Listing:** https://chromewebstore.google.com/detail/tallgrass-%E2%80%94-by-macrandle/mjnnjgcfknpjddiglapjjgpkhpogccgg
 - **Extension ID:** `mjnnjgcfknpjddiglapjjgpkhpogccgg`
-- **Approved package:** v22.9
+- **Approved package:** v28.4 (approved 25 September 2026; v22.9 before that)
+
+> The store refuses a package whose version is not **higher** than the live
+> one, so a re-upload of the same number fails with "must be further ahead".
+> If a submission is refused that way, the package is already up there —
+> check whether it is live before building another.
 
 The URL lives in code at `app.py` → `EXTENSION_STORE_URL`, which is where the
 Capture page and both onboarding emails read it from. Change it there and

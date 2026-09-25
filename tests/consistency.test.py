@@ -190,6 +190,40 @@ def main():
     check("the zip's own version is still the repo's",
           app._extension_version(), app._manifest_version("0"))
 
+    # ------------------------------------------- the two numbers, in agreement
+    #
+    # Every check above compares the ping to EXTENSION_STORE_VERSION, so they
+    # all passed happily while that constant was three weeks stale: 28.4 went
+    # live in the store and the constant still said 22.9. Nothing broke loudly.
+    # What it did instead was quiet and expensive — _extension_ahead_of_store
+    # concluded a submission was mid-review, so every hosted visitor's install
+    # page opened the hand-install section and told them the store copy was
+    # behind, which is the Developer-mode route the listing exists to delete.
+    #
+    # So this asserts the pair is CURRENT, not merely self-consistent.
+    #
+    # It is meant to fail in exactly one situation: the manifest has been
+    # bumped and that package is still in review. That is a real state, and the
+    # fix is to put the in-review manifest version in `in_review` below — one
+    # deliberate line, which is also the reminder to clear it and bump the
+    # constant the day the submission goes live.
+    in_review = None            # e.g. "28.5" while 28.5 sits in review
+    repo_ext = app._extension_version()
+    if in_review:
+        check("the manifest is the version said to be in review", repo_ext, in_review)
+        check("  and the store constant is behind it, as expected",
+              app._version_tuple(app.EXTENSION_STORE_VERSION) < app._version_tuple(repo_ext),
+              True)
+    else:
+        check("the store constant matches the extension in this repo "
+              "(if a submission is in review, set in_review above)",
+              app.EXTENSION_STORE_VERSION, repo_ext)
+        # In a request, and against a hosted host name, because that is the
+        # only case where the sideload section is ever opened.
+        with app.app.test_request_context("/capture", base_url="https://tallgrassapp.com"):
+            check("  so the hosted install page does not push a sideload",
+                  app._extension_ahead_of_store(), False)
+
     # Tuples, not floats. 23.10 as a float is smaller than 23.6, and this
     # comparison decides whether the page offers an early copy at all — so
     # the first two-digit patch would have silently switched the offer off.

@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.3"
+APP_VERSION = "29.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -80,7 +80,14 @@ APP_VERSION = "29.3"
 # This is the number a hosted browser can really obtain, so it is the one
 # /api/ping reports. Bump it when a store submission goes live, and at no
 # other time — see STORE_LISTING.md.
-EXTENSION_STORE_VERSION = "22.9"
+# 28.4 approved and live on 25 September 2026. It sat at 22.9 for three weeks
+# after that stopped being true, and the cost was not cosmetic: every hosted
+# visitor's install page concluded a submission was mid-review, opened the
+# hand-install section and told them the store copy was behind — walking new
+# users into the Developer-mode route the store listing exists to delete.
+# Bumping this is the LAST step of a submission going live, and it is easy to
+# forget because nothing breaks loudly when it is missed.
+EXTENSION_STORE_VERSION = "28.4"
 
 # The product name lives here and nowhere else. APP_SHORT_NAME is what prose
 # uses on the second mention — spelling out the full name mid-sentence reads
