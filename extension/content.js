@@ -2921,7 +2921,23 @@
           return;
         }
         if (!response || !response.ok) {
-          STATS.lastError = (response && response.error) || "Dashboard rejected the batch";
+          var why = (response && response.error) || "Dashboard rejected the batch";
+          /* A "no" that will be a "no" next time as well.
+           *
+           * Every other failure is held and retried, which is right for a
+           * dropped connection. A free account at its post cap, or an account
+           * over the hourly ingest ceiling, refuses the same batch every time
+           * — so re-queueing it means sending it again and again for as long
+           * as the scan runs. The scan stops instead, and the dashboard's own
+           * sentence is what gets shown.
+           */
+          if (response && response.retryable === false) {
+            stopAutoScroll(why);
+            logLine("✕ " + why);
+            renderHud();
+            return;
+          }
+          STATS.lastError = why;
           QUEUE = batch.concat(QUEUE);
           renderHud();
           return;
@@ -2929,6 +2945,20 @@
         STATS.sent += batch.length;
         STATS.added += response.new || 0;
         STATS.lastError = null;
+        /* Accepted, but not all of it.
+         *
+         * The dashboard trims a batch that would cross the free cap or the
+         * hourly ceiling and says how many did not fit. Dropping that on the
+         * floor left "sent 50, 30 new" on screen while twenty posts were gone,
+         * which is the one thing this HUD must never do.
+         */
+        var short = (response.over_cap || 0) + (response.throttled || 0);
+        if (short) {
+          STATS.lastError = short + " post" + (short === 1 ? "" : "s") +
+            (response.over_cap ? " went past your plan's limit" : " were over the hourly limit") +
+            " and weren't stored.";
+          logLine("! " + short + " not stored");
+        }
         // The account name rides along, because delivering successfully to
         // the WRONG dashboard looks exactly like delivering to the right one.
         logLine("→ sent " + batch.length + ", " + (response.new || 0) + " new" +

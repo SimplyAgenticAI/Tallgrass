@@ -340,9 +340,29 @@ async function handleCapture(message) {
         };
       }
     }
-    if (response.status === 402) {
+    /* Two answers that mean "stop", not "try again".
+     *
+     * A rejected batch is put back at the front of the queue by the content
+     * script, so anything reported as an ordinary failure is retried for as
+     * long as the scan runs. That is right for a dropped connection and wrong
+     * for both of these: a free account at its post cap and an account over
+     * the hourly ingest ceiling will refuse the same batch every time, so
+     * retrying is a tight loop against a server that has already said no —
+     * and the guard meant to stop runaway ingest would have caused one.
+     *
+     * retryable:false is the flag the content script reads to stop the scan
+     * and show the dashboard's own words instead of a status code.
+     */
+    if (response.status === 402 || response.status === 429) {
       const body = await response.json().catch(() => ({}));
-      return { ok: false, error: body.error || "Plan limit reached", upgrade: true };
+      return {
+        ok: false,
+        retryable: false,
+        upgrade: response.status === 402 || !!body.upgrade,
+        error: body.error || (response.status === 402
+          ? "Plan limit reached"
+          : "Too many posts sent in the last hour — give it an hour.")
+      };
     }
     if (!response.ok) {
       return { ok: false, error: `Dashboard returned ${response.status}` };

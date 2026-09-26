@@ -196,7 +196,13 @@ function runScan(page, urlPath, opts) {
       getManifest: function () { return { version: "0.27.0" }; },
       lastError: null, id: "x",
       sendMessage: function (m, cb) {
-        if (cb) { cb({ ok: true, new: (m.posts || []).length }); }
+        // opts.reply lets a test answer a capture the way the dashboard would
+        // — a refusal, or an acceptance that stored less than it was sent.
+        // Recorded, so a test can count how many times a batch was offered.
+        global.__testSends = (global.__testSends || []).concat([m]);
+        var reply = (opts && opts.reply) || null;
+        if (typeof reply === "function") { reply = reply(m); }
+        if (cb) { cb(reply || { ok: true, new: (m.posts || []).length }); }
       },
       onMessage: { addListener: function () {} },
       // The port a scan opens so the service worker can step it while the tab
