@@ -14,6 +14,7 @@ are mostly about what survives.
 
 Run: python tests/retention.test.py
 """
+import io
 import logging
 import os
 import shutil
@@ -62,12 +63,16 @@ def main():
         return row[0] if row else conn.execute(
             "INSERT INTO authors (name) VALUES (?)", (name,)).lastrowid
 
-    def add(conn, source_id, key, when, name="Someone Else", demo=0):
+    def add(conn, source_id, key, when, name="Someone Else", demo=0, seen=None):
+        """`when` is when it was written; `seen` when we captured or last
+        refreshed it. They differ, and retention needs BOTH to be old."""
+        seen = when if seen is None else seen
         return conn.execute(
             "INSERT INTO posts (user_id, fb_post_id, source_id, author_id, body, likes, "
-            "posted_at, is_demo, item_type, engagement_read) VALUES "
-            "(?, ?, ?, ?, 'a post about bees', 12, datetime('now', ?), ?, 'post', 1)",
-            (uid, key, source_id, author(conn, name), when, demo)).lastrowid
+            "posted_at, captured_at, updated_at, is_demo, item_type, engagement_read) "
+            "VALUES (?, ?, ?, ?, 'a post about bees', 12, datetime('now', ?), "
+            "datetime('now', ?), datetime('now', ?), ?, 'post', 1)",
+            (uid, key, source_id, author(conn, name), when, seen, seen, demo)).lastrowid
 
     with db.get_db() as conn:
         big = conn.execute("INSERT INTO sources (user_id, fb_id, kind, name) "
@@ -87,6 +92,9 @@ def main():
                      "VALUES (?, ?, 'x', 'test')", (uid, remixed_old))
         # A quiet group where EVERYTHING is old and there are few posts.
         small_ids = [add(conn, small, "small-%d" % i, OLD) for i in range(6)]
+        # Written long ago, but captured yesterday — the case that would have
+        # made a fresh scan look like data loss.
+        old_but_new = add(conn, big, "old-but-just-scanned", OLD, seen="-1 days")
         # Sample data, old.
         demo_id = add(conn, big, "demo-old", OLD, demo=1)
         # A reply-pipeline row, which lives in its own table entirely.
@@ -102,7 +110,7 @@ def main():
     check("a sweep refuses", (removed, bool(error)), (0, True))
     with db.get_db() as conn:
         check("  and nothing was deleted",
-              conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0], 55)
+              conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0], 56)
 
     print()
     print("what the dry run says")
@@ -114,10 +122,12 @@ def main():
     # and no further: 48 - 16 = 32 of the 40 old ones may go, and the remaining
     # 8 are held back. The floor counts everything the group holds, because what
     # keeps a baseline alive is posts, not their provenance.
-    DROPPABLE = 48 - retention.FLOOR_PER_SOURCE
+    DROPPABLE = 49 - retention.FLOOR_PER_SOURCE
     check("  and it is the busy group's old posts, down to the floor",
           r["posts"], DROPPABLE)
     check("the user's own old post is kept", r["kept"]["own"], 1)
+    check("nothing recently captured is a candidate — even if written long ago",
+          r["posts"] <= len(old_ids), True)
     check("the rest are held back by the floor",
           r["kept"]["floor"], (len(old_ids) - DROPPABLE) + len(small_ids))
     check("it reports a size", r["mb"] > 0, True)
@@ -140,6 +150,8 @@ def main():
         check("  so it can still be scored",
               len(small_ids) >= 0 and all(alive(i) for i in small_ids), True)
         check("the sample post is not retention's business", alive(demo_id), True)
+        check("a post captured yesterday survives, however old it is",
+              alive(old_but_new), True)
         left = [i for i in old_ids if alive(i)]
         check("the floor's worth of old posts remain",
               len(left), len(old_ids) - DROPPABLE)
@@ -149,9 +161,88 @@ def main():
               conn.execute("SELECT COUNT(*) FROM post_comments").fetchone()[0], 1)
 
     print()
+    print("'my own posts' does not depend on anybody visiting Settings")
+    # Almost nobody types their name into Settings, so an exemption that only
+    # honoured that would have protected almost nobody's own posts.
+    nameless, _ = auth.create_user("nameless@example.com", "a-long-enough-pass", "nameless")
+    nid = nameless["id"]
+    with db.get_db() as conn:
+        src = conn.execute("INSERT INTO sources (user_id, fb_id, kind, name) "
+                           "VALUES (?, 'g-n', 'group', 'Their Group')", (nid,)).lastrowid
+        aid = author(conn, "Pat Nameless")
+        theirs = conn.execute(
+            "INSERT INTO posts (user_id, fb_post_id, source_id, author_id, body, likes, "
+            "posted_at, captured_at, updated_at, is_demo, item_type, engagement_read) "
+            "VALUES (?, 'n-mine', ?, ?, 'mine', 9, datetime('now', ?), datetime('now', ?), "
+            "datetime('now', ?), 0, 'post', 1)", (nid, src, aid, OLD, OLD, OLD)).lastrowid
+        others = [conn.execute(
+            "INSERT INTO posts (user_id, fb_post_id, source_id, author_id, body, likes, "
+            "posted_at, captured_at, updated_at, is_demo, item_type, engagement_read) "
+            "VALUES (?, ?, ?, ?, 'theirs', 9, datetime('now', ?), datetime('now', ?), "
+            "datetime('now', ?), 0, 'post', 1)",
+            (nid, "n-other-%d" % i, src, author(conn, "Someone Else"), OLD, OLD, OLD)
+        ).lastrowid for i in range(retention.FLOOR_PER_SOURCE + 5)]
+        # The only evidence of who they are: a comment the extension recorded as
+        # theirs, which is how Facebook's own composer names them.
+        cp2 = conn.execute("INSERT INTO comment_posts (user_id, post_key) "
+                           "VALUES (?, 'thread-2')", (nid,)).lastrowid
+        conn.execute("INSERT INTO post_comments (user_id, post_id, comment_key, author, "
+                     "body, is_mine) VALUES (?, ?, 'c2', 'Pat Nameless', 'thanks', 1)",
+                     (nid, cp2))
+    check("their name was never saved in Settings", mine.get_names(nid), [])
+    check("  but their comments give it away", mine.suggested_names(nid), ["Pat Nameless"])
+    retention.sweep()
+    with db.get_db() as conn:
+        check("their own old post survives anyway",
+              bool(conn.execute("SELECT 1 FROM posts WHERE id = ?", (theirs,)).fetchone()),
+              True)
+        # The floor counts everything the source holds, their own post
+        # included — it is about keeping the group scoreable, not about whose
+        # posts they are.
+        held = conn.execute(
+            "SELECT COUNT(*) FROM posts WHERE user_id = ?", (nid,)).fetchone()[0]
+        check("  while other people's went, down to the floor",
+              held, retention.FLOOR_PER_SOURCE)
+
+    print()
     print("a second sweep has nothing to do")
     removed, error = retention.sweep()
     check("nothing left to remove", (removed, error), (0, None))
+
+    print()
+    print("deleting a post frees its picture too")
+    # Nothing called images.forget, so every deletion left its picture behind
+    # until the LRU cap noticed — months of a small disk held by pictures of
+    # posts that no longer existed, reported on /admin as somebody's data.
+    import images
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 24), (90, 120, 60)).save(buf, "JPEG")
+    with db.get_db() as conn:
+        keeper = add(conn, big, "picture-keeper", NEW)
+        goner = add(conn, big, "picture-goner", NEW)
+    for post_id in (keeper, goner):
+        images.store(post_id, buf.getvalue())
+    check("both pictures are cached",
+          bool(images.cached(keeper)) and bool(images.cached(goner)), True)
+    db.delete_post(goner, uid)
+    check("the deleted post's picture is gone", images.cached(goner), None)
+    check("  and the other one is untouched", bool(images.cached(keeper)), True)
+
+    # And the sweep does the same for what it ages out.
+    with db.get_db() as conn:
+        aged = add(conn, big, "picture-aged", OLD)
+    images.store(aged, buf.getvalue())
+    retention.sweep()
+    with db.get_db() as conn:
+        still_there = bool(conn.execute("SELECT 1 FROM posts WHERE id = ?",
+                                        (aged,)).fetchone())
+    if still_there:
+        check("  (the aged post was held by the floor, so its picture stays)",
+              bool(images.cached(aged)), True)
+    else:
+        check("  retention frees pictures as well as rows",
+              images.cached(aged), None)
 
     print()
     print("the admin page shows it, and only admins may change it")

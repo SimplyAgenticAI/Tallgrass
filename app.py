@@ -72,7 +72,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "30.2"
+APP_VERSION = "30.3"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3764,6 +3764,9 @@ def api_source(source_id):
                          (post_id, _uid()))
         conn.execute("DELETE FROM posts WHERE source_id = ? AND user_id = ?",
                      (source_id, _uid()))
+        # Their cached pictures go with them, or the disk keeps paying for a
+        # group the user deleted.
+        images.forget(post_ids)
         conn.execute("DELETE FROM captures WHERE source_id = ? AND user_id = ?",
                      (source_id, _uid()))
         removed = conn.execute(

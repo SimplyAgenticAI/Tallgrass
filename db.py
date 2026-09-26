@@ -2063,6 +2063,21 @@ def mark_notifications_read(user_id, notification_id=None):
     return unread_count(user_id)
 
 
+def _forget_pictures(post_ids):
+    """Drop the cached pictures of posts that have just been deleted.
+
+    Every path that deletes a post calls this. Without it the files sat in the
+    cache until the LRU cap evicted them — months of a small disk held by
+    pictures of posts that no longer existed, reported on /admin as if they were
+    still somebody's data.
+    """
+    try:
+        import images
+        return images.forget(post_ids)
+    except Exception:                         # noqa: BLE001 - never fail a delete
+        return 0
+
+
 def delete_post(post_id, user_id):
     """Remove one post outright. Returns True if a row went.
 
@@ -2078,7 +2093,10 @@ def delete_post(post_id, user_id):
             "DELETE FROM posts WHERE id = ? AND user_id IS ?",
             (int(post_id), user_id),
         )
-        return cur.rowcount > 0
+        gone = cur.rowcount > 0
+    if gone:
+        _forget_pictures([post_id])
+    return gone
 
 
 def clear_all_captures(user_id):
@@ -2104,6 +2122,8 @@ def clear_all_captures(user_id):
             "SELECT COUNT(*) AS n FROM sources WHERE user_id IS ?", (user_id,)
         ).fetchone()["n"]
 
+        doomed = [r["id"] for r in conn.execute(
+            "SELECT id FROM posts WHERE user_id IS ?", (user_id,)).fetchall()]
         conn.execute("DELETE FROM captures WHERE user_id IS ?", (user_id,))
         conn.execute("DELETE FROM saved WHERE user_id IS ?", (user_id,))
         conn.execute("DELETE FROM remixes WHERE user_id IS ?", (user_id,))
@@ -2117,6 +2137,7 @@ def clear_all_captures(user_id):
             "(SELECT author_id FROM posts WHERE author_id IS NOT NULL)"
         )
 
+    _forget_pictures(doomed)
     return {"posts": removed, "sources": sources}
 
 

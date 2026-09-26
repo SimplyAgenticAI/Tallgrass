@@ -214,3 +214,30 @@ def prune(limit=MAX_CACHE_BYTES):
             continue
     if removed:
         log.info("image cache: evicted %d least-recently-used", removed)
+
+
+def forget(post_ids):
+    """Drop the cached pictures of posts that no longer exist. Returns the count.
+
+    Nothing called this, and nothing had to while posts were only ever added.
+    Now three things delete posts — a source being removed, a single post being
+    deleted, and retention ageing old ones out — and each left its pictures
+    behind. The LRU cap means an orphan is eventually evicted, but only after
+    it has spent months occupying a disk small enough that the cap exists in
+    the first place, and /admin would report it as "post pictures" when the
+    posts were gone.
+
+    Never raises: freeing space is never a reason to fail a deletion.
+    """
+    removed = 0
+    for post_id in post_ids or ():
+        try:
+            path = path_for(post_id)
+            if os.path.isfile(path):
+                os.remove(path)
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log.info("image cache: dropped %d picture(s) of deleted posts", removed)
+    return removed

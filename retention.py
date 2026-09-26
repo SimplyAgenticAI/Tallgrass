@@ -38,6 +38,7 @@ import logging
 import billing
 import db
 import outliers
+from db import get_viewer_names
 
 log = logging.getLogger("tallgrass.retention")
 
@@ -66,15 +67,36 @@ def _candidates(conn, months, floor):
     """
     cutoff = "-%d months" % int(months)
 
-    # Their own posts, by the name they confirmed in Settings. Read through
-    # mine so there is one definition of "mine" in the app.
+    # Their own posts — and NOT only under the name they confirmed in Settings.
+    #
+    # The first version of this read mine.get_names, which is the name somebody
+    # typed into Settings. Almost nobody has, so almost nobody's own posts were
+    # protected, and the exemption that makes this rule safe would have applied
+    # to hardly anyone. Every name the app has reason to believe is theirs
+    # counts instead: what they confirmed, what their own comments say (the
+    # extension reads "Comment as <name>" from Facebook itself), and the name
+    # they gave for stripping their own name out of captures.
     import mine
     own_names = set()
     for user_id in [r["id"] for r in conn.execute(
             "SELECT id FROM users").fetchall()]:
-        for name in mine.get_names(user_id):
-            own_names.add((user_id, " ".join(name.split()).lower()))
+        candidates = list(mine.get_names(user_id))
+        candidates += mine.suggested_names(user_id)
+        candidates += [n for n in get_viewer_names(conn, user_id) if " " in n]
+        for name in candidates:
+            cleaned = " ".join((name or "").split()).lower()
+            if cleaned:
+                own_names.add((user_id, cleaned))
 
+    # OLD BY EVERY CLOCK, not just by when it was written.
+    #
+    # Ageing on posted_at alone would delete a post somebody captured or
+    # re-scanned yesterday, because the post itself is old — so scanning a group
+    # with older posts in it would be followed by the count going DOWN, which
+    # from the outside is indistinguishable from losing data. A re-scan bumps
+    # updated_at (upsert_post), the first capture sets captured_at, and
+    # posted_at is when Facebook says it was written. A post goes only when all
+    # three are past the window: old content that nobody has touched since.
     rows = conn.execute(
         """
         SELECT p.id, p.user_id, p.source_id, p.posted_at, p.captured_at,
@@ -82,10 +104,12 @@ def _candidates(conn, months, floor):
         FROM posts p LEFT JOIN authors a ON a.id = p.author_id
         WHERE p.is_demo = 0
           AND COALESCE(p.posted_at, p.captured_at) < datetime('now', ?)
+          AND COALESCE(p.captured_at, p.posted_at) < datetime('now', ?)
+          AND COALESCE(p.updated_at, p.captured_at, p.posted_at) < datetime('now', ?)
           AND NOT EXISTS (SELECT 1 FROM saved s WHERE s.post_id = p.id)
           AND NOT EXISTS (SELECT 1 FROM remixes r WHERE r.post_id = p.id)
         ORDER BY COALESCE(p.posted_at, p.captured_at) ASC
-        """, (cutoff,)).fetchall()
+        """, (cutoff, cutoff, cutoff)).fetchall()
 
     # The floor: how many posts each source has in total, so the newest are
     # kept even when everything in the group is old.
@@ -157,6 +181,10 @@ def sweep(months=None, floor=FLOOR_PER_SOURCE, limit=5000):
             # pointing at these rows to clean up, and a DELETE against saved or
             # remixes here would be a no-op that implied otherwise.
             conn.execute("DELETE FROM posts WHERE id IN (%s)" % marks, doomed)
+        # Outside the transaction: the pictures of posts that have just gone.
+        # Without this the cache keeps paying for them until the LRU cap
+        # eventually notices, on the disk this whole feature exists to protect.
+        db._forget_pictures(doomed)
         log.info("retention removed %d posts older than %d months",
                  len(doomed), months)
         return len(doomed), None
