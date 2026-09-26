@@ -74,6 +74,37 @@ def names_for(user_id):
     return suggested_names(user_id)[:1], False
 
 
+def matching_posts(user_id, names=None):
+    """The user's own posts by name, WITHOUT scoring them.
+
+    Settings asks a different question from My results: not "how did these do"
+    but "are these mine". Answering the second needs no medians, and scoring for
+    it made the Settings page score every post in the account a second time —
+    at twenty thousand posts, forty thousand rows scored to render one page.
+
+    Deliberately not sharing the scored set with the groups list on that page:
+    that pass includes sample posts, this one excludes them, and a source can
+    hold both (sample data is built from real groups, so a later scan of the
+    same group lands in the same source row). Sharing would quietly move a
+    median.
+    """
+    if names is None:
+        names, _ = names_for(user_id)
+    wanted = {_norm(n) for n in names if _norm(n)}
+    if not wanted:
+        return []
+    with db.get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT p.id, p.source_id, p.body, p.posted_at, "
+            "a.name AS author_name, s.name AS source_name "
+            "FROM posts p LEFT JOIN authors a ON a.id = p.author_id "
+            "LEFT JOIN sources s ON s.id = p.source_id "
+            "WHERE p.user_id = ? AND p.is_demo = 0 "
+            "AND (p.item_type IS NULL OR p.item_type = 'post') "
+            "ORDER BY p.posted_at DESC", (user_id,)).fetchall()]
+    return [r for r in rows if _norm(r.get("author_name")) in wanted]
+
+
 def my_posts(user_id, names=None):
     """The user's own captured posts, scored against their groups, best first.
 
@@ -178,16 +209,18 @@ def recent(user_id, since):
 
 
 def summary(user_id):
-    """What Settings shows: the names, whether confirmed, and the matches."""
+    """What Settings shows: the names, whether confirmed, and which posts matched.
+
+    No multiples here. The scores live on My results, which is one link away and
+    is the page about performance; this panel exists so somebody can check that
+    the name found their posts and nobody else's.
+    """
     names, confirmed = names_for(user_id)
-    posts = my_posts(user_id, names)
-    scored = [p["outlier_multiple"] for p in posts if p["outlier_multiple"] is not None]
+    posts = matching_posts(user_id, names)
     return {
         "names": names,
         "confirmed": confirmed,
         "suggested": suggested_names(user_id),
         "posts": posts,
         "groups": len({p["source_id"] for p in posts}),
-        "beat": sum(1 for m in scored if m >= 1),
-        "scored": len(scored),
     }

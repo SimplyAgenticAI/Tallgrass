@@ -207,20 +207,23 @@
     <p class="fine" style="margin-top:12px">
       Found <b>{{ mine.posts | length }}</b> post{{ '' if mine.posts|length == 1 else 's' }}
       by {{ mine.names | join(' or ') }} in {{ mine.groups }}
-      group{{ '' if mine.groups == 1 else 's' }}{% if mine.scored %} —
-      <b>{{ mine.beat }} of {{ mine.scored }}</b> scored beat the group's usual{% endif %}.
+      group{{ '' if mine.groups == 1 else 's' }}.
       If any of these aren't yours, somebody in that group shares your name.
-      {% if mine.confirmed %}<a href="{{ url_for('results_page') }}">See My results</a>.{% endif %}
+      {# Scores live on My results. Working them out here meant scoring every
+         post in the account a second time to render this page, and this panel's
+         job is "are these mine", not "how did they do". #}
+      <a href="{{ url_for('results_page') }}">See how they did</a>.
     </p>
     <ul class="fine" style="margin:8px 0 0;padding-left:18px">
       {% for p in mine.posts[:10] %}
       <li>
-        <a href="{{ url_for('post_detail', post_id=p.id) }}">
-          {% if p.outlier_multiple is not none %}{{ p.outlier_multiple }}×{% else %}Needs more data{% endif %}</a>
-        · {{ p.source_name or 'a group' }}
+        <a href="{{ url_for('post_detail', post_id=p.id) }}">{{ p.source_name or 'a group' }}</a>
         · {{ (p.body or '')[:80] }}{% if (p.body or '')|length > 80 %}…{% endif %}
       </li>
       {% endfor %}
+      {% if mine.posts | length > 10 %}
+      <li>and {{ mine.posts | length - 10 }} more.</li>
+      {% endif %}
     </ul>
     {% else %}
     <p class="fine" style="margin-top:12px">

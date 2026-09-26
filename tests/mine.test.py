@@ -36,6 +36,7 @@ def main():
     import db
     import auth
     import mine
+    import outliers
     import app as appmod
 
     logging.disable(logging.INFO)
@@ -89,14 +90,30 @@ def main():
     check("used until confirmed", (names, confirmed), (["Jane Smith"], False))
 
     print()
-    print("your posts are found and scored honestly")
-    s = mine.summary(jane["id"])
+    print("Settings answers 'are these mine' without scoring anything")
+    # It used to score every post in the account to render this panel — at
+    # 20,000 posts that was 40,000 rows scored for one page. The scores live on
+    # My results; this list exists to check the name found the right posts.
+    scored_calls = {"n": 0}
+    real_score = outliers.score_posts
+    outliers.score_posts = lambda posts, weights=None: (
+        scored_calls.__setitem__("n", scored_calls["n"] + 1) or real_score(posts, weights))
+    try:
+        s = mine.summary(jane["id"])
+    finally:
+        outliers.score_posts = real_score
+    check("nothing was scored", scored_calls["n"], 0)
     check("two real posts, sample ones never count", len(s["posts"]), 2)
     check("across two groups", s["groups"], 2)
+    check("the breakout is listed", ids[-1] in [p["id"] for p in s["posts"]], True)
+    check("with its group", bool(s["posts"][0]["source_name"]), True)
+
+    print()
+    print("and My results still scores them")
+    posts = mine.my_posts(jane["id"])
     check("the breakout comes first with its multiple",
-          (s["posts"][0]["id"], s["posts"][0]["outlier_multiple"]), (ids[-1], 6.0))
-    check("the thin group's post has no multiple", s["posts"][1]["outlier_multiple"], None)
-    check("only scored posts are counted as beating the group", (s["beat"], s["scored"]), (1, 1))
+          (posts[0]["id"], posts[0]["outlier_multiple"]), (ids[-1], 6.0))
+    check("the thin group's post has no multiple", posts[1]["outlier_multiple"], None)
 
     print()
     print("saving the name")
@@ -122,8 +139,10 @@ def main():
     html = page.get_data(as_text=True)
     check("renders", page.status_code, 200)
     check("shows the found count", "Found <b>2</b> posts" in html, True)
-    check("shows the multiple", "6.0×" in html, True)
-    check("and says when there is not enough data", "Needs more data" in html, True)
+    # No multiples on this page by design: it would cost a second full scoring
+    # pass over the whole account to render a panel about identity.
+    check("no scores on the Settings panel", "6.0×" in html, False)
+    check("  it points at My results instead", "See how they did" in html, True)
 
     print()
     print("my results")
