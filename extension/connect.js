@@ -7,11 +7,40 @@
  * which it does whenever the extension is removed and re-added.
  *
  * The page can only reach this script if its origin is in the manifest's
- * content_scripts matches, so an arbitrary site cannot push credentials in.
+ * content_scripts matches — and that is checked again here, because the
+ * manifest once matched `https://*.onrender.com/*`. Anybody can deploy a free
+ * site on that domain, and this script takes an API key from the page it runs
+ * on and stores the page's OWN origin as the endpoint. So any Render-hosted
+ * page could have re-pointed the extension at itself and quietly received
+ * every post the user scanned afterwards.
+ *
+ * The manifest is pinned to the real hosts now. This second check is here so
+ * that widening the matches again — for a staging URL, say — cannot reopen it
+ * without somebody also adding the host below on purpose.
  */
 
 (function () {
   "use strict";
+
+  /* Where a dashboard may live. Exact hosts, plus the subdomains of the one
+   * domain we own. Never a bare suffix match: "endsWith('.onrender.com')" is
+   * what the hole was.
+   */
+  function dashboardOrigin() {
+    var loc = window.location;
+    if (loc.protocol !== "https:" && loc.protocol !== "http:") return false;
+
+    var host = String(loc.hostname || "").toLowerCase();
+    // Local development, over plain http only on the loopback addresses.
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    // Everything else must be https.
+    if (loc.protocol !== "https:") return false;
+    if (host === "tallgrassapp.com" || host.endsWith(".tallgrassapp.com")) return true;
+    if (host === "outlier-q7ie.onrender.com") return true;
+    return false;
+  }
+
+  if (!dashboardOrigin()) return;
 
   // Tell the page an extension is present, and whether it is already wired to
   // this dashboard. The page needs the second half to decide between "connect

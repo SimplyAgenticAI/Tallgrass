@@ -66,6 +66,8 @@ echo "--- service worker ---"
 node tests/worker.test.js
 echo "--- self-update ---"
 node tests/updater.test.js
+echo "--- only a real dashboard can connect the extension ---"
+node tests/connect.test.js
 echo "--- frontend survives a bare page ---"
 node tests/frontend.test.js
 echo "--- what a new account sees ---"
