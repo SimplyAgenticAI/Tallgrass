@@ -1269,6 +1269,47 @@ _WORD_RE = re.compile(r"^[A-Za-z][A-Za-z'’‘-]{1,29}$")
 VIEWER_NAMES_KEY = "viewer_names"
 
 
+def posts_ingested_since(user_id, hours=1):
+    """How many posts this account has sent in the last `hours`.
+
+    Read from `captures`, which has logged every batch all along — the numbers
+    were only ever used for the health page. Counting the posts table instead
+    would miss re-sends of posts already stored, which is exactly what a retry
+    storm looks like.
+    """
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(post_count), 0) AS n FROM captures "
+                "WHERE user_id = ? AND created_at >= datetime('now', ?)",
+                (user_id, "-%d hours" % int(hours))).fetchone()
+        return int(row["n"] or 0)
+    except Exception:                         # noqa: BLE001 - never block ingest
+        return 0
+
+
+def biggest_accounts(limit=10):
+    """Who holds the most captured posts, and roughly what that costs on disk.
+
+    4KB a post is measured, not guessed: a realistic row carries a caption, a
+    long signed CDN URL, Facebook's image description and — once a graphic has
+    been read for an echo — a couple of thousand characters of vision
+    description.
+    """
+    try:
+        with get_db() as conn:
+            return [dict(r) for r in conn.execute(
+                """
+                SELECT u.id, u.email, u.plan,
+                       COUNT(p.id) AS posts,
+                       COUNT(p.id) * 4096 AS approx_bytes
+                FROM users u JOIN posts p ON p.user_id = u.id AND p.is_demo = 0
+                GROUP BY u.id ORDER BY posts DESC LIMIT ?
+                """, (limit,)).fetchall()]
+    except Exception:                         # noqa: BLE001
+        return []
+
+
 def record_ai_call(user_id, kind):
     """Note one generation, returning its row id, or None.
 

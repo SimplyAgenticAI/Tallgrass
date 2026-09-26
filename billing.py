@@ -278,6 +278,31 @@ def ai_allowed(user, key_source):
     )
 
 
+# Runaway guards, NOT a product limit.
+#
+# Nothing rate-limited ingest at all: a looping extension, a retry storm or a
+# bad build could write until the disk filled, and the first symptom would have
+# been every account's captures failing at once. A real scan of a group sends
+# tens to a few hundred posts, so these are an order of magnitude above normal
+# use — anybody who notices them has something wrong, not something big.
+INGEST_PER_REQUEST = 1000
+INGEST_PER_HOUR = 10000
+
+
+def ingest_burst(user_id, incoming, counted=None):
+    """Whether this batch is within the hourly ceiling.
+
+    Returns (room, used) — `room` is how many of `incoming` may be stored, and
+    is never negative. The caller stores that many and reports the rest as not
+    stored, which is the same shape as the existing per-post failure reporting:
+    a batch is never silently dropped whole.
+    """
+    import db
+    used = db.posts_ingested_since(user_id, hours=1) if counted is None else counted
+    room = max(INGEST_PER_HOUR - used, 0)
+    return min(int(incoming), room), used
+
+
 def capture_allowed(user):
     """Returns (allowed, reason). Enforced at ingest, where it actually bites."""
     if is_admin(user) or is_pro(user):

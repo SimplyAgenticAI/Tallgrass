@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "30.0"
+APP_VERSION = "30.1"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3277,6 +3277,34 @@ def api_capture():
     if allowed is False:
         return jsonify({"ok": False, "error": limit_reason, "upgrade": True}), 402
 
+    # Runaway guards. Nothing rate-limited this at all, so a looping extension
+    # or a retry storm could write until the disk filled and the first symptom
+    # would have been every account's captures failing at once.
+    #
+    # A batch over the ceiling is TRUNCATED and the remainder reported, rather
+    # than rejected whole: the same shape as the existing per-post failure
+    # reporting, and it means a legitimate oversized scan still lands.
+    throttled = 0
+    if len(posts) > billing.INGEST_PER_REQUEST:
+        throttled = len(posts) - billing.INGEST_PER_REQUEST
+        posts = posts[:billing.INGEST_PER_REQUEST]
+
+    room, used_this_hour = billing.ingest_burst(api_user["id"], len(posts))
+    if room < len(posts):
+        throttled += len(posts) - room
+        posts = posts[:room]
+        log.warning("capture: throttled account %s — %d posts already sent this "
+                    "hour", api_user["id"], used_this_hour)
+    if not posts:
+        return jsonify({
+            "ok": False,
+            "error": ("That's %d posts in an hour, which is far more than a scan "
+                      "sends — so something is repeating. Nothing was stored. "
+                      "Give it an hour, and tell us if it keeps happening."
+                      % used_this_hour),
+            "throttled": throttled,
+        }), 429
+
     new_count = 0
     with db.get_db() as conn:
         # Cached: a feed batch carries a source object on most rows, and
@@ -3463,6 +3491,9 @@ def api_capture():
         # add up. The extension shows this so a partial batch is visible at
         # the moment it happens.
         "skipped": len(failed),
+        # Accepted, but over a runaway ceiling — said out loud so a batch that
+        # was cut short is never mistaken for one that all landed.
+        "throttled": throttled,
         "source_id": logged_source,
         # WHOSE dashboard these landed in.
         #
@@ -3771,6 +3802,10 @@ def admin():
         # three of those grow on their own and none of them was reported.
         storage=backup.storage(),
         keep_backups=backup.KEEP,
+        # Who holds the most, so one runaway account is visible before it is
+        # the reason nobody's captures work.
+        biggest=db.biggest_accounts(8),
+        ingest_per_hour=billing.INGEST_PER_HOUR,
         image_cache=images.usage(),
         image_cache_max=images.MAX_CACHE_BYTES,
         # Who is spending the owner's key, so abuse is visible before it is
