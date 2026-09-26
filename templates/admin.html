@@ -140,15 +140,45 @@
     billed to you. Nothing is metered.
   </p>
   {% endif %}
+  {# What each FEATURE costs, which is the question the call count could never
+     answer: every one of them runs on the dearest model available, and until
+     V29.9 nothing recorded a model or a token. An unpriced call is shown as
+     such rather than folded into the total as zero. #}
+  {% if ai_cost %}
+  <table class="admin-table" style="margin-bottom:14px">
+    <thead><tr><th>Feature</th><th>Calls (30d)</th><th>Cost</th><th>Tokens in / out</th></tr></thead>
+    <tbody>
+      {% for row in ai_cost %}
+      <tr>
+        <td class="fine">{{ row.kind }}</td>
+        <td class="fine">{{ row.calls }}{% if row.unpriced %}
+          <span class="fine" style="color:var(--text-faint)">({{ row.unpriced }} unpriced)</span>{% endif %}</td>
+        <td class="fine"><b>${{ '%.2f' % (row.cost or 0) }}</b></td>
+        <td class="fine">
+          {{ '{:,}'.format(row.input_tokens or 0) }} / {{ '{:,}'.format(row.output_tokens or 0) }}
+          {%- if row.cached_tokens %} · {{ '{:,}'.format(row.cached_tokens) }} cached{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td class="fine"><b>Total</b></td>
+        <td class="fine"><b>{{ ai_cost | sum(attribute='calls') }}</b></td>
+        <td class="fine"><b>${{ '%.2f' % (ai_cost | sum(attribute='cost')) }}</b></td>
+        <td class="fine">on the shared key, last 30 days</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
   {% if ai_usage %}
   <table class="admin-table">
-    <thead><tr><th>Account</th><th>Plan</th><th>Generations (30d)</th></tr></thead>
+    <thead><tr><th>Account</th><th>Plan</th><th>Generations (30d)</th><th>Cost</th></tr></thead>
     <tbody>
       {% for row in ai_usage %}
       <tr>
         <td class="fine">{{ row.email }}</td>
         <td class="fine">{{ row.plan }}</td>
         <td class="fine">{{ row.calls }}</td>
+        <td class="fine">${{ '%.2f' % (row.cost or 0) }}</td>
       </tr>
       {% endfor %}
     </tbody>

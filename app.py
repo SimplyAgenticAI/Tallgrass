@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.8"
+APP_VERSION = "29.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -926,7 +926,11 @@ def _ai_gate(kind):
     if not allowed:
         return jsonify({"ok": False, "error": reason, "upgrade": True}), 402
     if source == "environment":
-        db.record_ai_call(user["id"], kind)
+        # The row id rides on `g` so the provider call downstream can attach
+        # what it cost without every function in the chain having to pass it
+        # along. aicost.note does nothing when it is absent, which is the case
+        # for anybody spending their own key.
+        g.ai_usage_id = db.record_ai_call(user["id"], kind)
     return None
 
 
@@ -3772,6 +3776,8 @@ def admin():
         # Who is spending the owner's key, so abuse is visible before it is
         # a bill rather than after.
         ai_usage=db.ai_usage_summary(),
+        # What each feature costs, not just how often it ran.
+        ai_cost=db.ai_cost_by_kind(30),
         ai_limits=billing.AI_LIMITS,
         shared_key=bool(os.environ.get("ANTHROPIC_API_KEY")
                         or os.environ.get("OPENAI_API_KEY")),

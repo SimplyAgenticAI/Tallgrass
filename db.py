@@ -100,6 +100,18 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL,
     kind        TEXT NOT NULL,          -- graphic | write | remix | sage | vision
+    -- What the call actually cost, filled in when the provider answers.
+    --
+    -- The row used to be a kind and a timestamp, so "what does a remix cost"
+    -- had no answer while every feature ran on the dearest model available.
+    -- NULL means the call never reported back: an older row, a failure, or a
+    -- path that does not record yet. Never read as zero cost.
+    model            TEXT,
+    input_tokens     INTEGER,
+    output_tokens    INTEGER,
+    cached_tokens    INTEGER,
+    images           INTEGER,
+    cost_usd         REAL,
     created_at  TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -458,6 +470,14 @@ def _migrate(conn):
     # number, which is nobody's anything.
     if "username" not in _columns(conn, "users"):
         conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
+
+    # What each AI call cost. Added V29.9; before it the table counted calls
+    # and nothing else.
+    for column, kind in (("model", "TEXT"), ("input_tokens", "INTEGER"),
+                         ("output_tokens", "INTEGER"), ("cached_tokens", "INTEGER"),
+                         ("images", "INTEGER"), ("cost_usd", "REAL")):
+        if column not in _columns(conn, "ai_usage"):
+            conn.execute("ALTER TABLE ai_usage ADD COLUMN %s %s" % (column, kind))
 
     # Whether this person has asked not to be emailed about the product.
     #
@@ -1250,14 +1270,61 @@ VIEWER_NAMES_KEY = "viewer_names"
 
 
 def record_ai_call(user_id, kind):
-    """Note one generation. Never raises — a counter must not break a feature."""
+    """Note one generation, returning its row id, or None.
+
+    The id is how the cost gets attached once the provider answers — see
+    aicost.note. Never raises: a counter must not break a feature.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.execute(
+                "INSERT INTO ai_usage (user_id, kind) VALUES (?, ?)",
+                (user_id, kind))
+            return cursor.lastrowid
+    except Exception:                         # noqa: BLE001
+        return None
+
+
+def note_ai_cost(row_id, model="", input_tokens=0, output_tokens=0,
+                 cached_tokens=0, images=0, cost=0.0):
+    """Fill in what one recorded call cost. Never raises."""
     try:
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO ai_usage (user_id, kind) VALUES (?, ?)",
-                (user_id, kind))
+                "UPDATE ai_usage SET model = ?, input_tokens = ?, "
+                "output_tokens = ?, cached_tokens = ?, images = ?, cost_usd = ? "
+                "WHERE id = ?",
+                (model, int(input_tokens), int(output_tokens), int(cached_tokens),
+                 int(images), float(cost), row_id))
+        return True
     except Exception:                         # noqa: BLE001
-        pass
+        return False
+
+
+def ai_cost_by_kind(days=30):
+    """What each feature cost over the window, dearest first.
+
+    `unpriced` is how many calls of that kind never reported a cost — an older
+    row or a path that does not record yet. Shown rather than hidden, because a
+    total that quietly omits half the calls is worse than no total.
+    """
+    try:
+        with get_db() as conn:
+            return [dict(r) for r in conn.execute(
+                """
+                SELECT kind,
+                       COUNT(*) AS calls,
+                       SUM(COALESCE(cost_usd, 0)) AS cost,
+                       SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unpriced,
+                       SUM(COALESCE(input_tokens, 0)) AS input_tokens,
+                       SUM(COALESCE(output_tokens, 0)) AS output_tokens,
+                       SUM(COALESCE(cached_tokens, 0)) AS cached_tokens
+                FROM ai_usage
+                WHERE created_at >= datetime('now', ?)
+                GROUP BY kind ORDER BY cost DESC
+                """, ("-%d days" % int(days),)).fetchall()]
+    except Exception:                         # noqa: BLE001
+        return []
 
 
 def ai_calls_this_month(user_id):
@@ -1279,7 +1346,8 @@ def ai_usage_summary(limit=20):
         with get_db() as conn:
             return [dict(r) for r in conn.execute(
                 """
-                SELECT u.email, u.plan, COUNT(a.id) AS calls
+                SELECT u.email, u.plan, COUNT(a.id) AS calls,
+                       SUM(COALESCE(a.cost_usd, 0)) AS cost
                 FROM ai_usage a JOIN users u ON u.id = a.user_id
                 WHERE a.created_at >= datetime('now', '-30 days')
                 GROUP BY a.user_id ORDER BY calls DESC LIMIT ?

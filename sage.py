@@ -13,6 +13,7 @@ Authorization header to the provider they chose.
 import json
 import os
 
+import aicost
 import db
 import jsonstream
 import outliers
@@ -345,6 +346,7 @@ def _ask_anthropic(config, messages):
             output_config={"effort": "medium"},
             messages=messages,
         )
+        aicost.note(response, config["model"] or ANTHROPIC_MODEL)
     except anthropic.AuthenticationError:
         return None, "That Anthropic key was rejected."
     except anthropic.RateLimitError:
@@ -376,6 +378,7 @@ def _ask_openai(config, messages):
                 {"role": "system", "content": SYSTEM + "\n\n" + _context_block()}
             ] + messages,
         )
+        aicost.note(response, config["model"] or OPENAI_MODEL)
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected."
     except openai.RateLimitError:
@@ -436,6 +439,7 @@ def _stream_anthropic(config, messages):
                 parts.append(chunk)
                 yield {"type": "delta", "text": chunk}
             final = stream.get_final_message()
+            aicost.note(final, config["model"] or ANTHROPIC_MODEL)
     except anthropic.AuthenticationError:
         yield {"type": "error", "error": "That Anthropic key was rejected."}
         return
@@ -663,6 +667,7 @@ def generate_ideas_stream(source_name, posts, count=3, hook="", instructions="")
                 for item in scanner.feed(chunk).take():
                     yield {"type": "item", "data": item}
             final = stream.get_final_message()
+            aicost.note(final, config["model"] or ANTHROPIC_MODEL)
     except anthropic.AuthenticationError:
         yield {"type": "error", "error": "That Anthropic key was rejected."}
         return
@@ -707,6 +712,7 @@ def _ideas_anthropic(config, messages):
             messages=messages,
         ) as stream:
             response = stream.get_final_message()
+        aicost.note(response, config["model"] or ANTHROPIC_MODEL)
     except anthropic.AuthenticationError:
         return None, "That Anthropic key was rejected."
     except anthropic.APIStatusError as exc:
@@ -744,6 +750,7 @@ def _ideas_openai(config, messages):
                            + json.dumps(IDEAS_SCHEMA),
             }] + messages,
         )
+        aicost.note(response, config["model"] or OPENAI_MODEL)
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected."
     except openai.APIStatusError as exc:

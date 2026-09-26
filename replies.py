@@ -12,6 +12,7 @@ depth Write and remix use.
 
 import json
 
+import aicost
 import remix
 import sage
 
@@ -313,6 +314,7 @@ def _label_call(cfg, system, schema, prompt):
                            '\n\nRespond ONLY with JSON: {"labels": [{"id": "...", "label": "...", "reason": "..."}]}'},
                           {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"})
+            aicost.note(response, cfg["model"] or "gpt-4o")
             text = response.choices[0].message.content
         except Exception:                                   # noqa: BLE001
             return []
@@ -326,6 +328,7 @@ def _label_call(cfg, system, schema, prompt):
                 output_config={"effort": "low",
                                "format": {"type": "json_schema", "schema": schema}},
                 messages=[{"role": "user", "content": prompt}])
+            aicost.note(response, MODEL)
             if response.stop_reason == "refusal":
                 return []
             text = next((b.text for b in response.content if b.type == "text"), None)
@@ -356,6 +359,7 @@ def _anthropic(cfg, prompt, system=SYSTEM):
             },
             messages=[{"role": "user", "content": prompt}],
         )
+        aicost.note(response, MODEL)
     except anthropic.RateLimitError:
         return None, "Rate limited by Anthropic — try again in a moment."
     except anthropic.AuthenticationError:
@@ -388,6 +392,7 @@ def _openai(cfg, prompt, system=SYSTEM):
             ],
             response_format={"type": "json_object"},
         )
+        aicost.note(response, cfg["model"] or "gpt-4o")
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected. Check the key on the Settings page."
     except openai.RateLimitError:

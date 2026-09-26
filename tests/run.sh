@@ -84,6 +84,8 @@ echo "--- what works in a group ---"
 python tests/patterns.test.py
 echo "--- remix stays on the subject ---"
 python tests/remix_mode.test.py
+echo "--- what the AI costs ---"
+python tests/aicost.test.py
 echo "--- real posts as sample data ---"
 python tests/snapshot.test.py
 echo "--- streamed json ---"

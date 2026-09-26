@@ -8,6 +8,7 @@ its engagement profile and produces variants on different angles.
 import os
 import urllib.request
 
+import aicost
 import jsonstream
 
 MODEL = "claude-opus-5"
@@ -511,6 +512,7 @@ def _remix_anthropic(cfg, user_content):
             messages=[{"role": "user", "content": user_content}],
         ) as stream:
             response = stream.get_final_message()
+        aicost.note(response, MODEL)
     except anthropic.RateLimitError:
         return None, "Rate limited by Anthropic — try again in a moment."
     except anthropic.AuthenticationError:
@@ -582,6 +584,7 @@ def _stream_anthropic(cfg, user_content, array_key="variants",
                     yield {"type": "item", "data": item}
 
             final = stream.get_final_message()
+            aicost.note(final, MODEL)
     except anthropic.RateLimitError:
         yield {"type": "error", "error": "Rate limited by Anthropic — try again in a moment."}
         return
@@ -661,6 +664,7 @@ def _remix_openai(cfg, user_content):
             ],
             response_format={"type": "json_object"},
         )
+        aicost.note(response, cfg["model"] or "gpt-4o")
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected. Check the key on the Settings page."
     except openai.RateLimitError:
@@ -918,6 +922,7 @@ def describe_original_graphic(post):
                 ],
             }],
         )
+        aicost.note(message, MODEL)
     except anthropic.AuthenticationError:
         return None, "That Anthropic key was rejected."
     except anthropic.APIStatusError as exc:
@@ -1169,6 +1174,9 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
     for model in ("gpt-image-1", "dall-e-3"):
         try:
             resp = client.images.generate(model=model, prompt=prompt, size="1024x1024", n=1)
+            # Image models charge per picture, so the count is the billable
+            # quantity and there are no tokens to read.
+            aicost.note(model=model, images=1)
             item = resp.data[0]
             b64 = getattr(item, "b64_json", None)
             if b64:
