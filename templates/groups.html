@@ -9,6 +9,27 @@
   </div>
 </section>
 
+{# What this account is actually holding, and how to free it up.
+   Deletion has always been here, one button per card; what was missing was any
+   sense of scale, so "am I keeping too much" had no answer and the Delete
+   button read as destructive rather than as housekeeping. #}
+{% if held.posts %}
+<div class="glass notice" style="margin-bottom:18px">
+  <p class="fine" style="margin:0">
+    You're holding <b>{{ '{:,}'.format(held.posts) }}</b> captured
+    post{{ '' if held.posts == 1 else 's' }} across
+    <b>{{ held.sources }}</b> source{{ '' if held.sources == 1 else 's' }},
+    about <b>{{ held.mb }} MB</b>.
+    Deleting a source below removes its posts and frees that room; your saved
+    posts and remixes are kept either way.
+    {% if retention_months %}
+    Posts from other people age out on their own after
+    {{ retention_months }} months — your own posts stay.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
 {% if sources %}
 <section class="source-grid">
   {% for source in sources %}

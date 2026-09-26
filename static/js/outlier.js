@@ -749,6 +749,52 @@
     });
   }
 
+  /* ------------------------------ admin: ageing out other people's posts */
+
+  var retentionToggle = document.getElementById("retention-toggle");
+  if (retentionToggle) {
+    var retentionMsg = document.getElementById("retention-msg");
+    retentionToggle.addEventListener("click", function () {
+      var turningOn = retentionToggle.getAttribute("data-on") !== "1";
+      retentionToggle.disabled = true;
+      retentionMsg.className = "msg-line";
+      retentionMsg.textContent = turningOn
+        ? "Switching it on — old posts will start ageing out."
+        : "Switching it off — nothing more will be removed.";
+      post("/api/admin/retention", { action: "toggle", on: turningOn })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not change it");
+          window.setTimeout(function () { window.location.reload(); }, 600);
+        })
+        .catch(function (error) {
+          retentionMsg.className = "msg-line error";
+          retentionMsg.textContent = error.message;
+          retentionToggle.disabled = false;
+        });
+    });
+
+    var retentionSweep = document.getElementById("retention-sweep");
+    if (retentionSweep) {
+      retentionSweep.addEventListener("click", function () {
+        retentionSweep.disabled = true;
+        retentionMsg.className = "msg-line";
+        retentionMsg.textContent = "Sweeping…";
+        post("/api/admin/retention", { action: "sweep" })
+          .then(function (data) {
+            if (!data.ok) throw new Error(data.error || "Could not sweep");
+            retentionMsg.textContent =
+              "Removed " + data.removed + " post" + (data.removed === 1 ? "" : "s") + ".";
+            window.setTimeout(function () { window.location.reload(); }, 900);
+          })
+          .catch(function (error) {
+            retentionMsg.className = "msg-line error";
+            retentionMsg.textContent = error.message;
+            retentionSweep.disabled = false;
+          });
+      });
+    }
+  }
+
   /* ------------------------------------- admin: sample data for new users */
 
   var sampleSave = document.getElementById("sample-save");

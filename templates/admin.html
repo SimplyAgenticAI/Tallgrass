@@ -105,6 +105,41 @@
       <td class="fine">What is left on the disk for everything above.</td>
     </tr>
   </table>
+  {# Retention: a dry run until somebody switches it on, because this is the
+     only thing in the app that deletes a user's captures. #}
+  <div class="glass notice" style="margin:0 0 14px">
+    <p class="fine" style="margin:0 0 6px">
+      <b>Ageing out other people's posts</b> —
+      {% if retention.enabled %}
+      <span style="color:var(--emerald-bright)">ON</span>. Posts older than
+      {{ retention.months }} months are removed as pages are loaded.
+      {% else %}
+      <span style="color:var(--gold)">DRY RUN</span>. Nothing is being deleted;
+      this is what the rule WOULD remove today.
+      {% endif %}
+    </p>
+    <p class="fine" style="margin:0 0 8px">
+      Would remove <b>{{ '{:,}'.format(retention.posts) }}</b> of
+      {{ '{:,}'.format(retention.total) }} posts (about
+      <b>{{ retention.mb }} MB</b>), keeping
+      {{ '{:,}'.format(retention.kept.own) }} the users wrote themselves and
+      {{ '{:,}'.format(retention.kept.floor) }} held back so no group drops
+      below the {{ floor_per_source }} posts it needs to stay scoreable.
+      Saved posts and remixes are never candidates, and the reply pipeline is a
+      different table entirely.
+    </p>
+    <div class="demo-actions" style="gap:10px">
+      <button class="btn {{ 'btn-ghost' if retention.enabled else 'btn-primary' }}"
+              id="retention-toggle" data-on="{{ '1' if retention.enabled else '0' }}">
+        {{ 'Switch it off' if retention.enabled else 'Switch it on' }}
+      </button>
+      {% if retention.enabled %}
+      <button class="btn btn-ghost" id="retention-sweep">Sweep now</button>
+      {% endif %}
+    </div>
+    <div class="msg-line" id="retention-msg" role="status" aria-live="polite"></div>
+  </div>
+
   {% if biggest %}
   <p class="fine" style="margin:0 0 6px"><b>Who is holding the most</b> — a
     captured post measures about 4KB, so this is where the database goes.

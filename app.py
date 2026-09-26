@@ -34,6 +34,7 @@ import outliers
 import outreach
 import patterns
 import remix
+import retention
 import replies
 import sage
 from demo_data import refresh_sample_accounts, seed_demo_data
@@ -71,7 +72,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "30.1"
+APP_VERSION = "30.2"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -805,9 +806,20 @@ def groups():
         if row:
             return redirect(url_for("group_detail", source_id=row["id"]))
 
+    sources = _sources_with_stats()
+    # What this account holds, so "am I keeping too much" has an answer and the
+    # Delete button on each card reads as housekeeping rather than damage. The
+    # 4KB is measured, not guessed — see db.biggest_accounts.
+    real_posts = sum((s["post_count"] or 0) - (s["demo_count"] or 0) for s in sources)
     return render_template(
         "groups.html",
-        sources=_sources_with_stats(),
+        sources=sources,
+        held={
+            "posts": real_posts,
+            "sources": sum(1 for s in sources if not s["is_demo"]),
+            "mb": max(round(real_posts * 4096 / 1048576, 1), 0.1) if real_posts else 0,
+        },
+        retention_months=billing.RETENTION_MONTHS,
         version=APP_VERSION,
         active="groups",
     )
@@ -2737,6 +2749,34 @@ def admin_demo_snapshot():
                  "attachment; filename=demo_snapshot.json"})
 
 
+@app.route("/api/admin/retention", methods=["POST"])
+@auth.login_required
+def api_admin_retention():
+    """Switch retention on or off, or run one sweep now.
+
+    Off by default and deliberately: this is the only thing in the app that
+    deletes somebody's captures, so it does nothing until an operator has read
+    the dry run and decided.
+    """
+    if not _require_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    action = payload.get("action")
+    if action == "toggle":
+        retention.set_enabled(bool(payload.get("on")))
+    elif action == "sweep":
+        removed, error = retention.sweep()
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+        return jsonify({"ok": True, "removed": removed,
+                        "retention": retention.report()})
+    else:
+        return jsonify({"ok": False, "error": "Unknown action"}), 400
+
+    return jsonify({"ok": True, "retention": retention.report()})
+
+
 @app.route("/api/admin/backup", methods=["POST"])
 @auth.login_required
 def api_admin_backup():
@@ -3806,6 +3846,10 @@ def admin():
         # the reason nobody's captures work.
         biggest=db.biggest_accounts(8),
         ingest_per_hour=billing.INGEST_PER_HOUR,
+        # A DRY RUN by default: what retention would remove, so the rule can be
+        # read against real accounts before it is ever allowed to delete.
+        retention=retention.report(),
+        floor_per_source=retention.FLOOR_PER_SOURCE,
         image_cache=images.usage(),
         image_cache_max=images.MAX_CACHE_BYTES,
         # Who is spending the owner's key, so abuse is visible before it is

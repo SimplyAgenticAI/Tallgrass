@@ -59,11 +59,23 @@ FREE_LIMITS = {"sources": None, "posts": 1000}   # None = unlimited
 # valuable line on the card sounding defensive. Pro differs from Free in one
 # way, so the list says what that one way gets you rather than restating that
 # it is a superset.
+# How long other people's posts are kept. ONE constant, because the number
+# appears on the pricing page, in the account page, and in the sweep that
+# enforces it — and a policy written down in three places is wrong in two of
+# them within a year.
+#
+# Six months. What a group rewarded last week is what its median should
+# describe; a post from a year ago in somebody else's group is storage, not
+# evidence. The things a person would actually miss are exempt (see
+# retention.py): their own posts, anything saved, anything remixed, and
+# everything in the reply pipeline are kept for good.
+RETENTION_MONTHS = 6
+
 PRO_FEATURES = [
-    "Unlimited captured posts and comments",
+    "Scan as much as you like — no total cap",
     "Re-scan as often as you like, so scores stay current",
-    "Full history kept, however long you run it",
-    "More posts scanned, more winners found",
+    "Your own posts, saved posts and remixes kept for good",
+    "%d months of everybody else's posts, so the scores describe now" % RETENTION_MONTHS,
 ]
 
 FREE_FEATURES = [
@@ -316,7 +328,7 @@ def capture_allowed(user):
     if counts["posts"] >= FREE_LIMITS["posts"]:
         return False, (
             f"Free covers {FREE_LIMITS['posts']:,} posts and you've reached it. "
-            "Upgrade for unlimited capture."
+            "Upgrade and keep scanning — there's no total cap on Pro."
         )
 
     return True, None
