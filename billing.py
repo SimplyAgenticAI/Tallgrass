@@ -315,6 +315,21 @@ def ingest_burst(user_id, incoming, counted=None):
     return min(int(incoming), room), used
 
 
+def capture_room(user):
+    """How many more posts this account may store, or None when uncapped.
+
+    capture_allowed answers "may they capture at all", which is checked once
+    before a batch — so an account sitting on 999 of 1,000 posts could send a
+    batch of 800 and keep every one of them. Measured: 1,799 posts on a
+    1,000-post plan. The cap has to be applied to the BATCH, not just to the
+    moment before it, or the number on the pricing page is decoration and the
+    one thing the paid tier sells is given away.
+    """
+    if is_admin(user) or is_pro(user):
+        return None
+    return max(FREE_LIMITS["posts"] - usage(user["id"])["posts"], 0)
+
+
 def capture_allowed(user):
     """Returns (allowed, reason). Enforced at ingest, where it actually bites."""
     if is_admin(user) or is_pro(user):

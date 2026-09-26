@@ -90,6 +90,8 @@ echo "--- runaway guards on capture ---"
 python tests/ingest_guard.test.py
 echo "--- ageing out old posts ---"
 python tests/retention.test.py
+echo "--- the cap, and exports that stream ---"
+python tests/limits_export.test.py
 echo "--- real posts as sample data ---"
 python tests/snapshot.test.py
 echo "--- streamed json ---"

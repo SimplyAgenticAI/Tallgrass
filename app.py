@@ -72,7 +72,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "30.3"
+APP_VERSION = "30.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3329,12 +3329,28 @@ def api_capture():
         throttled = len(posts) - billing.INGEST_PER_REQUEST
         posts = posts[:billing.INGEST_PER_REQUEST]
 
+    # The free cap, applied to this batch rather than only to the moment
+    # before it. Anything over the remaining allowance is reported back with
+    # the upgrade prompt, so the number on the pricing page is the number.
+    over_cap = 0
+    allowance = billing.capture_room(api_user)
+    if allowance is not None and len(posts) > allowance:
+        over_cap = len(posts) - allowance
+        posts = posts[:allowance]
+
     room, used_this_hour = billing.ingest_burst(api_user["id"], len(posts))
     if room < len(posts):
         throttled += len(posts) - room
         posts = posts[:room]
         log.warning("capture: throttled account %s — %d posts already sent this "
                     "hour", api_user["id"], used_this_hour)
+    if not posts and over_cap:
+        allowed_reason = (
+            "Free covers %d posts and you've reached it, so these %d weren't "
+            "stored. Upgrade and keep scanning — there's no total cap on Pro."
+            % (billing.FREE_LIMITS["posts"], over_cap))
+        return jsonify({"ok": False, "error": allowed_reason,
+                        "upgrade": True, "over_cap": over_cap}), 402
     if not posts:
         return jsonify({
             "ok": False,
@@ -3534,6 +3550,11 @@ def api_capture():
         # Accepted, but over a runaway ceiling — said out loud so a batch that
         # was cut short is never mistaken for one that all landed.
         "throttled": throttled,
+        # Over the free allowance: stored what fitted, and says how many did
+        # not, so a batch cut short by the cap is never mistaken for one that
+        # all landed.
+        "over_cap": over_cap,
+        "upgrade": bool(over_cap),
         "source_id": logged_source,
         # WHOSE dashboard these landed in.
         #
@@ -4081,12 +4102,26 @@ def api_reset():
 @app.route("/api/export/<fmt>")
 @auth.login_required
 def api_export(fmt):
-    """Export scored posts for pasting into an LLM or a spreadsheet."""
+    """Export scored posts for pasting into an LLM or a spreadsheet.
+
+    STREAMED, not assembled. This used to build every row as a dict, serialise
+    the lot into one string, and copy that into a BytesIO — three copies of an
+    account's entire corpus resident at once, on a 512MB instance, triggered by
+    a button. A large account pressing Export could take the worker down, and
+    with it everybody's captures, because there is one worker by design.
+
+    Scoring still needs every row (a multiple is meaningless without its
+    group's median), but the serialisation no longer keeps a second and third
+    copy of it.
+    """
     source_id = request.args.get("source_id", type=int)
     scored = outliers.score_posts(_fetch_posts(source_id=source_id))
 
-    rows = [
-        {
+    FIELDS = ("author", "source", "posted_at", "type", "likes", "comments",
+              "shares", "outlier_multiple", "tier", "permalink", "body")
+
+    def row_of(p):
+        return {
             "author": p.get("author_name"),
             "source": p.get("source_name"),
             "posted_at": p.get("posted_at"),
@@ -4099,41 +4134,54 @@ def api_export(fmt):
             "permalink": p.get("permalink"),
             "body": (p.get("body") or "").strip(),
         }
-        for p in scored
-    ]
+
+    def download(generate, mimetype, name):
+        return Response(
+            stream_with_context(generate()), mimetype=mimetype,
+            headers={"Content-Disposition": 'attachment; filename="%s"' % name,
+                     # Chunked and generated as it goes, so there is no length
+                     # to promise and nothing worth a proxy caching.
+                     "Cache-Control": "no-store"})
 
     if fmt == "json":
-        buffer = io.BytesIO(json.dumps(rows, indent=2).encode("utf-8"))
-        return send_file(buffer, mimetype="application/json",
-                         as_attachment=True, download_name="outlier-export.json")
+        def generate():
+            yield "[\n"
+            first = True
+            for p in scored:
+                yield ("" if first else ",\n") + json.dumps(row_of(p), indent=2)
+                first = False
+            yield "\n]\n"
+        return download(generate, "application/json", "outlier-export.json")
 
     if fmt == "csv":
         import csv
-        text = io.StringIO()
-        if rows:
-            writer = csv.DictWriter(text, fieldnames=list(rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(rows)
-        buffer = io.BytesIO(text.getvalue().encode("utf-8"))
-        return send_file(buffer, mimetype="text/csv",
-                         as_attachment=True, download_name="outlier-export.csv")
+
+        class Echo:
+            """csv writes here and the line comes straight back, so nothing
+            accumulates in a buffer that grows with the account."""
+            def write(self, text):
+                return text
+
+        def generate():
+            writer = csv.DictWriter(Echo(), fieldnames=list(FIELDS))
+            yield writer.writerow(dict(zip(FIELDS, FIELDS)))
+            for p in scored:
+                yield writer.writerow(row_of(p))
+        return download(generate, "text/csv", "outlier-export.csv")
 
     if fmt == "markdown":
-        lines = [f"# {APP_NAME} export", ""]
-        for row in rows:
-            headline = (f"{row['outlier_multiple']}x" if row["outlier_multiple"] is not None
-                        else "unscored")
-            lines.append(f"## {headline} — {row['author']} in {row['source']}")
-            lines.append(
-                f"*{row['likes']} reactions · {row['comments']} comments · "
-                f"{row['shares']} shares · {row['type']} · {row['posted_at']}*"
-            )
-            lines.append("")
-            lines.append(row["body"])
-            lines.append("")
-        buffer = io.BytesIO("\n".join(lines).encode("utf-8"))
-        return send_file(buffer, mimetype="text/markdown",
-                         as_attachment=True, download_name="outlier-export.md")
+        def generate():
+            yield "# %s export\n\n" % APP_NAME
+            for p in scored:
+                row = row_of(p)
+                headline = ("%sx" % row["outlier_multiple"]
+                            if row["outlier_multiple"] is not None else "unscored")
+                yield "## %s — %s in %s\n" % (headline, row["author"], row["source"])
+                yield ("*%s reactions · %s comments · %s shares · %s · %s*\n\n"
+                       % (row["likes"], row["comments"], row["shares"],
+                          row["type"], row["posted_at"]))
+                yield row["body"] + "\n\n"
+        return download(generate, "text/markdown", "outlier-export.md")
 
     return jsonify({"ok": False, "error": "Use json, csv, or markdown"}), 400
 
