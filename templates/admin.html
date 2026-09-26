@@ -58,16 +58,53 @@
     <button class="btn btn-primary" id="backup-now">Back up now</button>
   </div>
   <div class="msg-line" id="backup-msg" role="status" aria-live="polite"></div>
-  <p class="fine" style="margin:0 0 12px">
-    {# The disk is 1GB and now holds three things. Saying so beats finding out
-       when a write fails. #}
-    Post pictures are copied here on first view and kept, so they survive
-    Facebook's links expiring. Cache holds
-    <b>{{ '{:,}'.format(image_cache[1]) }}</b> images using
-    <b>{{ '{:,}'.format(image_cache[0] // 1048576) }} MB</b> of a
-    {{ image_cache_max // 1048576 }} MB ceiling; past that the
-    least-recently-viewed are dropped.
-  </p>
+  {# The disk is 1GB and holds three growing things. Only the image cache was
+     ever reported, and free space — the number that decides whether the next
+     capture succeeds — was not shown anywhere. #}
+  {% if storage.low %}
+  <div class="update-note warn" style="margin:0 0 12px">
+    <b>The disk is nearly full.</b>
+    {{ '{:,}'.format(storage.free_bytes // 1048576) }} MB free, and a snapshot
+    of this database needs about
+    {{ '{:,}'.format(storage.needed_free // 1048576) }} MB. Snapshots are being
+    skipped until there is room. Old ones are pruned automatically, so what is
+    filling the disk is the database and the picture cache.
+  </div>
+  {% endif %}
+  <table class="admin-table" style="margin:0 0 12px">
+    <tr>
+      <td class="fine">Database</td>
+      <td class="fine"><b>{{ '{:,}'.format(storage.db_bytes // 1048576) }} MB</b></td>
+      <td class="fine">The captures themselves.</td>
+    </tr>
+    <tr>
+      <td class="fine">Snapshots</td>
+      <td class="fine"><b>{{ '{:,}'.format(storage.backup_bytes // 1048576) }} MB</b></td>
+      <td class="fine">
+        Gzipped, newest {{ keep_backups }} kept, and pruned to stay under
+        {{ storage.backup_budget // 1048576 }} MB.
+      </td>
+    </tr>
+    <tr>
+      <td class="fine">Post pictures</td>
+      <td class="fine"><b>{{ '{:,}'.format(storage.image_bytes // 1048576) }} MB</b></td>
+      <td class="fine">
+        {{ '{:,}'.format(storage.image_count) }} images, copied on first view so
+        they survive Facebook's links expiring. Ceiling
+        {{ image_cache_max // 1048576 }} MB; past that the least-recently-viewed
+        are dropped.
+      </td>
+    </tr>
+    <tr>
+      <td class="fine">Free</td>
+      <td class="fine">
+        <b {% if storage.low %}style="color:var(--gold)"{% endif %}>
+          {% if storage.free_bytes is none %}unknown{% else %}{{ '{:,}'.format(storage.free_bytes // 1048576) }} MB{% endif %}
+        </b>
+      </td>
+      <td class="fine">What is left on the disk for everything above.</td>
+    </tr>
+  </table>
   {% if backups %}
   <table class="admin-table" style="margin-top:12px">
     <thead><tr><th>Snapshot</th><th>Size</th><th>Taken</th><th></th></tr></thead>

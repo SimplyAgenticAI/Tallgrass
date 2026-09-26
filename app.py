@@ -71,7 +71,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "29.7"
+APP_VERSION = "29.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3763,6 +3763,10 @@ def admin():
         # send them a link on its own.
         pending_resets=db.pending_reset_requests(),
         backups=backup.listing(),
+        # The database, its snapshots, the picture cache and what is left —
+        # three of those grow on their own and none of them was reported.
+        storage=backup.storage(),
+        keep_backups=backup.KEEP,
         image_cache=images.usage(),
         image_cache_max=images.MAX_CACHE_BYTES,
         # Who is spending the owner's key, so abuse is visible before it is

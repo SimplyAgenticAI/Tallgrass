@@ -117,15 +117,54 @@ def main():
           os.path.basename(backup.latest()), kept[0]["name"])
 
     print()
-    print("a snapshot can actually be opened")
-    # A backup nobody has opened is a rumour.
+    print("a snapshot can actually be restored and opened")
+    # A backup nobody has opened is a rumour, and now that snapshots are
+    # gzipped, "it restores" is the property that matters rather than "it
+    # opens" — a compressed file of the right size is not a database.
     import sqlite3
-    conn = sqlite3.connect(backup.latest())
+    newest = backup.latest()
+    check("the newest snapshot is compressed", newest.endswith(backup.SUFFIX), True)
+    check("  and is smaller than the database it copied",
+          os.path.getsize(newest) < os.path.getsize(db.DB_PATH), True)
+    expanded = os.path.join(tempfile.mkdtemp(), "restored.db")
+    out, restore_error = backup.restore_to(newest, expanded)
+    check("it expands", restore_error, None)
+    conn = sqlite3.connect(out)
     try:
         rows = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     finally:
         conn.close()
-    check("it contains the accounts", rows, 2)
+    check("and the restored database contains the accounts", rows, 2)
+
+    print()
+    print("the disk cannot be filled by copies of the database")
+    check("retention has a byte budget as well as a count",
+          backup.BUDGET_BYTES > 0, True)
+    check("  and the snapshots are inside it",
+          backup.dir_bytes(backup.BACKUP_DIR) <= backup.BUDGET_BYTES, True)
+    # Squeezed to nothing, the newest is still kept: a rule that can delete the
+    # only current snapshot is worse than no rule.
+    backup.prune(keep=backup.KEEP, budget=1)
+    survivors = backup.listing()
+    check("a tiny budget still leaves one", len(survivors), 1)
+    check("  and it is the newest",
+          survivors[0]["name"], os.path.basename(newest))
+
+    print()
+    print("a snapshot is refused rather than filling the disk")
+    real_free = backup._free_bytes
+    backup._free_bytes = lambda path=None: 1024        # effectively full
+    try:
+        path, error = backup.run()
+        check("it refuses", path, None)
+        check("  and says why", "disk space" in (error or ""), True)
+    finally:
+        backup._free_bytes = real_free
+    check("storage() reports every part",
+          sorted(backup.storage()) == sorted([
+              "db_bytes", "backup_bytes", "backup_budget", "image_bytes",
+              "image_count", "free_bytes", "used_bytes", "needed_free", "low"]),
+          True)
 
     print()
     print("only an admin can take or read one")
