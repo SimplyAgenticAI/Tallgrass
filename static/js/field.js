@@ -208,9 +208,24 @@
   var SPOT_SELECTORS = [".post-badge", ".scale-median", ".stat-value", ".meadow"];
   var TALL_BLADES = 6;
 
+  /* How far from an edge a perch has to be to be worth taking.
+   *
+   * Blades grow at every x, including x ≈ 0, and the tallest one is as likely
+   * to be at the window's edge as anywhere — so the first thing a reader saw
+   * was a dragonfly half off the screen, which is worse than not seeing one.
+   * Wide enough for the insect, its wings and its halo. */
+  var EDGE = 56;
+
+  function inView(x) {
+    return x > EDGE && x < width - EDGE;
+  }
+
   function tallBlades() {
     var ranked = [];
     for (var i = 0; i < blades.length; i++) {
+      // Edge blades are excluded here rather than rejected later, so the
+      // tallest VISIBLE blade is what the meadow's own perch means.
+      if (!inView(blades[i].x)) continue;
       ranked.push({ index: i, worth: blades[i].height * (blades[i].outlier ? 1.35 : 1) });
     }
     ranked.sort(function (a, b) { return b.worth - a.worth; });
@@ -245,6 +260,11 @@
     if (spot.kind === "blade") {
       var blade = blades[spot.index];
       if (!blade || blade.tipX === undefined) return null;
+      // Checked on the TIP, not the root: a tall blade leans and sways, and a
+      // stalk rooted safely inside the window can still put its tip past the
+      // edge. A perch that drifts out of view is given up, as a scrolled-away
+      // card is.
+      if (!inView(blade.tipX)) return null;
       return { x: blade.tipX, y: blade.tipY - 7, blade: blade };
     }
     var box;
@@ -254,16 +274,19 @@
       return null;
     }
     if (!box || !box.width || !box.height) return null;
-    // Wholly on screen, with room above for the insect to sit.
+    // Room above for the insect to sit, and clear of the sticky header.
     if (box.top < 60 || box.bottom > height - 8) return null;
-    if (box.right < 20 || box.left > width - 20) return null;
-    return { x: box.left + box.width / 2, y: box.top - 7 };
+    // And it must be able to sit on the middle of the thing WITH its wings
+    // showing: an element mostly off the side is not somewhere to land.
+    var middle = box.left + box.width / 2;
+    if (!inView(middle)) return null;
+    return { x: middle, y: box.top - 7 };
   }
 
   function choosePerch() {
     var spots = tallBlades();
     perch = spots.length ? spots[0].index : -1;
-    if (!at) at = spots[0] || null;
+    if (!at || !spotPoint(at)) at = spots[0] || null;
   }
 
   /* A different place from the one it is on. Page furniture is weighted over

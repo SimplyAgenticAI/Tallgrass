@@ -45,8 +45,19 @@ function check(name, got, want) {
   if (!ok) { FAILURES.push(name); }
 }
 
+/* Every instance is seeded.
+ *
+ * Which perch it takes, how long it sits, how many hops a visit gets and when
+ * it first turns up are all deliberately random — that is the feature. It also
+ * means an unseeded test is a different test every run, and chasing those
+ * failures cost more than the tests were worth. Each instance gets its own
+ * fixed seed, so a wait that fits today fits tomorrow; pass `seed` to pin a
+ * particular sequence on purpose. */
+var SEEDS = 0;
+
 function load(opts) {
   opts = opts || {};
+  opts.seed = opts.seed || (20260927 + (SEEDS += 7919));
   var clock = 1759000000000;              // any fixed instant
   var drawn = { ellipses: 0 };
   var frames = [];
@@ -90,8 +101,27 @@ function load(opts) {
     };
   });
 
+  /* A seeded Math for the tests that need to know what it will choose.
+   *
+   * Which perch it takes next is deliberately random, which is right for the
+   * feature and miserable for a test that then wants to scroll the thing it
+   * happens to be sitting on. With a seed the sequence is fixed and the test
+   * is about scrolling rather than about luck. */
+  var maths = Math;
+  if (opts.seed) {
+    maths = Object.create(Math);
+    var state = opts.seed >>> 0;
+    maths.random = function () {
+      state = (state + 0x6D2B79F5) >>> 0;
+      var t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+      t = (t ^ (t + (Math.imul(t ^ (t >>> 7), t | 61) >>> 0))) >>> 0;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
   var sandbox = {
-    JSON: JSON, Math: Math, isFinite: isFinite, console: console,
+    JSON: JSON, Math: maths, isFinite: isFinite, console: console,
     setTimeout: function () {}, clearTimeout: function () {},
     cancelAnimationFrame: function () {},
     requestAnimationFrame: function (fn) { frames.push(fn); return frames.length; },
@@ -143,7 +173,11 @@ function load(opts) {
       addEventListener: function (name, fn) { listeners["doc:" + name] = fn; }
     },
     window: {
-      innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1,
+      // Narrow on purpose: the blade count scales with width, every frame draws
+      // all of them, and this file waits out minutes of clock. 640px is ~70
+      // blades instead of ~135 and halves the runtime without changing a single
+      // thing being tested.
+      innerWidth: opts.width || 640, innerHeight: 800, devicePixelRatio: 1,
       // Recorded per name AND per capture flag, because the click handler is
       // registered as a capturing listener.
       matchMedia: function () { return { matches: !!opts.reduceMotion }; },
@@ -176,7 +210,7 @@ function load(opts) {
      * three-minute perch is 11,000 frames at 16ms and 700 at 250ms, and the
      * state machine cannot tell the difference. */
     until: function (predicate, limit, ms) {
-      for (var i = 0; i < (limit || 8000); i++) {
+      for (var i = 0; i < (limit || 1500); i++) {
         api.tick(ms || 16);
         if (predicate()) return i + 1;
       }
@@ -212,14 +246,15 @@ app.tick(16);
 // but never instant, so arriving still reads as a visit.
 var wait = app.field.visitIn(app.now());
 check("a first visit is scheduled", wait > 10000 && wait < 60000, true);
-for (var w = 0; w < 500; w++) app.tick(16);        // eight seconds of frames
+for (var w = 0; w < 160; w++) app.tick(50);        // eight seconds of frames
 check("eight seconds in, still nothing", app.field.fly(), null);
 
 console.log();
 console.log("then it arrives, and works its way over to the blade");
-check("it arrives", app.until(function () { return !!app.field.fly(); }) > 0, true);
+check("it arrives",
+      app.until(function () { return !!app.field.fly(); }, 1200, 40) > 0, true);
 var arrived = app.field.fly();
-check("  from off-screen", arrived.x < 0 || arrived.x > 1200, true);
+check("  from off-screen", arrived.x < 0 || arrived.x > 640, true);
 check("  and it is flying", arrived.state, "arriving");
 
 check("it settles on the blade", app.until(function () {
@@ -273,7 +308,7 @@ app.listeners.mousemove({ clientX: -9999, clientY: -9999 });
 console.log();
 console.log("but the grass still parts — lower down, where the cursor is in it");
 var field = load({ scores: JSON.stringify([6.0, 1.0]) });
-for (var grow = 0; grow < 400; grow++) field.tick(16);   // grown, nothing landed yet
+for (var grow = 0; grow < 140; grow++) field.tick(60);   // grown, nothing landed yet
 check("nothing has landed yet", field.field.fly(), null);
 var still = field.field.tip();
 // The cursor up at the blade's own height does nothing now.
@@ -339,14 +374,17 @@ visit.until(function () {
   return !!f && f.state === "perched";
 });
 check("nothing is left holding on",
-      visit.until(function () { return visit.field.fly() === null; }, 4000, 250) > 0, true);
+      visit.until(function () { return visit.field.fly() === null; }, 6000, 400) > 0, true);
 check("a next visit is scheduled", visit.field.visitIn(visit.now()) > 0, true);
 check("  a minute or more away, not seconds",
       visit.field.visitIn(visit.now()) > 50000, true);
 
 console.log();
 console.log("if it leaves mid-sentence, the words go with it");
-var chatty = load({ scores: JSON.stringify([7.7, 1.1]), tips: TIPS });
+// Seeded, because a departure means every hop used up — up to seven of them,
+// each with its own flight — and how many there are is random. With a seed this
+// is a fixed length instead of a coin toss against the budget below.
+var chatty = load({ scores: JSON.stringify([7.7, 1.1]), tips: TIPS, seed: 31415 });
 chatty.until(function () {
   var f = chatty.field.fly();
   return !!f && f.state === "perched";
@@ -354,9 +392,44 @@ chatty.until(function () {
 var seat = chatty.field.fly();
 chatty.listeners.click({ clientX: seat.x, clientY: seat.y, stopPropagation: function () {} });
 check("it is saying something", !!chatty.field.saying(), true);
-chatty.until(function () { return chatty.field.fly() === null; }, 4000, 250);
+// A departure means every hop used up - up to seven, each with its own flight -
+// so this is a lot of CLOCK and few frames. 400ms a frame, with headroom.
+chatty.until(function () { return chatty.field.fly() === null; }, 6000, 400);
 check("and when it goes, the bubble goes", chatty.field.saying(), null);
 check("  with nothing left on the page", chatty.bubbles.length, 0);
+
+console.log();
+console.log("it never lands where you cannot see it");
+// Reported: the first blade it took was at the very edge of the window and the
+// insect was half off-screen. Blades grow at every x including nearly zero, and
+// the tallest is as likely to be at an edge as anywhere.
+var EDGE = 56;
+var edgy = load({ scores: JSON.stringify([12.0, 3.0, 1.5]) });
+var landings = [];
+for (var hop = 0; hop < 3; hop++) {
+  edgy.until(function () {
+    var f = edgy.field.fly();
+    return !!f && f.state === "perched";
+  }, 1500, 40);
+  var perchedAt = edgy.field.fly();
+  if (perchedAt) landings.push(perchedAt.x);
+  // Move it on, so this samples several perches rather than one.
+  edgy.until(function () {
+    var f = edgy.field.fly();
+    return !f || f.state !== "perched";
+  }, 600, 250);
+}
+check("it landed several times", landings.length >= 3, true);
+check("  and every landing was clear of both edges",
+      landings.filter(function (x) { return x <= EDGE || x >= 640 - EDGE; }), []);
+
+// An element mostly off the side is not somewhere to land either.
+var offside = load({
+  scores: JSON.stringify([8.0, 2.0]),
+  spots: [{ className: "post-badge", box: { left: -30, top: 300, width: 52, height: 52 } },
+          { className: "stat-value", box: { left: 620, top: 300, width: 90, height: 34 } }]
+});
+check("perches hanging off the edges are not offered", offside.field.spots(), 0);
 
 console.log();
 console.log("it lands on the page, not only on the grass");
@@ -365,16 +438,16 @@ var page = load({
   scores: JSON.stringify([8.0, 2.0]),
   tips: TIPS,
   spots: [
-    { className: "post-badge", box: { left: 320, top: 260, width: 52, height: 52 } },
-    { className: "scale-median", box: { left: 420, top: 420, width: 3, height: 26 } },
-    { className: "stat-value", box: { left: 200, top: 150, width: 90, height: 34 } }
+    { className: "post-badge", box: { left: 260, top: 260, width: 52, height: 52 } },
+    { className: "scale-median", box: { left: 380, top: 420, width: 3, height: 26 } },
+    { className: "stat-value", box: { left: 150, top: 150, width: 90, height: 34 } }
   ]
 });
 check("the page offers perches", page.field.spots(), 3);
 check("it settles somewhere", page.until(function () {
   var f = page.field.fly();
   return !!f && f.state === "perched";
-}, 8000) > 0, true);
+}, 1500, 40) > 0, true);
 var first = page.field.spot();
 check("  and it is a real spot", !!first, true);
 
@@ -395,14 +468,14 @@ console.log("and it hangs about, then moves somewhere else");
 var startedOn = JSON.stringify(page.field.spot());
 var moved = page.until(function () {
   return JSON.stringify(page.field.spot()) !== startedOn;
-}, 4000, 250);
+}, 600, 250);
 check("it moves on", moved > 0, true);
 check("  without leaving the page", !!page.field.fly(), true);
 // It is in the air at this instant; the hop counts when it lands.
 page.until(function () {
   var f = page.field.fly();
   return !!f && f.state === "perched";
-}, 4000);
+}, 1200, 40);
 check("  and it is a second landing, not a second visit",
       page.field.hops() >= 2, true);
 check("it sat there a while first — not seconds", moved * 250 > 20000, true);
@@ -412,8 +485,9 @@ console.log("a perch that scrolls away is given up");
 var scrolling = load({
   scores: JSON.stringify([8.0, 2.0]),
   tips: TIPS,
-  spots: [{ className: "post-badge", box: { left: 320, top: 300, width: 52, height: 52 } },
-          { className: "stat-value", box: { left: 700, top: 200, width: 90, height: 34 } }]
+  seed: 20260927,
+  spots: [{ className: "post-badge", box: { left: 260, top: 300, width: 52, height: 52 } },
+          { className: "stat-value", box: { left: 420, top: 200, width: 90, height: 34 } }]
 });
 // Which spot it takes is deliberately a coin toss between page furniture and
 // tall grass, so this waits for a page perch rather than assuming the first
@@ -423,7 +497,7 @@ var onNode = scrolling.until(function () {
   var f = scrolling.field.fly();
   var spot = scrolling.field.spot();
   return !!f && f.state === "perched" && spot && spot.kind === "node";
-}, 20000, 60);
+}, 1800, 250);
 check("it takes a perch on the page within a few hops", onNode > 0, true);
 var riding = sittingOn(scrolling);
 check("it is sitting on something real", !!riding, true);
