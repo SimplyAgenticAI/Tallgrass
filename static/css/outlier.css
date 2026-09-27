@@ -1350,8 +1350,12 @@ select.kind-select option { color: initial; }
   display: inline-block; padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px;
   font-weight: 650; border: 1px solid var(--border); color: var(--text-muted);
 }
-.pl-new { color: #93c5fd; border-color: rgba(147, 197, 253, 0.4); }
-.pl-talking { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.4); }
+/* The stages warm up as a lead progresses: sage, mint, gold, bright emerald.
+   These two were a Tailwind blue and violet — the only two colours in this
+   stylesheet that were not in the palette, which is why the pipeline read as
+   bolted on rather than part of the app. */
+.pl-new { color: var(--text-muted); border-color: rgba(169, 197, 182, 0.38); }
+.pl-talking { color: #9ae6c4; border-color: rgba(154, 230, 196, 0.42); }
 .pl-quoted { color: #f0c274; border-color: rgba(217, 180, 95, 0.45); }
 .pl-booked { color: var(--emerald-bright); border-color: rgba(52, 211, 153, 0.45); }
 .pl-won { color: #1a0f0a; background: var(--emerald); border-color: var(--emerald); }

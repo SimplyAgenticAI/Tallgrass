@@ -70,6 +70,8 @@ echo "--- only a real dashboard can connect the extension ---"
 node tests/connect.test.js
 echo "--- a no is taken as a no ---"
 node tests/refusals.test.js
+echo "--- the dragonfly that visits the meadow ---"
+node tests/dragonfly.test.js
 echo "--- frontend survives a bare page ---"
 node tests/frontend.test.js
 echo "--- what a new account sees ---"
