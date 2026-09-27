@@ -190,22 +190,19 @@
     return range[0] + Math.random() * (range[1] - range[0]);
   }
 
-  /* Somewhere to land.
+  /* Somewhere to land: a blade, and only ever a blade.
    *
-   * It used to be one place: the single tallest blade, every visit, for as long
-   * as it stayed. Watching the same insect sit on the same stalk is watching a
-   * screensaver. Now there is a list, and it hops between them — a handful of
-   * the tall blades, and the parts of the page that mean something:
+   * It briefly perched on the page itself too — the score badge, the median
+   * notch, the headline figures — measured live so it rode a card as the page
+   * scrolled. That was a mistake. A thing that moves when you scroll pulls your
+   * eye off what you are reading, every time you read anything, and an
+   * ornament has no business competing with the words.
    *
-   *   .post-badge    the breakout number on a card
-   *   .scale-median  the notch that IS the group's median
-   *   .stat-value    the headline figures at the top of the feed
-   *   .meadow        a group's own drawn field
-   *
-   * The elements are measured live, so a perched dragonfly rides a card as the
-   * page scrolls, and gives up a spot that scrolls out of sight.
+   * Blades do not scroll. The meadow is fixed to the window, so an insect
+   * sitting in it is still while the page moves under it, which is what makes
+   * it possible to ignore. It hops between several of the tall ones instead —
+   * variety without motion where the page is.
    */
-  var SPOT_SELECTORS = [".post-badge", ".scale-median", ".stat-value", ".meadow"];
   var TALL_BLADES = 6;
 
   /* How far from an edge a perch has to be to be worth taking.
@@ -234,53 +231,17 @@
     });
   }
 
-  function pageSpots() {
-    var found = [];
-    for (var s = 0; s < SPOT_SELECTORS.length; s++) {
-      var nodes;
-      try {
-        nodes = document.querySelectorAll(SPOT_SELECTORS[s]) || [];
-      } catch (error) {
-        nodes = [];
-      }
-      for (var n = 0; n < nodes.length && found.length < 14; n++) {
-        if (spotPoint({ kind: "node", el: nodes[n] })) {
-          found.push({ kind: "node", el: nodes[n] });
-        }
-      }
-    }
-    return found;
-  }
-
-  /* Where a perch is, right now, in window coordinates — or null if it is not
-   * a place to sit any more. The canvas is fixed to the viewport, so an
-   * element's own rectangle is already in the right coordinate space. */
+  /* Where a perch is right now, in window coordinates — or null if it is not a
+   * place to sit any more. */
   function spotPoint(spot) {
     if (!spot) return null;
-    if (spot.kind === "blade") {
-      var blade = blades[spot.index];
-      if (!blade || blade.tipX === undefined) return null;
-      // Checked on the TIP, not the root: a tall blade leans and sways, and a
-      // stalk rooted safely inside the window can still put its tip past the
-      // edge. A perch that drifts out of view is given up, as a scrolled-away
-      // card is.
-      if (!inView(blade.tipX)) return null;
-      return { x: blade.tipX, y: blade.tipY - 7, blade: blade };
-    }
-    var box;
-    try {
-      box = spot.el.getBoundingClientRect();
-    } catch (error) {
-      return null;
-    }
-    if (!box || !box.width || !box.height) return null;
-    // Room above for the insect to sit, and clear of the sticky header.
-    if (box.top < 60 || box.bottom > height - 8) return null;
-    // And it must be able to sit on the middle of the thing WITH its wings
-    // showing: an element mostly off the side is not somewhere to land.
-    var middle = box.left + box.width / 2;
-    if (!inView(middle)) return null;
-    return { x: middle, y: box.top - 7 };
+    var blade = blades[spot.index];
+    if (!blade || blade.tipX === undefined) return null;
+    // Checked on the TIP, not the root: a tall blade leans and sways, and a
+    // stalk rooted safely inside the window can still put its tip past the
+    // edge. A perch that drifts out of view is given up.
+    if (!inView(blade.tipX)) return null;
+    return { x: blade.tipX, y: blade.tipY - 7, blade: blade };
   }
 
   function choosePerch() {
@@ -289,24 +250,17 @@
     if (!at || !spotPoint(at)) at = spots[0] || null;
   }
 
-  /* A different place from the one it is on. Page furniture is weighted over
-   * grass, because a dragonfly on the median notch is the one that makes
-   * somebody look twice. */
+  /* Another tall blade, never the one it is already on. */
   function anotherSpot(avoid) {
-    var spots = pageSpots();
-    var grass = tallBlades();
-    var pool = spots.concat(spots.length ? grass.slice(0, 2) : grass);
+    var pool = tallBlades();
     var usable = [];
     for (var i = 0; i < pool.length; i++) {
-      if (!same(pool[i], avoid) && spotPoint(pool[i])) usable.push(pool[i]);
+      var candidate = pool[i];
+      var isCurrent = avoid && candidate.index === avoid.index;
+      if (!isCurrent && spotPoint(candidate)) usable.push(candidate);
     }
     if (!usable.length) return null;
     return usable[Math.floor(Math.random() * usable.length)];
-  }
-
-  function same(a, b) {
-    if (!a || !b || a.kind !== b.kind) return false;
-    return a.kind === "blade" ? a.index === b.index : a.el === b.el;
   }
 
   function makeFly() {
@@ -439,12 +393,11 @@
         return;
       }
 
-      // Rides whatever it is on: a blade as it sways, a card as it scrolls.
+      // Rides the blade as it sways, body along the stem.
       f.x = here.x;
       f.y = here.y;
-      f.angle = here.blade
-        ? -Math.PI / 2 + Math.sin(time * here.blade.speed + here.blade.phase) * 0.12
-        : -Math.PI / 2;
+      f.angle = -Math.PI / 2 +
+                Math.sin(time * here.blade.speed + here.blade.phase) * 0.12;
       return;
     }
 
@@ -922,12 +875,16 @@
     },
     visitIn: function (now) { return nextVisit ? nextVisit - now : null; },
     tips: function () { return tips.length; },
-    spot: function () {
-      if (!at) return null;
-      return at.kind === "blade" ? { kind: "blade", index: at.index }
-                                 : { kind: "node", of: at.el.className || "node" };
+    spot: function () { return at ? { kind: "blade", index: at.index } : null; },
+    spots: function () { return tallBlades().length; },
+    // Where every offered perch currently is, so the edge rule can be checked
+    // against the list rather than inferred from where it happened to land.
+    spotXs: function () {
+      return tallBlades().map(function (spot) {
+        var point = spotPoint(spot);
+        return point ? Math.round(point.x) : null;
+      });
     },
-    spots: function () { return pageSpots().length; },
     hops: function () { return fly ? fly.hops : 0; },
     saying: function () {
       return said ? said.querySelector("p").textContent : null;

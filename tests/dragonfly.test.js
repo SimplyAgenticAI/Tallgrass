@@ -84,23 +84,6 @@ function load(opts) {
   var canvas = { style: {}, width: 0, height: 0, getContext: function () { return ctx; } };
   var air = { style: {}, width: 0, height: 0, getContext: function () { return ctx; } };
 
-  /* Places on the page worth landing on. Each carries a rectangle the test can
-   * move, which is how a scrolling card is simulated. */
-  var spots = (opts.spots || []).map(function (spot, n) {
-    return {
-      className: spot.className || "post-badge",
-      box: spot.box || { left: 300 + n * 120, top: 200, width: 52, height: 52 },
-      getBoundingClientRect: function () {
-        return {
-          left: this.box.left, top: this.box.top,
-          width: this.box.width, height: this.box.height,
-          right: this.box.left + this.box.width,
-          bottom: this.box.top + this.box.height
-        };
-      }
-    };
-  });
-
   /* A seeded Math for the tests that need to know what it will choose.
    *
    * Which perch it takes next is deliberately random, which is right for the
@@ -132,11 +115,6 @@ function load(opts) {
         if (id === "field") return canvas;
         if (id === "field-air") return air;
         return null;
-      },
-      querySelectorAll: function (selector) {
-        return spots.filter(function (spot) {
-          return ("." + spot.className) === selector;
-        });
       },
       // The multiples of the reader's own scored posts, as base.html supplies.
       body: {
@@ -190,7 +168,6 @@ function load(opts) {
   var api = {
     field: sandbox.window.__field,
     bubbles: bubbles,
-    spots: spots,
     canvas: canvas,
     drawn: drawn,
     listeners: listeners,
@@ -423,106 +400,42 @@ check("it landed several times", landings.length >= 3, true);
 check("  and every landing was clear of both edges",
       landings.filter(function (x) { return x <= EDGE || x >= 640 - EDGE; }), []);
 
-// An element mostly off the side is not somewhere to land either.
-var offside = load({
-  scores: JSON.stringify([8.0, 2.0]),
-  spots: [{ className: "post-badge", box: { left: -30, top: 300, width: 52, height: 52 } },
-          { className: "stat-value", box: { left: 620, top: 300, width: 90, height: 34 } }]
-});
-check("perches hanging off the edges are not offered", offside.field.spots(), 0);
+// And the rule is checked against the LIST, not only against where it happened
+// to land: not one blade on offer may be near an edge.
+var offered = edgy.field.spotXs().filter(function (x) { return x !== null; });
+check("several perches are on offer", offered.length > 1, true);
+check("  and none of them is near an edge",
+      offered.filter(function (x) { return x <= EDGE || x >= 640 - EDGE; }), []);
 
 console.log();
-console.log("it lands on the page, not only on the grass");
-// A feed with a score badge, a median notch and a headline figure on it.
-var page = load({
-  scores: JSON.stringify([8.0, 2.0]),
-  tips: TIPS,
-  spots: [
-    { className: "post-badge", box: { left: 260, top: 260, width: 52, height: 52 } },
-    { className: "scale-median", box: { left: 380, top: 420, width: 3, height: 26 } },
-    { className: "stat-value", box: { left: 150, top: 150, width: 90, height: 34 } }
-  ]
-});
-check("the page offers perches", page.field.spots(), 3);
-check("it settles somewhere", page.until(function () {
-  var f = page.field.fly();
+console.log("it hangs about on a blade, then moves to another one");
+// It briefly landed on the page itself — score badges, the median notch — and
+// rode them as the page scrolled. Removed: a thing that moves while you read
+// takes your eye off the words every time. Blades are fixed to the window, so
+// it hops between them and stays still while the page moves.
+var hopper = load({ scores: JSON.stringify([9.0, 4.0, 2.0, 1.2]) });
+check("every perch on offer is a blade",
+      hopper.field.spots() > 1 && !!hopper.field.spot(), true);
+hopper.until(function () {
+  var f = hopper.field.fly();
   return !!f && f.state === "perched";
-}, 1500, 40) > 0, true);
-var first = page.field.spot();
-check("  and it is a real spot", !!first, true);
+}, 1500, 40);
+var sat = hopper.field.spot();
+check("it settles on one", sat && sat.kind, "blade");
 
-// Where it is sitting, against where that thing is.
-function sittingOn(app) {
-  var f = app.field.fly();
-  var s = app.field.spot();
-  if (!f || !s || s.kind !== "node") return null;
-  for (var i = 0; i < app.spots.length; i++) {
-    var box = app.spots[i].getBoundingClientRect();
-    if (Math.abs(f.x - (box.left + box.width / 2)) < 3) return app.spots[i];
-  }
-  return null;
-}
-
-console.log();
-console.log("and it hangs about, then moves somewhere else");
-var startedOn = JSON.stringify(page.field.spot());
-var moved = page.until(function () {
-  return JSON.stringify(page.field.spot()) !== startedOn;
-}, 600, 250);
-check("it moves on", moved > 0, true);
-check("  without leaving the page", !!page.field.fly(), true);
-// It is in the air at this instant; the hop counts when it lands.
-page.until(function () {
-  var f = page.field.fly();
+var went = hopper.until(function () {
+  var now = hopper.field.spot();
+  return !!now && now.index !== sat.index;
+}, 900, 250);
+check("it moves to a different blade", went > 0, true);
+check("  without leaving", !!hopper.field.fly(), true);
+check("  after sitting a while, not seconds", went * 250 > 20000, true);
+hopper.until(function () {
+  var f = hopper.field.fly();
   return !!f && f.state === "perched";
 }, 1200, 40);
 check("  and it is a second landing, not a second visit",
-      page.field.hops() >= 2, true);
-check("it sat there a while first — not seconds", moved * 250 > 20000, true);
-
-console.log();
-console.log("a perch that scrolls away is given up");
-var scrolling = load({
-  scores: JSON.stringify([8.0, 2.0]),
-  tips: TIPS,
-  seed: 20260927,
-  spots: [{ className: "post-badge", box: { left: 260, top: 300, width: 52, height: 52 } },
-          { className: "stat-value", box: { left: 420, top: 200, width: 90, height: 34 } }]
-});
-// Which spot it takes is deliberately a coin toss between page furniture and
-// tall grass, so this waits for a page perch rather than assuming the first
-// landing is one. Bigger clock steps: the wait is for sitting-time to elapse,
-// not for it to cross the screen.
-var onNode = scrolling.until(function () {
-  var f = scrolling.field.fly();
-  var spot = scrolling.field.spot();
-  return !!f && f.state === "perched" && spot && spot.kind === "node";
-}, 1800, 250);
-check("it takes a perch on the page within a few hops", onNode > 0, true);
-var riding = sittingOn(scrolling);
-check("it is sitting on something real", !!riding, true);
-if (riding) {
-  /* Tapped first, deliberately: a tap resets how long it will sit, which is
-   * real behaviour and it makes the next two checks about scrolling rather
-   * than about whether it happened to move on in that exact frame. */
-  var seat = scrolling.field.fly();
-  scrolling.listeners.click({ clientX: seat.x, clientY: seat.y,
-                              stopPropagation: function () {} });
-  // The page scrolls: the card moves up by forty pixels.
-  riding.box.top -= 40;
-  scrolling.tick(16);
-  // Against where the card IS, not against a remembered delta.
-  check("it rides the card as the page scrolls",
-        Math.abs(scrolling.field.fly().y - (riding.box.top - 7)) < 3, true);
-  // And now the card leaves the window entirely.
-  riding.box.top = -500;
-  var left = scrolling.until(function () {
-    var spot = scrolling.field.spot();
-    return !scrolling.field.fly() || (spot && spot.kind !== "node") ||
-           sittingOn(scrolling) !== riding;
-  }, 2000, 120);
-  check("  and gives the spot up once it is gone", left > 0, true);
-}
+      hopper.field.hops() >= 2, true);
 
 console.log();
 console.log("it perches with no scores too — there is always a tallest blade");
