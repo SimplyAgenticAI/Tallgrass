@@ -21,6 +21,17 @@
   }
 
   var ctx = canvas.getContext("2d", { alpha: true });
+
+  /* The insect gets a canvas of its own, in FRONT of the page.
+   *
+   * The meadow is behind everything (z-index 0, and the cards have solid
+   * backgrounds), which is right for a background and useless for something
+   * that lands on a card's score badge — it would sit behind the card and
+   * disappear. So the grass stays on the back canvas and the dragonfly is
+   * drawn on a front one: same coordinates, same size, no pointer events, and
+   * under both the tip bubble and the walkthrough spotlight. */
+  var air = document.getElementById("field-air");
+  var airCtx = air ? air.getContext("2d", { alpha: true }) : ctx;
   var width = 0, height = 0, dpr = 1;
   var blades = [];
   var motes = [];
@@ -149,7 +160,8 @@
      that was already running. None of it runs under prefers-reduced-motion,
      because this file returns before any of it. */
   var fly = null;
-  var perch = -1;
+  var perch = -1;             // the tallest blade, kept for the meadow's sake
+  var at = null;              // the perch it is heading for or sitting on
   var nextVisit = 0;
 
   /* Around often enough to be a companion rather than an easter egg, and it
@@ -162,60 +174,157 @@
      something comes at it mid-flight. */
   var FIRST_VISIT = [12, 26];          // seconds after load
   var LATER_VISITS = [55, 140];        // seconds between visits
-  var STAY = [90, 210];                // seconds perched
+  var SIT = [26, 64];                  // seconds in ONE spot before moving on
+  var HOPS = [3, 7];                   // spots per visit, then it goes
   var STARTLE_RADIUS = 70;             // only while flying
 
-  // How near a tap has to land. Generous: it is a small insect on a big page,
-  // and a miss feels like the thing is broken rather than that you missed.
-  var TAP_RADIUS = 38;
+  /* How near a tap has to land.
+   *
+   * Reported as too hard to hit twice, so it is deliberately far larger than
+   * the insect. Nothing else on the page competes for these clicks — the
+   * canvas it is drawn on takes no pointer events at all — so a generous
+   * radius costs nothing and a miss feels like a broken toy. */
+  var TAP_RADIUS = 52;
 
   function between(range) {
     return range[0] + Math.random() * (range[1] - range[0]);
   }
 
-  function choosePerch() {
-    // The tallest, preferring the ones the feed calls outliers.
-    var best = -1, bestWorth = -1;
+  /* Somewhere to land.
+   *
+   * It used to be one place: the single tallest blade, every visit, for as long
+   * as it stayed. Watching the same insect sit on the same stalk is watching a
+   * screensaver. Now there is a list, and it hops between them — a handful of
+   * the tall blades, and the parts of the page that mean something:
+   *
+   *   .post-badge    the breakout number on a card
+   *   .scale-median  the notch that IS the group's median
+   *   .stat-value    the headline figures at the top of the feed
+   *   .meadow        a group's own drawn field
+   *
+   * The elements are measured live, so a perched dragonfly rides a card as the
+   * page scrolls, and gives up a spot that scrolls out of sight.
+   */
+  var SPOT_SELECTORS = [".post-badge", ".scale-median", ".stat-value", ".meadow"];
+  var TALL_BLADES = 6;
+
+  function tallBlades() {
+    var ranked = [];
     for (var i = 0; i < blades.length; i++) {
-      var worth = blades[i].height * (blades[i].outlier ? 1.35 : 1);
-      if (worth > bestWorth) { bestWorth = worth; best = i; }
+      ranked.push({ index: i, worth: blades[i].height * (blades[i].outlier ? 1.35 : 1) });
     }
-    perch = best;
+    ranked.sort(function (a, b) { return b.worth - a.worth; });
+    return ranked.slice(0, TALL_BLADES).map(function (row) {
+      return { kind: "blade", index: row.index };
+    });
+  }
+
+  function pageSpots() {
+    var found = [];
+    for (var s = 0; s < SPOT_SELECTORS.length; s++) {
+      var nodes;
+      try {
+        nodes = document.querySelectorAll(SPOT_SELECTORS[s]) || [];
+      } catch (error) {
+        nodes = [];
+      }
+      for (var n = 0; n < nodes.length && found.length < 14; n++) {
+        if (spotPoint({ kind: "node", el: nodes[n] })) {
+          found.push({ kind: "node", el: nodes[n] });
+        }
+      }
+    }
+    return found;
+  }
+
+  /* Where a perch is, right now, in window coordinates — or null if it is not
+   * a place to sit any more. The canvas is fixed to the viewport, so an
+   * element's own rectangle is already in the right coordinate space. */
+  function spotPoint(spot) {
+    if (!spot) return null;
+    if (spot.kind === "blade") {
+      var blade = blades[spot.index];
+      if (!blade || blade.tipX === undefined) return null;
+      return { x: blade.tipX, y: blade.tipY - 7, blade: blade };
+    }
+    var box;
+    try {
+      box = spot.el.getBoundingClientRect();
+    } catch (error) {
+      return null;
+    }
+    if (!box || !box.width || !box.height) return null;
+    // Wholly on screen, with room above for the insect to sit.
+    if (box.top < 60 || box.bottom > height - 8) return null;
+    if (box.right < 20 || box.left > width - 20) return null;
+    return { x: box.left + box.width / 2, y: box.top - 7 };
+  }
+
+  function choosePerch() {
+    var spots = tallBlades();
+    perch = spots.length ? spots[0].index : -1;
+    if (!at) at = spots[0] || null;
+  }
+
+  /* A different place from the one it is on. Page furniture is weighted over
+   * grass, because a dragonfly on the median notch is the one that makes
+   * somebody look twice. */
+  function anotherSpot(avoid) {
+    var spots = pageSpots();
+    var grass = tallBlades();
+    var pool = spots.concat(spots.length ? grass.slice(0, 2) : grass);
+    var usable = [];
+    for (var i = 0; i < pool.length; i++) {
+      if (!same(pool[i], avoid) && spotPoint(pool[i])) usable.push(pool[i]);
+    }
+    if (!usable.length) return null;
+    return usable[Math.floor(Math.random() * usable.length)];
+  }
+
+  function same(a, b) {
+    if (!a || !b || a.kind !== b.kind) return false;
+    return a.kind === "blade" ? a.index === b.index : a.el === b.el;
   }
 
   function makeFly() {
-    // Arrives from whichever side the perch is further from, so there is a
-    // journey to watch rather than a pop-in.
-    var target = blades[perch];
-    var fromLeft = !target || target.x > width / 2;
+    // Arrives from whichever side its first perch is further from, so there is
+    // a journey to watch rather than a pop-in.
+    var first = spotPoint(at);
+    var fromLeft = !first || first.x > width / 2;
     return {
+      hops: 0,
+      sitUntil: 0,
       x: fromLeft ? -40 : width + 40,
       y: height * (0.45 + Math.random() * 0.25),
       vx: 0, vy: 0,
       angle: 0,
       state: "arriving",
       until: 0,                 // when the current hover ends
-      leaveAt: 0,               // when to give up the perch
       wing: 0,
       waypoint: null
     };
   }
 
   function nextWaypoint(f, now) {
-    var target = blades[perch];
-    if (!target || target.tipX === undefined) {
+    var target = spotPoint(at);
+    if (!target) {
+      // Whatever it was heading for has gone. Try elsewhere before giving up.
+      at = anotherSpot(at);
+      target = spotPoint(at);
+    }
+    if (!target) {
       f.state = "leaving";
       f.vx = 4; f.vy = -2;
       return;
     }
-    var dx = target.tipX - f.x;
-    var dy = (target.tipY - 6) - f.y;
+    var dx = target.x - f.x;
+    var dy = target.y - f.y;
     var far = Math.sqrt(dx * dx + dy * dy);
 
     // Close enough to settle; otherwise dart to a point roughly on the way,
     // off the straight line so the approach reads as an insect's.
     if (far < 26) {
-      f.waypoint = { x: target.tipX, y: target.tipY - 5, settle: true };
+      f.waypoint = { x: target.x, y: target.y, settle: true };
       return;
     }
     var stride = Math.min(far, 90 + Math.random() * 130);
@@ -271,7 +380,9 @@
       if (dist < 4) {
         if (wp.settle) {
           f.state = "perched";
-          f.leaveAt = now + between(STAY) * 1000;
+          f.hops += 1;
+          f.sitUntil = now + between(SIT) * 1000;
+          f.maxHops = f.maxHops || Math.round(between(HOPS));
         } else if (now >= f.until) {
           f.waypoint = null;                  // hover over; dart again
         }
@@ -286,17 +397,31 @@
     }
 
     if (f.state === "perched") {
-      var blade = blades[perch];
-      if (!blade || blade.tipX === undefined || now >= f.leaveAt) {
+      var here = spotPoint(at);
+      var done = now >= f.sitUntil;
+
+      // Its seat vanished — the card scrolled away, the page changed — or it
+      // has sat here long enough. Either way, somewhere else.
+      if (!here || done) {
+        var next = anotherSpot(at);
+        if (next && f.hops < (f.maxHops || 4)) {
+          at = next;
+          f.state = "arriving";
+          f.waypoint = null;
+          return;
+        }
         f.state = "leaving";
         f.vx = (Math.random() < 0.5 ? -1 : 1) * 4.5;
         f.vy = -2.6;
         return;
       }
-      // Rides the blade as it sways, body along the stem.
-      f.x = blade.tipX;
-      f.y = blade.tipY - 7;
-      f.angle = -Math.PI / 2 + Math.sin(time * blade.speed + blade.phase) * 0.12;
+
+      // Rides whatever it is on: a blade as it sways, a card as it scrolls.
+      f.x = here.x;
+      f.y = here.y;
+      f.angle = here.blade
+        ? -Math.PI / 2 + Math.sin(time * here.blade.speed + here.blade.phase) * 0.12
+        : -Math.PI / 2;
       return;
     }
 
@@ -312,10 +437,13 @@
   }
 
   function drawFly() {
+    // Its own layer, cleared every frame whether or not anything is on it.
+    if (air) airCtx.clearRect(0, 0, width, height);
     if (!fly) return;
     var f = fly;
     var perched = f.state === "perched";
 
+    var ctx = airCtx;              // shadows the meadow's context here only
     ctx.save();
     ctx.translate(f.x, f.y);
     ctx.rotate(f.angle);
@@ -451,6 +579,14 @@
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (air) {
+      air.width = canvas.width;
+      air.height = canvas.height;
+      air.style.width = width + "px";
+      air.style.height = height + "px";
+      airCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
 
     build();
   }
@@ -644,8 +780,8 @@
     said = bubble;
     placeBubble();
 
-    // Sitting still while it talks, however long that takes.
-    if (fly.state === "perched") fly.leaveAt = Date.now() + between(STAY) * 1000;
+    // Sitting still while it is being talked to, however long that takes.
+    if (fly.state === "perched") fly.sitUntil = Date.now() + between(SIT) * 1000;
   }
 
   function placeBubble() {
@@ -763,6 +899,13 @@
     },
     visitIn: function (now) { return nextVisit ? nextVisit - now : null; },
     tips: function () { return tips.length; },
+    spot: function () {
+      if (!at) return null;
+      return at.kind === "blade" ? { kind: "blade", index: at.index }
+                                 : { kind: "node", of: at.el.className || "node" };
+    },
+    spots: function () { return pageSpots().length; },
+    hops: function () { return fly ? fly.hops : 0; },
     saying: function () {
       return said ? said.querySelector("p").textContent : null;
     },

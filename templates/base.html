@@ -25,6 +25,12 @@
 
 <div class="ambient"></div>
 <canvas id="field" class="field" aria-hidden="true"></canvas>
+{# The dragonfly's own layer, in FRONT of the page.
+   The meadow above is behind everything, which is right for grass and useless
+   for an insect that lands on a card's score badge — it would sit behind the
+   card. Same size and coordinates, no pointer events, and beneath both the tip
+   bubble and the walkthrough spotlight. #}
+<canvas id="field-air" class="field-air" aria-hidden="true"></canvas>
 
 <header class="topbar">
   <a class="brand" href="{{ url_for('feed') }}">

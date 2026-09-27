@@ -71,6 +71,24 @@ function load(opts) {
     }
   };
   var canvas = { style: {}, width: 0, height: 0, getContext: function () { return ctx; } };
+  var air = { style: {}, width: 0, height: 0, getContext: function () { return ctx; } };
+
+  /* Places on the page worth landing on. Each carries a rectangle the test can
+   * move, which is how a scrolling card is simulated. */
+  var spots = (opts.spots || []).map(function (spot, n) {
+    return {
+      className: spot.className || "post-badge",
+      box: spot.box || { left: 300 + n * 120, top: 200, width: 52, height: 52 },
+      getBoundingClientRect: function () {
+        return {
+          left: this.box.left, top: this.box.top,
+          width: this.box.width, height: this.box.height,
+          right: this.box.left + this.box.width,
+          bottom: this.box.top + this.box.height
+        };
+      }
+    };
+  });
 
   var sandbox = {
     JSON: JSON, Math: Math, isFinite: isFinite, console: console,
@@ -80,7 +98,16 @@ function load(opts) {
     // The only clock in the room.
     Date: { now: function () { return clock; } },
     document: {
-      getElementById: function (id) { return id === "field" ? canvas : null; },
+      getElementById: function (id) {
+        if (id === "field") return canvas;
+        if (id === "field-air") return air;
+        return null;
+      },
+      querySelectorAll: function (selector) {
+        return spots.filter(function (spot) {
+          return ("." + spot.className) === selector;
+        });
+      },
       // The multiples of the reader's own scored posts, as base.html supplies.
       body: {
         style: {},
@@ -129,6 +156,7 @@ function load(opts) {
   var api = {
     field: sandbox.window.__field,
     bubbles: bubbles,
+    spots: spots,
     canvas: canvas,
     drawn: drawn,
     listeners: listeners,
@@ -173,7 +201,7 @@ var TIPS = JSON.stringify([
 var app = load({ scores: JSON.stringify([2.1, 14.6, 3.4, 1.2, 8.8]), tips: TIPS });
 check("the field exposes itself for inspection", !!app.field, true);
 check("blades were built", app.field.blades() > 20, true);
-check("the perch is the tallest blade", app.field.perch(), app.field.tallest());
+check("the tallest blade is known", app.field.perch(), app.field.tallest());
 check("the hook cannot drive it, only watch it", typeof app.field.step, "undefined");
 
 console.log();
@@ -198,7 +226,7 @@ check("it settles on the blade", app.until(function () {
   var f = app.field.fly();
   return !!f && f.state === "perched";
 }) > 0, true);
-check("  which is still the tallest one", app.field.perch(), app.field.tallest());
+check("  on one of its chosen spots", !!app.field.spot(), true);
 var tip = app.field.tip();
 var sat = app.field.fly();
 check("  sitting at its tip",
@@ -329,6 +357,98 @@ check("it is saying something", !!chatty.field.saying(), true);
 chatty.until(function () { return chatty.field.fly() === null; }, 4000, 250);
 check("and when it goes, the bubble goes", chatty.field.saying(), null);
 check("  with nothing left on the page", chatty.bubbles.length, 0);
+
+console.log();
+console.log("it lands on the page, not only on the grass");
+// A feed with a score badge, a median notch and a headline figure on it.
+var page = load({
+  scores: JSON.stringify([8.0, 2.0]),
+  tips: TIPS,
+  spots: [
+    { className: "post-badge", box: { left: 320, top: 260, width: 52, height: 52 } },
+    { className: "scale-median", box: { left: 420, top: 420, width: 3, height: 26 } },
+    { className: "stat-value", box: { left: 200, top: 150, width: 90, height: 34 } }
+  ]
+});
+check("the page offers perches", page.field.spots(), 3);
+check("it settles somewhere", page.until(function () {
+  var f = page.field.fly();
+  return !!f && f.state === "perched";
+}, 8000) > 0, true);
+var first = page.field.spot();
+check("  and it is a real spot", !!first, true);
+
+// Where it is sitting, against where that thing is.
+function sittingOn(app) {
+  var f = app.field.fly();
+  var s = app.field.spot();
+  if (!f || !s || s.kind !== "node") return null;
+  for (var i = 0; i < app.spots.length; i++) {
+    var box = app.spots[i].getBoundingClientRect();
+    if (Math.abs(f.x - (box.left + box.width / 2)) < 3) return app.spots[i];
+  }
+  return null;
+}
+
+console.log();
+console.log("and it hangs about, then moves somewhere else");
+var startedOn = JSON.stringify(page.field.spot());
+var moved = page.until(function () {
+  return JSON.stringify(page.field.spot()) !== startedOn;
+}, 4000, 250);
+check("it moves on", moved > 0, true);
+check("  without leaving the page", !!page.field.fly(), true);
+// It is in the air at this instant; the hop counts when it lands.
+page.until(function () {
+  var f = page.field.fly();
+  return !!f && f.state === "perched";
+}, 4000);
+check("  and it is a second landing, not a second visit",
+      page.field.hops() >= 2, true);
+check("it sat there a while first — not seconds", moved * 250 > 20000, true);
+
+console.log();
+console.log("a perch that scrolls away is given up");
+var scrolling = load({
+  scores: JSON.stringify([8.0, 2.0]),
+  tips: TIPS,
+  spots: [{ className: "post-badge", box: { left: 320, top: 300, width: 52, height: 52 } },
+          { className: "stat-value", box: { left: 700, top: 200, width: 90, height: 34 } }]
+});
+// Which spot it takes is deliberately a coin toss between page furniture and
+// tall grass, so this waits for a page perch rather than assuming the first
+// landing is one. Bigger clock steps: the wait is for sitting-time to elapse,
+// not for it to cross the screen.
+var onNode = scrolling.until(function () {
+  var f = scrolling.field.fly();
+  var spot = scrolling.field.spot();
+  return !!f && f.state === "perched" && spot && spot.kind === "node";
+}, 20000, 60);
+check("it takes a perch on the page within a few hops", onNode > 0, true);
+var riding = sittingOn(scrolling);
+check("it is sitting on something real", !!riding, true);
+if (riding) {
+  /* Tapped first, deliberately: a tap resets how long it will sit, which is
+   * real behaviour and it makes the next two checks about scrolling rather
+   * than about whether it happened to move on in that exact frame. */
+  var seat = scrolling.field.fly();
+  scrolling.listeners.click({ clientX: seat.x, clientY: seat.y,
+                              stopPropagation: function () {} });
+  // The page scrolls: the card moves up by forty pixels.
+  riding.box.top -= 40;
+  scrolling.tick(16);
+  // Against where the card IS, not against a remembered delta.
+  check("it rides the card as the page scrolls",
+        Math.abs(scrolling.field.fly().y - (riding.box.top - 7)) < 3, true);
+  // And now the card leaves the window entirely.
+  riding.box.top = -500;
+  var left = scrolling.until(function () {
+    var spot = scrolling.field.spot();
+    return !scrolling.field.fly() || (spot && spot.kind !== "node") ||
+           sittingOn(scrolling) !== riding;
+  }, 2000, 120);
+  check("  and gives the spot up once it is gone", left > 0, true);
+}
 
 console.log();
 console.log("it perches with no scores too — there is always a tallest blade");

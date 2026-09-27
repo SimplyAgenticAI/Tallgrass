@@ -133,6 +133,14 @@ body {
   pointer-events: none; opacity: 0.85;
 }
 
+/* The dragonfly's layer: in front of the page so it can be seen sitting on a
+   card's badge or the median notch, and never in the way of a click — the tap
+   is worked out from coordinates in field.js, not from this element. */
+.field-air {
+  position: fixed; inset: 0; z-index: 870;
+  pointer-events: none;
+}
+
 .topbar {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
