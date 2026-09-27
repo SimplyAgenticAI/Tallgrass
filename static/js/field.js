@@ -167,7 +167,7 @@
 
   // How near a tap has to land. Generous: it is a small insect on a big page,
   // and a miss feels like the thing is broken rather than that you missed.
-  var TAP_RADIUS = 30;
+  var TAP_RADIUS = 38;
 
   function between(range) {
     return range[0] + Math.random() * (range[1] - range[0]);
@@ -295,7 +295,7 @@
       }
       // Rides the blade as it sways, body along the stem.
       f.x = blade.tipX;
-      f.y = blade.tipY - 5;
+      f.y = blade.tipY - 7;
       f.angle = -Math.PI / 2 + Math.sin(time * blade.speed + blade.phase) * 0.12;
       return;
     }
@@ -327,46 +327,115 @@
      * "click me" label would spoil the only part of this worth having. */
     if (perched) {
       var pulse = 0.5 + Math.sin(time * 1.6) * 0.5;
-      var halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 26);
+      var halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 34);
       halo.addColorStop(0, "rgba(110, 231, 183, " + (0.12 + pulse * 0.1).toFixed(3) + ")");
       halo.addColorStop(1, "rgba(110, 231, 183, 0)");
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(0, 0, 26, 0, Math.PI * 2);
+      ctx.arc(0, 0, 34, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Wings. A beat too fast to resolve reads as a blur, which is what the eye
-    // actually sees; at rest they are held open and still, as the insect does.
-    var beat = perched ? 0.06 : Math.sin(f.wing * 1.9) * 0.5;
-    var span = perched ? 13 : 12;
-    ctx.fillStyle = "rgba(214, 245, 232, " + (perched ? 0.3 : 0.18) + ")";
-    var pairs = [[-1, -3], [1, -3], [-1, 2], [1, 2]];
-    for (var w = 0; w < pairs.length; w++) {
-      var side = pairs[w][0], along = pairs[w][1];
+    /* An actual dragonfly, at a size you can see and hit.
+     *
+     * The first version was three ellipses, which at a glance was a moth. What
+     * makes the silhouette read as THIS insect, in order of how much each one
+     * does: four wings held out sideways rather than folded back; a long
+     * needle of an abdomen, segmented and tapering; and a blunt head that is
+     * mostly two enormous eyes.
+     *
+     * Head toward +x, wings across y. Two body lengths longer than before and
+     * about half again as wide, which is what makes it a target.
+     */
+    var beat = perched ? 0.04 : Math.sin(f.wing * 1.9) * 0.42;
+
+    // WINGS. Held nearly square to the body — a dragonfly at rest does not
+    // fold them away, which is most of why the shape is recognisable.
+    var wings = [
+      { at: 3.5, span: 21, width: 3.4, side: -1 },      // forewings
+      { at: 3.5, span: 21, width: 3.4, side: 1 },
+      { at: -1.5, span: 18, width: 3.9, side: -1 },     // hindwings, shorter
+      { at: -1.5, span: 18, width: 3.9, side: 1 }       // and a touch broader
+    ];
+    for (var w = 0; w < wings.length; w++) {
+      var wing = wings[w];
       ctx.save();
-      ctx.translate(along, 0);
-      ctx.rotate(side * (0.5 + beat));
+      ctx.translate(wing.at, 0);
+      // Perched: swept back a few degrees from square. Flying: beating.
+      ctx.rotate(wing.side * (1.36 + beat));
       ctx.beginPath();
-      ctx.ellipse(0, side * span * 0.42, span, 2.3, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, wing.span * 0.5, wing.width, wing.span * 0.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(220, 248, 236, " + (perched ? 0.26 : 0.16) + ")";
       ctx.fill();
+      // A leading edge and, on the forewings, the dark stigma near the tip —
+      // both tiny, both what the eye uses to read it as a wing rather than a
+      // petal.
+      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = "rgba(167, 243, 208, " + (perched ? 0.5 : 0.32) + ")";
+      ctx.beginPath();
+      ctx.moveTo(-wing.width * 0.5, 1);
+      ctx.lineTo(-wing.width * 0.2, wing.span * 0.94);
+      ctx.stroke();
+      if (wing.span > 20) {
+        ctx.beginPath();
+        ctx.ellipse(-wing.width * 0.25, wing.span * 0.82, 0.9, 1.9, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(16, 60, 42, 0.5)";
+        ctx.fill();
+      }
       ctx.restore();
     }
 
-    // A long tail, a thicker thorax, and one gold glint of an eye.
+    // ABDOMEN. A long taper rather than one ellipse, with segment lines — the
+    // thing that stops it reading as a bee.
+    var tail = ctx.createLinearGradient(-30, 0, 0, 0);
+    tail.addColorStop(0, "rgba(16, 185, 129, 0.75)");
+    tail.addColorStop(1, "rgba(110, 231, 183, 0.95)");
     ctx.beginPath();
-    ctx.ellipse(-9, 0, 9, 1.2, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(52, 211, 153, 0.85)";
+    ctx.moveTo(-1, -2.1);
+    ctx.quadraticCurveTo(-16, -1.5, -29, -0.5);
+    ctx.quadraticCurveTo(-31, 0, -29, 0.5);
+    ctx.quadraticCurveTo(-16, 1.5, -1, 2.1);
+    ctx.closePath();
+    ctx.fillStyle = tail;
     ctx.fill();
 
+    ctx.strokeStyle = "rgba(6, 40, 27, 0.35)";
+    ctx.lineWidth = 0.5;
+    for (var seg = 1; seg <= 5; seg++) {
+      var sx = -3 - seg * 4.6;
+      var half = 1.9 * (1 - seg / 7);
+      ctx.beginPath();
+      ctx.moveTo(sx, -half);
+      ctx.lineTo(sx, half);
+      ctx.stroke();
+    }
+
+    // THORAX, where the wings are anchored: short, deep, slightly hunched.
     ctx.beginPath();
-    ctx.ellipse(1, 0, 4, 2.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(1.5, 0, 5.4, 3.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(52, 211, 153, 0.95)";
+    ctx.fill();
+
+    // HEAD: mostly eyes. Two of them, wide apart, which no moth has.
+    ctx.beginPath();
+    ctx.ellipse(7.6, 0, 2.6, 2.9, 0, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(110, 231, 183, 0.95)";
     ctx.fill();
 
+    ctx.fillStyle = "rgba(217, 180, 95, 0.92)";
     ctx.beginPath();
-    ctx.arc(5.4, 0, 1.9, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(217, 180, 95, 0.9)";
+    ctx.ellipse(8.6, -1.9, 2.1, 2.3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(8.6, 1.9, 2.1, 2.3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // A catchlight on each, so they read as eyes and not as blobs.
+    ctx.fillStyle = "rgba(255, 252, 240, 0.85)";
+    ctx.beginPath();
+    ctx.arc(9.5, -2.4, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(9.5, 2.4, 0.6, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -420,9 +489,24 @@
 
       var sway = Math.sin(time * b.speed + b.phase) * 0.24 + gust * 0.5;
 
-      // The cursor parts the grass it passes over.
+      /* The cursor parts the grass it passes through.
+       *
+       * Two limits, both because the dragonfly is now something you reach for:
+       *
+       * The cursor has to be DOWN in the grass, past the blade's halfway
+       * point, rather than anywhere above its tip. It used to be
+       * `height - b.height * 1.6`, which on a tall blade is most of the
+       * window — so crossing the middle of the page pushed the tall blades
+       * about, and the tall blades are exactly where the insect sits.
+       *
+       * And the blade it is sitting on does not move for the cursor at all
+       * while it is there. Riding a tip that recoils from your pointer means
+       * the thing you are trying to click walks away from you as you approach
+       * it, which is the most quietly infuriating interaction there is. */
+      var occupied = fly && fly.state === "perched" && i === perch;
       var dx = b.x - mouse.x;
-      if (mouse.y > height - b.height * 1.6 && dx > -MOUSE_RADIUS && dx < MOUSE_RADIUS) {
+      if (!occupied && mouse.y > height - h * 0.5 &&
+          dx > -MOUSE_RADIUS && dx < MOUSE_RADIUS) {
         var push = (1 - Math.abs(dx) / MOUSE_RADIUS);
         sway += (dx > 0 ? 1 : -1) * push * 0.9;
       }

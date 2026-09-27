@@ -60,6 +60,11 @@ function load(opts) {
     fill: function () {}, save: function () {}, restore: function () {},
     translate: function () {}, rotate: function () {}, arc: function () {},
     ellipse: function () { drawn.ellipses += 1; },
+    // The wing veins, the abdomen taper and its segment lines.
+    lineTo: function () {}, closePath: function () {},
+    createLinearGradient: function () {
+      return { addColorStop: function () {} };
+    },
     // The halo it wears while perched.
     createRadialGradient: function () {
       return { addColorStop: function () {} };
@@ -217,6 +222,43 @@ check("and the pointer says it is tappable",
       app.field.tappableAt(atRest.x + 6, atRest.y + 6), true);
 check("  while the page away from it is not",
       app.field.tappableAt(atRest.x + 300, atRest.y), false);
+
+console.log();
+console.log("the blade it sits on ignores the cursor, so it can be reached");
+// The bug this pins: blades recoil from the pointer, the insect rides its
+// blade's tip, so reaching for it pushed it sideways and you chased it round
+// the screen.
+var sitting = app.field.fly();
+app.listeners.mousemove({ clientX: sitting.x, clientY: sitting.y });
+app.tick(16);
+var held = app.field.fly();
+check("it has not been shoved aside", Math.abs(held.x - sitting.x) < 4, true);
+check("  and is still tappable where it was",
+      app.field.tappableAt(sitting.x, sitting.y), true);
+// Twenty more frames of the cursor sitting on it.
+for (var hold = 0; hold < 20; hold++) app.tick(16);
+check("still within reach after a moment's hovering",
+      app.field.tappableAt(app.field.fly().x, app.field.fly().y), true);
+check("  and still perched", app.field.fly().state, "perched");
+app.listeners.mousemove({ clientX: -9999, clientY: -9999 });
+
+console.log();
+console.log("but the grass still parts — lower down, where the cursor is in it");
+var field = load({ scores: JSON.stringify([6.0, 1.0]) });
+for (var grow = 0; grow < 400; grow++) field.tick(16);   // grown, nothing landed yet
+check("nothing has landed yet", field.field.fly(), null);
+var still = field.field.tip();
+// The cursor up at the blade's own height does nothing now.
+field.listeners.mousemove({ clientX: still.x, clientY: still.y - 20 });
+field.tick(16);
+var high = field.field.tip();
+check("a cursor up at the tip leaves it alone", Math.abs(high.x - still.x) < 4, true);
+// Down among the stems, it parts them.
+field.listeners.mousemove({ clientX: still.x + 30, clientY: 790 });
+field.tick(16);
+var low = field.field.tip();
+check("a cursor down in the grass still moves it",
+      Math.abs(low.x - high.x) > 8, true);
 
 console.log();
 console.log("tapping it gets a tip");
