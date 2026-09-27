@@ -4,7 +4,7 @@
 
 - **Listing:** https://chromewebstore.google.com/detail/tallgrass-%E2%80%94-by-macrandle/mjnnjgcfknpjddiglapjjgpkhpogccgg
 - **Extension ID:** `mjnnjgcfknpjddiglapjjgpkhpogccgg`
-- **Approved package:** v28.4 (approved 25 September 2026; v22.9 before that)
+- **Approved package:** v28.7 (live 27 September 2026; v28.4 and v22.9 before that)
 
 > The store refuses a package whose version is not **higher** than the live
 > one, so a re-upload of the same number fails with "must be further ahead".
