@@ -152,11 +152,22 @@
   var perch = -1;
   var nextVisit = 0;
 
-  // Rare on purpose. A visitor that turns up constantly is a mascot.
-  var FIRST_VISIT = [40, 90];          // seconds after load
-  var LATER_VISITS = [150, 330];       // seconds between visits
-  var STAY = [18, 45];                 // seconds perched
-  var STARTLE_RADIUS = 95;
+  /* Around often enough to be a companion rather than an easter egg, and it
+     stays a good while once it settles — long enough to be noticed, wondered
+     about and tapped.
+
+     It used to flee the cursor. That was right for a background decoration and
+     exactly wrong now: you cannot tap something that runs away as your hand
+     approaches. It holds its ground while perched, and startles only if
+     something comes at it mid-flight. */
+  var FIRST_VISIT = [12, 26];          // seconds after load
+  var LATER_VISITS = [55, 140];        // seconds between visits
+  var STAY = [90, 210];                // seconds perched
+  var STARTLE_RADIUS = 70;             // only while flying
+
+  // How near a tap has to land. Generous: it is a small insect on a big page,
+  // and a miss feels like the thing is broken rather than that you missed.
+  var TAP_RADIUS = 30;
 
   function between(range) {
     return range[0] + Math.random() * (range[1] - range[0]);
@@ -242,10 +253,11 @@
     var f = fly;
     f.wing += 1;
 
-    if (f.state !== "leaving" && startled(f)) {
-      // Away from the cursor rather than in a fixed direction.
+    // Only in the air, and never while it is being talked to: a perched
+    // dragonfly that bolts when the pointer nears cannot be tapped.
+    if (f.state === "arriving" && !said && startled(f)) {
       f.state = "leaving";
-      f.vx = (f.x < mouse.x ? -1 : 1) * 6;
+      f.vx = (f.x < mouse.x ? -1 : 1) * 6;      // away from the cursor
       f.vy = -3.4;
     }
 
@@ -307,6 +319,22 @@
     ctx.save();
     ctx.translate(f.x, f.y);
     ctx.rotate(f.angle);
+
+    /* A slow breath of light while it is sitting there.
+     *
+     * Nothing else on the page invites a click, so without this it is scenery
+     * and nobody would ever think to try. A pulse is enough of a hint; a
+     * "click me" label would spoil the only part of this worth having. */
+    if (perched) {
+      var pulse = 0.5 + Math.sin(time * 1.6) * 0.5;
+      var halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 26);
+      halo.addColorStop(0, "rgba(110, 231, 183, " + (0.12 + pulse * 0.1).toFixed(3) + ")");
+      halo.addColorStop(1, "rgba(110, 231, 183, 0)");
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, 26, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Wings. A beat too fast to resolve reads as a blur, which is what the eye
     // actually sees; at rest they are held open and still, as the insect does.
@@ -446,6 +474,136 @@
     }
   }
 
+
+  /* ------------------------------------------------- what it has to say
+
+     tips.py chose these for this page and this account, best first, and they
+     are taken in order rather than at random — the first tap should get the
+     most relevant thing, not the luckiest.
+
+     The bubble is real DOM, not canvas: text that can be selected, read by a
+     screen reader, and themed by the stylesheet, none of which a painted
+     rectangle can do.
+
+     The canvas cannot take clicks — it lies under the whole page with
+     pointer-events off, and turning that on would swallow every click in the
+     app. So the window is listened to instead, and only a click that lands on
+     the insect is treated as one. Everything else passes through untouched. */
+  var tips = [];
+  var tipAt = 0;
+  var said = null;                    // the open bubble, if any
+
+  try {
+    var rawTips = document.body.getAttribute("data-tips");
+    if (rawTips) {
+      tips = JSON.parse(rawTips).filter(function (t) {
+        return typeof t === "string" && t.length > 8;
+      });
+    }
+  } catch (error) {
+    tips = [];
+  }
+
+  function withinTap(x, y) {
+    if (!fly) return false;
+    var dx = fly.x - x, dy = fly.y - y;
+    return (dx * dx + dy * dy) < TAP_RADIUS * TAP_RADIUS;
+  }
+
+  function hush() {
+    if (!said) return;
+    said.parentNode && said.parentNode.removeChild(said);
+    said = null;
+  }
+
+  function speak() {
+    if (!tips.length || !fly) return;
+    hush();
+
+    var text = tips[tipAt % tips.length];
+    tipAt += 1;
+
+    var bubble = document.createElement("div");
+    bubble.className = "dfly-say";
+    // A live region: somebody who cannot see the dragonfly still hears the tip
+    // when it opens.
+    bubble.setAttribute("role", "status");
+    bubble.setAttribute("aria-live", "polite");
+
+    var words = document.createElement("p");
+    words.textContent = text;
+    bubble.appendChild(words);
+
+    var more = document.createElement("button");
+    more.type = "button";
+    more.className = "dfly-more";
+    more.textContent = tips.length > 1 ? "Tell me another" : "Thanks";
+    bubble.appendChild(more);
+
+    var shut = document.createElement("button");
+    shut.type = "button";
+    shut.className = "dfly-shut";
+    shut.setAttribute("aria-label", "Close");
+    shut.textContent = "×";
+    bubble.appendChild(shut);
+
+    more.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (tips.length > 1) speak(); else hush();
+    });
+    shut.addEventListener("click", function (event) {
+      event.stopPropagation();
+      hush();
+    });
+
+    document.body.appendChild(bubble);
+    said = bubble;
+    placeBubble();
+
+    // Sitting still while it talks, however long that takes.
+    if (fly.state === "perched") fly.leaveAt = Date.now() + between(STAY) * 1000;
+  }
+
+  function placeBubble() {
+    if (!said || !fly) return;
+    var width = said.offsetWidth || 260;
+    var height = said.offsetHeight || 90;
+    // Beside it, and flipped to whichever side has room.
+    var left = fly.x + 26;
+    if (left + width > window.innerWidth - 12) left = fly.x - width - 26;
+    var top = fly.y - height - 14;
+    if (top < 12) top = fly.y + 22;
+    said.style.left = Math.max(12, left) + "px";
+    said.style.top = top + "px";
+  }
+
+  window.addEventListener("click", function (event) {
+    if (withinTap(event.clientX, event.clientY)) {
+      // Not preventDefault: nothing underneath was clicked, because the canvas
+      // does not take clicks. This only stops the document handler below from
+      // immediately closing what just opened.
+      event.stopPropagation();
+      speak();
+    } else if (said && !said.contains(event.target)) {
+      hush();
+    }
+  }, true);
+
+  window.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") hush();
+  });
+
+  // The pointer says what is tappable, since the insect cannot.
+  var pointing = false;
+  function pointer(x, y) {
+    var over = withinTap(x, y);
+    if (over === pointing) return;
+    pointing = over;
+    try {
+      document.body.style.cursor = over ? "pointer" : "";
+    } catch (error) { /* nothing worth breaking a page over */ }
+  }
+
   function loop() {
     if (!running) return;
     step();
@@ -454,6 +612,11 @@
     // blades — and so the dragonfly sits in front of the grass it lands on.
     stepFly(Date.now());
     drawFly();
+    if (said) {
+      // It flew off mid-sentence: the words go with it.
+      if (!fly) hush(); else placeBubble();
+    }
+    pointer(mouse.x, mouse.y);
     frame = requestAnimationFrame(loop);
   }
 
@@ -461,6 +624,7 @@
     clearTimeout(window.__fieldResize);
     window.__fieldResize = setTimeout(function () {
       // A rebuild replaces every blade, including the one it was sitting on.
+      hush();
       fly = null;
       resize();
     }, 180);
@@ -514,6 +678,12 @@
       return fly ? { x: fly.x, y: fly.y, state: fly.state } : null;
     },
     visitIn: function (now) { return nextVisit ? nextVisit - now : null; },
+    tips: function () { return tips.length; },
+    saying: function () {
+      return said ? said.querySelector("p").textContent : null;
+    },
+    // What a click at this point would do, without dispatching one.
+    tappableAt: function (x, y) { return withinTap(x, y); },
     running: function () { return running; }
   };
 

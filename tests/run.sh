@@ -72,6 +72,8 @@ echo "--- a no is taken as a no ---"
 node tests/refusals.test.js
 echo "--- the dragonfly that visits the meadow ---"
 node tests/dragonfly.test.js
+echo "--- what the dragonfly is allowed to say ---"
+python tests/tips.test.py
 echo "--- frontend survives a bare page ---"
 node tests/frontend.test.js
 echo "--- what a new account sees ---"

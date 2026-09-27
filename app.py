@@ -23,6 +23,7 @@ import messages
 import mine
 import pipeline
 import reply_samples
+import tips
 import today
 import demo_snapshot
 import funnel
@@ -72,7 +73,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "30.7"
+APP_VERSION = "30.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2115,17 +2116,48 @@ def audience_filter(count, kind):
     return "%s %s%s" % (figure, noun, "" if count == 1 else "s")
 
 
+def _tip_counts(user):
+    """The two numbers a tip might use. Cheap, indexed, and never fatal.
+
+    Both are counts on an indexed column. Anything that needed a scoring pass
+    would be doing the work of a page to produce a sentence, so there is none
+    here.
+    """
+    if not user:
+        return {}
+    counts = {}
+    try:
+        counts["posts"] = billing.usage(user["id"])["posts"]
+    except Exception:                         # noqa: BLE001 - never break a page
+        pass
+    try:
+        counts["waiting"] = today.waiting_count(user["id"])
+    except Exception:                         # noqa: BLE001
+        pass
+    return counts
+
+
 @app.context_processor
 def inject_globals():
     """Values every page needs, so no route can forget them."""
+    viewer = auth.current_user()
+    # Computed once and shared: the meadow is drawn from these and so are the
+    # tips, and two reads would be two different pictures.
+    scores = _field_scores()
     return {
         "ephemeral": db.storage_is_ephemeral(),
         # One cheap settings lookup, and only for a signed-in page. The steps
         # cost a few queries and are fetched by the client when it decides to
         # run, so a page load nobody is being walked through pays nothing.
         "guide_run": _guide_run(),
-        "field_scores": json.dumps(_field_scores()),
-        "user": auth.current_user(),
+        "field_scores": json.dumps(scores),
+        # What the dragonfly says when somebody taps it. A callable, because the
+        # best tip depends on which page this is and `active` is a per-route
+        # value the context processor cannot see. The scores are handed over
+        # rather than queried again, so the hint and the blades agree.
+        "tips_for": lambda active=None: json.dumps(
+            tips.for_page(active, scores, viewer, _tip_counts(viewer))),
+        "user": viewer,
         "csrf_token": auth.csrf_token,
         "app_name": APP_NAME,
         "app_short_name": APP_SHORT_NAME,
