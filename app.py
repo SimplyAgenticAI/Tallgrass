@@ -73,7 +73,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "31.3"
+APP_VERSION = "31.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1954,6 +1954,34 @@ def _guide_run():
         return not guide.seen(user["id"])
     except Exception:                         # noqa: BLE001 - never break a page
         return False
+
+
+@app.route("/api/tips")
+@auth.login_required
+def api_tips():
+    """What the dragonfly knows, worked out properly.
+
+    The tips on the page itself are assembled from facts the page already had —
+    cheap, and enough for a first tap. These are the deep ones: they read the
+    same picture Sage reasons over, which means scoring every post the account
+    holds. That is a page's worth of work, so it happens when somebody actually
+    taps and never on a page load.
+
+    Falls back to the cheap set rather than to nothing, because a tap that
+    produces silence reads as broken.
+    """
+    user = auth.current_user()
+    active = (request.args.get("page") or "").strip()[:40]
+    urls = _guide_urls()
+    urls["results"] = url_for("results_page")
+    try:
+        deep = tips.deep(user, active, urls)
+    except Exception:                         # noqa: BLE001 - never a 500 for a hint
+        log.warning("deep tips failed", exc_info=True)
+        deep = []
+    if not deep:
+        deep = tips.for_page(active, _field_scores(), user, _tip_counts(user))
+    return jsonify({"ok": True, "tips": deep})
 
 
 @app.route("/api/guide")

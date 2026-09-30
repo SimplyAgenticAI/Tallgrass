@@ -172,8 +172,14 @@
      exactly wrong now: you cannot tap something that runs away as your hand
      approaches. It holds its ground while perched, and startles only if
      something comes at it mid-flight. */
-  var FIRST_VISIT = [12, 26];          // seconds after load
-  var LATER_VISITS = [55, 140];        // seconds between visits
+  var FIRST_VISIT = [10, 20];          // seconds after load
+  /* Gone for a moment, not for a minute.
+   *
+   * It used to disappear for 55 to 140 seconds, and being gone for half a
+   * minute reads as having lost it rather than as having been visited. Long
+   * enough to be a departure, short enough that looking up and finding it back
+   * is the normal case. */
+  var LATER_VISITS = [8, 18];          // seconds between visits
   var SIT = [26, 64];                  // seconds in ONE spot before moving on
   var HOPS = [3, 7];                   // spots per visit, then it goes
   var STARTLE_RADIUS = 70;             // only while flying
@@ -184,7 +190,10 @@
    * the insect. Nothing else on the page competes for these clicks — the
    * canvas it is drawn on takes no pointer events at all — so a generous
    * radius costs nothing and a miss feels like a broken toy. */
-  var TAP_RADIUS = 52;
+  var TAP_RADIUS = 58;
+
+  // How big it is drawn. 1 was the original; asked for slightly larger twice.
+  var SIZE = 1.22;
 
   function between(range) {
     return range[0] + Math.random() * (range[1] - range[0]);
@@ -431,12 +440,12 @@
      * "click me" label would spoil the only part of this worth having. */
     if (perched) {
       var pulse = 0.5 + Math.sin(time * 1.6) * 0.5;
-      var halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 34);
+      var halo = ctx.createRadialGradient(0, 0, 1, 0, 0, 34 * SIZE);
       halo.addColorStop(0, "rgba(110, 231, 183, " + (0.12 + pulse * 0.1).toFixed(3) + ")");
       halo.addColorStop(1, "rgba(110, 231, 183, 0)");
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(0, 0, 34, 0, Math.PI * 2);
+      ctx.arc(0, 0, 34 * SIZE, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -451,6 +460,12 @@
      * Head toward +x, wings across y. Two body lengths longer than before and
      * about half again as wide, which is what makes it a target.
      */
+    /* One number for the whole insect.
+     *
+     * Everything below is drawn in units and then scaled, so "a bit bigger"
+     * stays a one-line change rather than thirty coordinates to re-tune. */
+    ctx.scale(SIZE, SIZE);
+
     var beat = perched ? 0.04 : Math.sin(f.wing * 1.9) * 0.42;
 
     // WINGS. Held nearly square to the body — a dragonfly at rest does not
@@ -688,12 +703,45 @@
   var tips = [];
   var tipAt = 0;
   var said = null;                    // the open bubble, if any
+  var asked = false;                  // have the deep tips been fetched yet
+  var pending = null;                 // fetched tips, waiting for the next open
+
+  /* The tips on the page are assembled from what the page already knew, which
+   * is cheap and fine for a first tap. The good ones — which of their groups is
+   * strongest, which cannot be scored yet and why, what actually works across
+   * them — need the whole picture scored, so they are fetched the first time
+   * somebody shows interest rather than on every page load.
+   *
+   * If the fetch fails, nothing happens: the cheap set is already loaded and a
+   * tap still answers. */
+  function deepen() {
+    if (asked) return;
+    asked = true;
+    var page = document.body.getAttribute("data-page") || "";
+    fetch("/api/tips?page=" + encodeURIComponent(page),
+          { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok || !data.tips || !data.tips.length) return;
+        var better = data.tips.filter(function (t) {
+          return t && typeof t.text === "string" && t.text.length > 8;
+        });
+        if (!better.length) return;
+        /* Held until the next time it is asked, never swapped in under an open
+         * bubble. The button on a bubble is labelled from the list that was
+         * current when it was drawn — "Tell me another" — so replacing the list
+         * underneath it makes that button do something else than it says. */
+        pending = better;
+        if (!said) adopt();
+      })
+      .catch(function () { /* the cheap tips are still there */ });
+  }
 
   try {
     var rawTips = document.body.getAttribute("data-tips");
     if (rawTips) {
       tips = JSON.parse(rawTips).filter(function (t) {
-        return typeof t === "string" && t.length > 8;
+        return t && typeof t.text === "string" && t.text.length > 8;
       });
     }
   } catch (error) {
@@ -706,6 +754,13 @@
     return (dx * dx + dy * dy) < TAP_RADIUS * TAP_RADIUS;
   }
 
+  function adopt() {
+    if (!pending) return;
+    tips = pending;
+    pending = null;
+    tipAt = 0;
+  }
+
   function hush() {
     if (!said) return;
     said.parentNode && said.parentNode.removeChild(said);
@@ -713,10 +768,13 @@
   }
 
   function speak() {
+    // Anything fetched since the last bubble takes effect now, between one and
+    // the next, where the change cannot surprise anybody mid-sentence.
+    adopt();
     if (!tips.length || !fly) return;
     hush();
 
-    var text = tips[tipAt % tips.length];
+    var tip = tips[tipAt % tips.length];
     tipAt += 1;
 
     var bubble = document.createElement("div");
@@ -727,8 +785,21 @@
     bubble.setAttribute("aria-live", "polite");
 
     var words = document.createElement("p");
-    words.textContent = text;
+    words.textContent = tip.text;
     bubble.appendChild(words);
+
+    /* Somewhere to go about it.
+     *
+     * A tip that names one of your groups and then leaves you to find it is a
+     * fact read out at you. Where the server gave a destination, the bubble
+     * offers it. */
+    if (tip.where) {
+      var go = document.createElement("a");
+      go.className = "dfly-go";
+      go.href = tip.where;
+      go.textContent = "Take me there";
+      bubble.appendChild(go);
+    }
 
     var more = document.createElement("button");
     more.type = "button";
@@ -755,6 +826,7 @@
     document.body.appendChild(bubble);
     said = bubble;
     placeBubble();
+    deepen();
 
     // Sitting still while it is being talked to, however long that takes.
     if (fly.state === "perched") fly.sitUntil = Date.now() + between(SIT) * 1000;

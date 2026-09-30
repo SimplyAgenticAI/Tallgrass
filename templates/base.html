@@ -21,7 +21,7 @@
 {# data-tips is what the dragonfly says when it is tapped: chosen for this page
    and this account in tips.py, best first. Same delivery as the scores above —
    an attribute rather than an inline script, because the CSP forbids one. #}
-<body data-field-scores="{{ field_scores }}" data-tips="{{ tips_for(active) }}"{% if user %} data-guide="{{ '1' if guide_run else '0' }}"{% endif %}>
+<body data-field-scores="{{ field_scores }}" data-tips="{{ tips_for(active) }}" data-page="{{ active or '' }}"{% if user %} data-guide="{{ '1' if guide_run else '0' }}"{% endif %}>
 
 <div class="ambient"></div>
 <canvas id="field" class="field" aria-hidden="true"></canvas>

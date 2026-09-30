@@ -63,6 +63,7 @@ function load(opts) {
   var frames = [];
   var listeners = {};
   var bubbles = [];
+  var fetched = [];
 
   var ctx = {
     setTransform: function () {}, clearRect: function () {},
@@ -70,6 +71,7 @@ function load(opts) {
     quadraticCurveTo: function () {}, stroke: function () {},
     fill: function () {}, save: function () {}, restore: function () {},
     translate: function () {}, rotate: function () {}, arc: function () {},
+    scale: function () {},
     ellipse: function () { drawn.ellipses += 1; },
     // The wing veins, the abdomen taper and its segment lines.
     lineTo: function () {}, closePath: function () {},
@@ -106,6 +108,20 @@ function load(opts) {
   var sandbox = {
     JSON: JSON, Math: maths, isFinite: isFinite, console: console,
     setTimeout: function () {}, clearTimeout: function () {},
+    /* The deep tips, asked for on the first tap. Answered with whatever the
+     * test put in opts.deep — or refused, which must leave the cheap tips
+     * working rather than emptying the bubble. */
+    fetch: function (url) {
+      fetched.push(url);
+      if (opts.deep === "fail") return Promise.reject(new Error("offline"));
+      return Promise.resolve({
+        json: function () {
+          return Promise.resolve({ ok: true, tips: opts.deep || [] });
+        }
+      });
+    },
+    Promise: Promise,
+    encodeURIComponent: encodeURIComponent,
     cancelAnimationFrame: function () {},
     requestAnimationFrame: function (fn) { frames.push(fn); return frames.length; },
     // The only clock in the room.
@@ -121,6 +137,7 @@ function load(opts) {
         style: {},
         getAttribute: function (name) {
           if (name === "data-tips") return opts.tips || null;
+          if (name === "data-page") return opts.page || "feed";
           return opts.scores || null;
         },
         appendChild: function (node) { node.parentNode = this; bubbles.push(node); },
@@ -168,6 +185,7 @@ function load(opts) {
   var api = {
     field: sandbox.window.__field,
     bubbles: bubbles,
+    fetched: fetched,
     canvas: canvas,
     drawn: drawn,
     listeners: listeners,
@@ -205,9 +223,12 @@ check("and no animation exists at all", calm.field === undefined, true);
 console.log();
 console.log("a meadow built from the reader's own scores");
 var TIPS = JSON.stringify([
-  "Your best captured post so far did 14.6x the median of its group.",
-  "A 4x post you could plausibly have written beats a 28x post you couldn't.",
-  "The median, not the average, so one viral post can't skew a group."
+  { text: "Your best captured post so far did 14.6x the median of its group.",
+    where: "/results" },
+  { text: "A 4x post you could plausibly have written beats a 28x post you couldn't.",
+    where: null },
+  { text: "The median, not the average, so one viral post can't skew a group.",
+    where: null }
 ]);
 var app = load({ scores: JSON.stringify([2.1, 14.6, 3.4, 1.2, 8.8]), tips: TIPS });
 check("the field exposes itself for inspection", !!app.field, true);
@@ -309,7 +330,7 @@ app.listeners.click({ clientX: here.x, clientY: here.y, stopPropagation: functio
 var first = app.field.saying();
 check("it says something", typeof first === "string" && first.length > 10, true);
 check("  in a bubble on the page", app.bubbles.length, 1);
-check("  which is the most relevant tip first", first, JSON.parse(TIPS)[0]);
+check("  which is the most relevant tip first", first, JSON.parse(TIPS)[0].text);
 
 var bubble = app.bubbles[0];
 check("the bubble is announced to a screen reader", bubble.attrs["aria-live"], "polite");
@@ -319,6 +340,74 @@ check("  and offers another", another.textContent, "Tell me another");
 another["on:click"]({ stopPropagation: function () {} });
 check("a second tap gives a DIFFERENT tip", app.field.saying() !== first, true);
 check("  still only one bubble", app.bubbles.length, 1);
+
+console.log();
+console.log("a tap sends it to find out what it really knows");
+check("it asked the server", app.fetched.length, 1);
+check("  for the tips, naming the page", /\/api\/tips\?page=feed/.test(app.fetched[0]), true);
+
+// What comes back replaces the cheap set — the good tips know the account.
+var knowing = load({
+  scores: JSON.stringify([9.0, 2.0]),
+  tips: TIPS,
+  deep: [{ text: '"Bakers" is where your best result is: a typical post there scores 47.',
+           where: "/groups" }]
+});
+knowing.until(function () {
+  var f = knowing.field.fly();
+  return !!f && f.state === "perched";
+}, 1500, 40);
+var sittingThere = knowing.field.fly();
+knowing.listeners.click({ clientX: sittingThere.x, clientY: sittingThere.y,
+                          stopPropagation: function () {} });
+check("the first tap answers from the page, instantly",
+      knowing.field.saying(), JSON.parse(TIPS)[0].text);
+/* The fetch resolves over several microtask hops — fetch(), then .json(), then
+ * the handler that swaps the tips in — so the test has to let the queue drain
+ * rather than guess at one or two. */
+function flush(times) {
+  var chain = Promise.resolve();
+  for (var i = 0; i < (times || 8); i++) {
+    chain = chain.then(function () {});
+  }
+  return chain;
+}
+
+return flush(8).then(function () {
+  // The fetched set is held until the bubble closes and opens again, so the
+  // button on the open one still does what its label says.
+  var bubble = knowing.bubbles[0];
+  check("the open bubble is untouched by what arrived",
+        knowing.field.saying(), JSON.parse(TIPS)[0].text);
+  bubble.querySelector("button")["on:click"]({ stopPropagation: function () {} });
+  check("and the next one is what the server worked out",
+        /Bakers/.test(knowing.field.saying() || ""), true);
+  var link = null;
+  var kids = knowing.bubbles[0].children;
+  for (var i = 0; i < kids.length; i++) {
+    if (kids[i].tagName === "a") link = kids[i];
+  }
+  check("  with somewhere to go about it", link && link.href, "/groups");
+  rest();
+}).then(null, function (error) {
+  console.log(" FAIL  deep tips threw: " + error.message);
+  FAILURES.push("deep tips");
+  rest();
+});
+
+function rest() {
+
+console.log();
+console.log("a refused fetch leaves the cheap tips working");
+var offline = load({ scores: JSON.stringify([9.0]), tips: TIPS, deep: "fail" });
+offline.until(function () {
+  var f = offline.field.fly();
+  return !!f && f.state === "perched";
+}, 1500, 40);
+var there = offline.field.fly();
+offline.listeners.click({ clientX: there.x, clientY: there.y,
+                          stopPropagation: function () {} });
+check("it still says something", !!offline.field.saying(), true);
 
 console.log();
 console.log("and it can be dismissed");
@@ -353,8 +442,10 @@ visit.until(function () {
 check("nothing is left holding on",
       visit.until(function () { return visit.field.fly() === null; }, 6000, 400) > 0, true);
 check("a next visit is scheduled", visit.field.visitIn(visit.now()) > 0, true);
-check("  a minute or more away, not seconds",
-      visit.field.visitIn(visit.now()) > 50000, true);
+// Seconds, not a minute. Being gone for half a minute reads as having lost it
+// rather than as having been visited, which is what was reported.
+var away = visit.field.visitIn(visit.now());
+check("  and it is back within half a minute", away > 4000 && away < 30000, true);
 
 console.log();
 console.log("if it leaves mid-sentence, the words go with it");
@@ -459,5 +550,7 @@ if (FAILURES.length) {
   console.log(FAILURES.length + " FAILURES: " + FAILURES.join(", "));
   process.exit(1);
 }
-console.log("it visits, lands on the best blade, and knows when it is not wanted");
+console.log("it visits, lands on the best blade, and knows what it is talking about");
 process.exit(0);
+
+}   // rest()

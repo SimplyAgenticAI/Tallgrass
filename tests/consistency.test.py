@@ -207,7 +207,7 @@ def main():
     # fix is to put the in-review manifest version in `in_review` below — one
     # deliberate line, which is also the reminder to clear it and bump the
     # constant the day the submission goes live.
-    in_review = "28.8"          # 28.8 packaged for upload; store is live on 28.7
+    in_review = "28.9"          # 28.8 packaged for upload; store is live on 28.7
     repo_ext = app._extension_version()
     if in_review:
         check("the manifest is the version said to be in review", repo_ext, in_review)

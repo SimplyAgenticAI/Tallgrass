@@ -63,8 +63,13 @@ BY_PAGE = {
 }
 
 
-def _fact(text):
-    return " ".join(str(text).split())
+def _fact(text, where=None):
+    """One tip: the words, and optionally somewhere to go about them.
+
+    A tip that names a group and cannot take you to it is a fact read out at
+    you. The client renders `where` as a button on the bubble.
+    """
+    return {"text": " ".join(str(text).split()), "where": where}
 
 
 def for_page(active, scores, user, counts=None):
@@ -112,13 +117,126 @@ def for_page(active, scores, user, counts=None):
         tips.append(_fact(page_tip))
 
     tips.extend(_fact(t) for t in CRAFT)
+    return _tidy(tips)
 
-    # Deduplicated, because a page tip and a craft line can overlap, and capped
-    # because nobody taps a dragonfly eleven times.
+
+def _tidy(tips, limit=8):
+    """Deduplicated on the words, in order, capped.
+
+    A page tip and a craft line can say the same thing, and nobody taps a
+    dragonfly eleven times.
+    """
     seen = set()
     unique = []
     for tip in tips:
-        if tip not in seen:
-            seen.add(tip)
+        if tip["text"] not in seen:
+            seen.add(tip["text"])
             unique.append(tip)
-    return unique[:8]
+    return unique[:limit]
+
+
+# ------------------------------------------------------------ what Sage knows
+
+def deep(user, active=None, urls=None):
+    """Tips built from the whole picture — the same data Sage reasons over.
+
+    Fetched when somebody actually taps, never on a page load: this scores every
+    post the account has, which is a page's worth of work and far too much to
+    spend assembling a sentence nobody asked for.
+
+    Everything here is read off that context. No claim is made that the numbers
+    do not support, and a group is only named when it has a usable baseline —
+    naming a group and quoting a median that scoring itself rejected is the one
+    mistake this whole product exists not to make.
+    """
+    urls = urls or {}
+    tips = []
+    try:
+        import sage
+        context = sage.build_context()
+    except Exception:                         # noqa: BLE001 - fall back quietly
+        return []
+
+    if not context or context.get("empty"):
+        return []
+
+    sources = [s for s in (context.get("sources") or []) if not s.get("is_sample")]
+    scored = [s for s in sources if s.get("has_baseline")]
+
+    # The strongest room, and what "strongest" means in it.
+    if scored:
+        best = max(scored, key=lambda s: s.get("best_multiple") or 0)
+        if best.get("best_multiple"):
+            tips.append(_fact(
+                '"%s" is where your best result is: a typical post there scores '
+                "%s, and the best one you have captured did %s× that."
+                % (best["name"], best.get("baseline"), best["best_multiple"]),
+                urls.get("groups")))
+
+    # A room that cannot be scored yet, and why — the most common confusion.
+    waiting_room = [s for s in sources if not s.get("has_baseline")]
+    if waiting_room:
+        thin = max(waiting_room, key=lambda s: s.get("posts") or 0)
+        tips.append(_fact(
+            '"%s" still cannot be scored: %d posts captured and %d%% of them '
+            "readable. It needs about %d readable ones before a median means "
+            "anything."
+            % (thin["name"], thin.get("posts") or 0,
+               thin.get("engagement_recorded_pct") or 0, outliers.MIN_SAMPLE),
+            urls.get("groups")))
+
+    # A room whose numbers are soft because too little of it could be read.
+    unreadable = [s for s in scored if (s.get("engagement_recorded_pct") or 100) < 70]
+    if unreadable:
+        worst = min(unreadable, key=lambda s: s.get("engagement_recorded_pct") or 0)
+        tips.append(_fact(
+            'Only %d%% of "%s" could be read, so its median is built on less '
+            "than it looks. Scanning it again sharpens every score in it."
+            % (worst.get("engagement_recorded_pct") or 0, worst["name"]),
+            urls.get("groups")))
+
+    # How many genuine breakouts there are, which is the number worth copying.
+    tiers = context.get("tiers") or {}
+    breakouts = tiers.get("breakout") or 0
+    if breakouts:
+        tips.append(_fact(
+            "You have %d post%s at 5× or better. Those are the ones worth "
+            "taking apart — Write builds on one rather than starting cold."
+            % (breakouts, "" if breakouts == 1 else "s"),
+            urls.get("write")))
+
+    # What actually works across their groups, if the evidence is there.
+    try:
+        import patterns
+        from app import _fetch_posts
+        found = patterns.findings(_fetch_posts(), across=True)
+        for finding in (found.get("findings") or [])[:2]:
+            tips.append(_fact(
+                "%s (from %d posts of yours that could be read)."
+                % (finding["sentence"].rstrip("."), found.get("measured") or 0),
+                urls.get("playbook")))
+    except Exception:                         # noqa: BLE001
+        pass
+
+    # Their own posts, if they have told us which are theirs.
+    try:
+        import mine
+        own = mine.results(user["id"]) if user else {"overall": {}}
+        overall = own.get("overall") or {}
+        if overall.get("scored"):
+            tips.append(_fact(
+                "Your own posts are running at %s× the median of their groups, "
+                "and %d of %d beat it."
+                % (overall.get("median"), overall.get("beat"), overall.get("scored")),
+                urls.get("results")))
+    except Exception:                         # noqa: BLE001
+        pass
+
+    # Sample data still mixed in is worth saying once.
+    if any(s.get("is_sample") for s in (context.get("sources") or [])):
+        tips.append(_fact(
+            "Some of what you are looking at is sample data, marked as such. It "
+            "hides itself once your own scans land.",
+            urls.get("groups")))
+
+    return _tidy(tips)
