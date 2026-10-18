@@ -72,6 +72,8 @@ echo "--- a no is taken as a no ---"
 node tests/refusals.test.js
 echo "--- the dragonfly that visits the meadow ---"
 node tests/dragonfly.test.js
+echo "--- the palette, measured ---"
+python tests/contrast.test.py
 echo "--- what the dragonfly is allowed to say ---"
 python tests/tips.test.py
 echo "--- frontend survives a bare page ---"

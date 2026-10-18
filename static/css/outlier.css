@@ -11,7 +11,10 @@
   --emerald-bright: #6ee7b7;
   --emerald-dim:    #10b981;
   --gold:           #d9b45f;
-  --ember:          #e07a5f;
+  /* Brightened with the surfaces. On the old near-black card #e07a5f measured
+     5.83:1; lifting the card took it to 4.72:1, which is still AA and a thinner
+     margin than a warning should run on. */
+  --ember:          #e5886e;
 
   /* Sharpened in V28.4. Secondary text was a green-grey that sat under 4.5:1
      on these surfaces and fine print under 3:1, so half the screen read as
@@ -20,13 +23,36 @@
   --text-muted: #a9c5b6;
   --text-faint: #80a091;
 
-  --glass:        rgba(13, 33, 22, 0.9);
-  --glass-solid:  rgba(11, 29, 19, 0.96);
-  --border:       rgba(110, 231, 183, 0.2);
-  --border-lit:   rgba(110, 231, 183, 0.46);
+  /* Surfaces, lifted off the page — V31.5.
+   *
+   * These were rgba(13,33,22,0.9) and rgba(11,29,19,0.96), which flatten to a
+   * luminance of 0.011 against a page at 0.007: a card only 1.5x brighter than
+   * what it sits on. Every text colour passed WCAG AA comfortably (body 16:1,
+   * secondary 9:1, fine print 6:1) and the view still read as dark and muted,
+   * because the muted thing was never the text — it was that nothing in the
+   * frame was brighter than the background except the words.
+   *
+   * At 0.025 a card is 3.5x the page and reads as an object with an edge, while
+   * body text is still 13.3:1, secondary 7.5:1 and fine print 4.9:1 — all above
+   * AA. Opaque, not translucent: the blur that justified translucency is gone
+   * (see below), and a surface whose value you can read off the token is one
+   * you can reason about.
+   *
+   * --glass-solid sits a step higher again, for the things that float ABOVE a
+   * card: modals, toasts, the dragonfly's bubble. */
+  --glass:        #133222;
+  /* A step above a card, but only a step: at #17392a the fine print on a toast
+     measured 4.44:1 and the ember warning 4.30:1, both just under AA. A modal
+     reads as floating from its brighter border and deeper shadow anyway, so the
+     lift does not have to come out of legibility. */
+  --glass-solid:  #143524;
+  /* Edges carry more of the work now that the surfaces do, so the hairline is
+     brighter: 0.2 alpha read as a smudge against the lifted fill. */
+  --border:       rgba(110, 231, 183, 0.28);
+  --border-lit:   rgba(110, 231, 183, 0.52);
   /* A hairline of light along a surface's top edge — what makes a dark card
      read as a raised object rather than a darker patch. */
-  --edge-light:   inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --edge-light:   inset 0 1px 0 rgba(255, 255, 255, 0.07);
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -145,9 +171,10 @@ body {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 30px;
-  background: rgba(6, 17, 11, 0.72);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  /* Solid, not frosted. A blur across the full width is a GPU pass on every
+     scroll frame, and what it blurs is the content the reader is scrolling —
+     so it costs speed to make the page softer. Opaque is sharper and free. */
+  background: #081a11;
   border-bottom: 1px solid var(--border);
 }
 
@@ -247,8 +274,6 @@ body {
   background: var(--glass);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
   box-shadow: var(--shadow-raise);
 }
 
@@ -467,8 +492,6 @@ h2 { font-size: 16px; margin: 0 0 12px; font-weight: 650; }
   background: var(--glass);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
   box-shadow: var(--shadow-raise);
   transition: transform 0.22s var(--ease), border-color 0.22s var(--ease),
               box-shadow 0.22s var(--ease);
@@ -1225,7 +1248,6 @@ select.kind-select option { color: initial; }
   transform: translate(-50%, 26px);
   padding: 12px 22px; border-radius: var(--r-md);
   background: var(--glass-solid); border: 1px solid var(--border-lit);
-  backdrop-filter: blur(16px);
   color: var(--text); font-size: 13.5px; font-weight: 550;
   opacity: 0; pointer-events: none; z-index: 200;
   box-shadow: var(--shadow-raise);
@@ -2623,9 +2645,7 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   position: sticky; top: 0; z-index: 60;
   display: flex; align-items: center; justify-content: space-between;
   gap: 16px; padding: 13px 26px;
-  background: rgba(6, 17, 11, 0.74);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: #081a11;        /* solid, for the same reason as .topbar */
   border-bottom: 1px solid var(--border);
 }
 .lp-bar-links { display: flex; align-items: center; gap: 20px; }
@@ -2663,7 +2683,6 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 .lp-proof {
   margin: 0 0 8px; padding: 20px; border-radius: var(--r-xl);
   background: var(--glass-solid); border: 1px solid var(--border);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 .lp-proof-head {
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
@@ -3308,9 +3327,10 @@ html { scrollbar-color: rgba(110, 231, 183, 0.28) transparent; scrollbar-width: 
 }
 .field { opacity: 0.45; }
 
-/* Solid cards with a lit top edge, instead of frosted glass over the haze. */
+/* A lit top edge, so a lifted surface still reads as raised rather than as a
+   paler rectangle. (The blur these rules used to switch off is gone from the
+   declarations themselves now.) */
 .glass, .post-card {
-  backdrop-filter: none; -webkit-backdrop-filter: none;
   box-shadow: var(--shadow-raise), var(--edge-light);
 }
 .post-card:hover { box-shadow: var(--shadow-float), var(--edge-light); }
