@@ -3678,3 +3678,65 @@ h2 { font-weight: 700; }
   /* On a phone a bubble beside a moving insect is a bubble half off-screen. */
   .dfly-say { max-width: calc(100vw - 32px); }
 }
+
+/* ------------------------------------------- a room's verdict (V31.7)
+
+   A band and its numbers. Colours follow the palette's own meaning: emerald is
+   "this is working", gold is "look at this", ember is "this is a problem", and
+   the two unsure bands are deliberately colourless — an unreadable group must
+   not look like a bad one. */
+.band {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.band-thriving {
+  color: var(--emerald-bright);
+  border-color: rgba(110, 231, 183, 0.5);
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.band-steady { color: #9ae6c4; border-color: rgba(154, 230, 196, 0.42); }
+.band-quiet  { color: var(--gold); border-color: rgba(217, 180, 95, 0.4); }
+
+.band-dead {
+  color: var(--ember);
+  border-color: rgba(229, 136, 110, 0.5);
+  background: rgba(229, 136, 110, 0.1);
+}
+
+/* No colour at all: "can't tell yet" and "not enough yet" are not verdicts,
+   and dressing them in a warning colour would make a reading failure look like
+   a dead room. */
+.band-unclear, .band-new { color: var(--text-faint); }
+
+.band-tally { margin-left: 6px; font-weight: 600; }
+
+.leave-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+
+.leave-list li {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: rgba(229, 136, 110, 0.05);
+}
+
+.leave-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.leave-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.leave-name:hover { color: var(--emerald-bright); }
+.leave-why { margin: 6px 0 9px; }
+.leave-actions { display: flex; gap: 8px; flex-wrap: wrap; }

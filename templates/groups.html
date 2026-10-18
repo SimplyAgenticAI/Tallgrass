@@ -5,7 +5,16 @@
 <section class="feed-head">
   <div>
     <h1>Groups, profiles &amp; pages</h1>
-    <p class="sub">Everything you've captured from. Baselines are per source.</p>
+    <p class="sub">
+      Everything you've captured from. Baselines are per source.
+      {% if bands %}
+      {% for band in ['thriving', 'steady', 'quiet', 'dead', 'unclear', 'new'] %}
+        {%- if bands.get(band) %}
+          <span class="band band-{{ band }} band-tally">{{ bands[band] }} {{ band_labels[band] | lower }}</span>
+        {%- endif %}
+      {%- endfor %}
+      {% endif %}
+    </p>
   </div>
 </section>
 
@@ -28,6 +37,41 @@
     {% endif %}
   </p>
 </div>
+{% endif %}
+
+{% if leaving %}
+{# Worth leaving — and Tallgrass will not leave them for you.
+   Automating an account action on Facebook risks the account, which is the same
+   line the reply features hold: drafts only, never sent for you. So this is the
+   evidence and a door, two clicks each. #}
+<section class="glass panel reveal" style="margin-bottom:18px">
+  <h2>Worth leaving?</h2>
+  <p class="sub">
+    {{ leaving | length }} group{{ '' if leaving | length == 1 else 's' }} where
+    the numbers say there is nothing to find — either a typical post gets almost
+    no engagement, or nothing has been posted in {{ stale_days }} days.
+    Tallgrass never leaves a group for you; these are the doors.
+  </p>
+  <ul class="leave-list">
+    {% for source in leaving %}
+    <li>
+      <div class="leave-head">
+        <a class="leave-name" href="{{ url_for('group_detail', source_id=source.id) }}">{{ source.name }}</a>
+        <span class="band band-{{ source.verdict.band }}">{{ source.verdict.label }}</span>
+      </div>
+      <p class="fine leave-why">{{ source.verdict.why | join(' ') }}</p>
+      <div class="leave-actions">
+        {% if source.url %}
+        <a class="mini-btn" href="{{ source.url }}" target="_blank" rel="noopener noreferrer">Open it ↗</a>
+        {% endif %}
+        <button class="mini-btn danger delete-source"
+                data-source-id="{{ source.id }}"
+                data-source-name="{{ source.name }}">Remove its captures</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
 {% endif %}
 
 {% if sources %}
@@ -54,6 +98,12 @@
       {% endif %}
       {% if source.is_demo %}
         <span class="demo-chip" title="Generated sample content">sample</span>
+      {% endif %}
+      {# The verdict, with its reasons on hover. A band on its own is an
+         opinion; the numbers are what let somebody disagree with it. #}
+      {% if source.verdict and not source.is_demo %}
+      <span class="band band-{{ source.verdict.band }}"
+            title="{{ source.verdict.why | join(' ') }}">{{ source.verdict.label }}</span>
       {% endif %}
     </div>
 

@@ -34,6 +34,7 @@ import mailer
 import outliers
 import outreach
 import patterns
+import rating
 import remix
 import retention
 import replies
@@ -73,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "31.6"
+APP_VERSION = "31.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -778,6 +779,12 @@ def _sources_with_stats():
         source["is_demo"] = bool(source["demo_count"])
         posts = by_source.get(source["id"]) or []
         source["stats"] = outliers.source_stats(posts) if posts else None
+        # The newest post actually captured from here, which is what decides
+        # whether a room is quiet. Measured off the POSTS, never off the last
+        # scan: a group nobody has scanned in a month is not thereby dead.
+        newest = max((p.get("posted_at") or "" for p in posts), default="")
+        source["newest"] = newest or None
+        source["verdict"] = rating.of(source, source["stats"], newest or None)
 
     # Real captures first, newest first. Sample data is a demonstration and
     # should never sit above the group the user just scanned.
@@ -812,6 +819,11 @@ def groups():
             return redirect(url_for("group_detail", source_id=row["id"]))
 
     sources = _sources_with_stats()
+    # Worst first, and only rooms with a real verdict — "can't tell yet" is
+    # never quietly sorted in at the bottom as though it were bad news.
+    leaving = [s for s in sources
+               if not s["is_demo"] and (s.get("verdict") or {}).get("leave")]
+    leaving.sort(key=lambda s: (s["verdict"]["numbers"].get("baseline") or 0))
     # What this account holds, so "am I keeping too much" has an answer and the
     # Delete button on each card reads as housekeeping rather than damage. The
     # 4KB is measured, not guessed — see db.biggest_accounts.
@@ -825,6 +837,11 @@ def groups():
             "mb": max(round(real_posts * 4096 / 1048576, 1), 0.1) if real_posts else 0,
         },
         retention_months=billing.RETENTION_MONTHS,
+        leaving=leaving,
+        bands=rating.tally([s["verdict"] for s in sources
+                            if not s["is_demo"] and s.get("verdict")]),
+        band_labels=rating.LABELS,
+        stale_days=rating.STALE_DAYS,
         version=APP_VERSION,
         active="groups",
     )
