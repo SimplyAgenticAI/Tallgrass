@@ -109,8 +109,11 @@ def main():
     print()
     print("and every colour on them is still legible")
     # The sticky bars are their own value, not a token: read it off .topbar.
-    bar_match = re.search(r"\.topbar\s*\{[^}]*background:\s*([^;]+);", css)
-    bar, bar_alpha = rgb(bar_match.group(1)) if bar_match else (None, None)
+    # The LAST matching rule, not the first: the bar's colour is set in the
+    # layout block and then overridden further down the file, so reading the
+    # first one measured a value the browser never uses.
+    bar_rules = re.findall(r"\.topbar\s*\{[^}]*?background:\s*([^;]+);", css)
+    bar, bar_alpha = rgb(bar_rules[-1]) if bar_rules else (None, None)
     surfaces = [("a card", card), ("a modal or toast", float_surface)]
     if bar is not None:
         surfaces.append(("the top bar",
@@ -130,6 +133,30 @@ def main():
                 worst = (r, token, where)
             check("  %s on %s (%.2f:1)" % (token, where, r), r >= 4.5, True)
     print("  worst pair anywhere: %s on %s at %.2f:1" % (worst[1], worst[2], worst[0]))
+
+    print()
+    print("what sits ON a card is a well, not a hole")
+    # The badge disc, the score groove and the illustration chips were all tuned
+    # against a near-black card. Lifting the card turned each of them into a gap
+    # punched through it. They have to be DARKER than the card (so they read as
+    # recessed) and brighter than the page (so they do not read as a hole).
+    sunken = {
+        ".post-badge": r"\.post-badge\s*\{[^}]*?radial-gradient\(circle at 50% 45%,\s*([^,]+),",
+        ".scale-track": r"\.scale-track\s*\{[^}]*?background:\s*([^;]+);",
+    }
+    for selector, pattern in sunken.items():
+        found = re.search(pattern, css)
+        check("  %s has a flat value" % selector, found is not None, True)
+        if not found:
+            continue
+        colour, alpha = rgb(found.group(1))
+        if colour is None:
+            check("  %s parses" % selector, False, True)
+            continue
+        well = colour if alpha >= 0.999 else flatten(colour, alpha, card)
+        check("  %s is recessed below the card" % selector,
+              luminance(well) < luminance(card), True)
+        check("    but still above the page" % (), luminance(well) > luminance(page), True)
 
     print()
     print("the things that were frosted stay unfrosted")

@@ -511,7 +511,13 @@ h2 { font-size: 16px; margin: 0 0 12px; font-weight: 650; }
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 45%, rgba(6,22,14,0.9), rgba(6,18,12,0.55));
+  /* Darker than the card it sits on, but not a void.
+   *
+   * These were near-black (rgba(6,22,14,0.9)) and read fine against the old
+   * near-black card. Against the lifted one they punched a hole in it. Now a
+   * step DOWN from the card rather than all the way to the page, so the ring
+   * and the number sit in a well rather than in a gap. */
+  background: radial-gradient(circle at 50% 45%, #0d2418, #0b1f14);
 }
 
 .badge-ring {
@@ -1513,8 +1519,9 @@ button.filter { font: inherit; cursor: pointer; }
 .scale-track {
   position: relative;
   height: 12px; border-radius: var(--r-sm);
-  background: rgba(6,20,13,0.72);
-  border: 1px solid rgba(110,231,183,0.1);
+  /* A groove in the card, not a slot cut through it. */
+  background: #0d2418;
+  border: 1px solid rgba(110,231,183,0.16);
   overflow: visible;
 }
 
@@ -1647,7 +1654,7 @@ button.filter { font: inherit; cursor: pointer; }
 .hiw-post { fill: rgba(255,255,255,0.04); stroke: rgba(110,231,183,0.1); }
 .hiw-cap-t { fill: var(--text); font-size: 8px; }
 .hiw-cap-n { fill: var(--text-faint); font-size: 7px; }
-.hiw-chip { fill: rgba(7,20,13,0.9); stroke: rgba(110,231,183,0.3); }
+.hiw-chip { fill: #0d2418; stroke: rgba(110,231,183,0.34); }
 .hiw-chip-l { fill: var(--text-faint); font-size: 7px; text-anchor: middle; }
 .hiw-chip-n {
   fill: var(--emerald-bright); font-size: 15px; font-weight: 700;
@@ -2285,7 +2292,7 @@ body.score-help-open { overflow: hidden; }
 .sd-post { fill: rgba(255,255,255,0.035); }
 .sd-line { fill: rgba(110,231,183,0.22); }
 
-.sd-hud { fill: rgba(7,20,13,0.97); stroke: rgba(110,231,183,0.32); }
+.sd-hud { fill: #0d2418; stroke: rgba(110,231,183,0.36); }
 .sd-hud-bar { fill: rgba(16,40,27,0.9); }
 .sd-hud-title { fill: var(--emerald-bright); font-size: 7px; font-weight: 700; }
 .sd-label { fill: var(--text-faint); font-size: 6px; }
@@ -3368,8 +3375,10 @@ h2 { font-weight: 700; }
 .cm-chip-unknown { color: #f5cf84; background: rgba(217, 180, 95, 0.1); }
 .cm-intent-hot_lead { color: #1a0f0a; background: var(--ember); border-color: var(--ember); }
 
-/* The top bar: solid enough to have an edge of its own. */
-.topbar { background: rgba(5, 13, 9, 0.9); }
+/* The top bar: solid, and the value that actually wins — this rule overrides
+   the one in the layout block above, which is where a change to the bar's
+   colour looks like it should go and then silently does nothing. */
+.topbar { background: #081a11; }
 
 
 /* ---------------------------------------------------------------- people and motion
