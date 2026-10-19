@@ -198,7 +198,10 @@ def main():
     print()
     print("done holds until the chat moves")
     jane = inbox["waiting"][0]
-    me.post("/messages/%d/status" % jane["id"], data={"status": "done", "csrf_token": csrf})
+    # Through the store: the Messages page and its Done button are gone, but
+    # the store still runs because the extension goes on sending chats until a
+    # new build reaches everybody.
+    messages.set_status(1, jane["id"], "done")
     check("done hides it", [t["name"] for t in messages.inbox(1)["waiting"]], ["Tom Hanks"])
     save(chats())
     check("the same last message keeps it done",
@@ -246,14 +249,10 @@ def main():
     check("  and the conversation is stored nowhere", "full website package" in dump, False)
 
     print()
-    print("the page")
-    html = me.get("/messages").get_data(as_text=True)
-    check("renders all three lists",
-          all(s in html for s in ("Waiting on you", "Replied — waiting on them", "Gone quiet")), True)
-    check("marks the opportunity", "Opportunity" in html, True)
-    check("links to the chat", "https://www.facebook.com/messages/t/1/" in html, True)
-    check("nav has Messages", ">Messages</a>" in html, True)
-    me.post("/messages/forget", data={"csrf_token": csrf})
+    # The Messages page was asserted here. It is gone - answering DMs is work
+    # Facebook already carries, and it carries it better - so what is left to
+    # hold is the store underneath, which the extension still writes to.
+    messages.forget_all(1)
     check("forget clears every chat", messages.inbox(1, show_done=True)["waiting"], [])
 
     shutil.rmtree(tmp, ignore_errors=True)

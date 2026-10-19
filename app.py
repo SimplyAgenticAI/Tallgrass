@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.5"
+APP_VERSION = "32.6"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1646,10 +1646,10 @@ def pipeline_update(kind, row_id):
             wake=snooze == "wake")
     except ValueError:
         pass
-    back = {"today": "comments_page", "comments": "comments_page",
-            "messages": "messages_page"}
-    anchor = ("#%s-%d" % (kind, row_id)) if form.get("next") == "today" else ""
-    return redirect(url_for(back.get(form.get("next"), "comments_page")) + anchor)
+    # Every page that posted here is gone, so there is nowhere to go back to
+    # but the Feed. Kept answering because a form already open in somebody's
+    # browser will still submit, and it should save rather than 404.
+    return redirect(url_for("feed"))
 
 
 # ---------------------------------------------------------------- today
@@ -1677,28 +1677,37 @@ def _ai_meter():
             "pro_cap": billing.AI_LIMITS["pro"]}
 
 
+# ------------------------------------------------- answering people: removed
+#
+# Today, Comments and Messages are gone. Answering comments and DMs is work
+# Facebook already carries - its notifications, its apps, its inbox - and a
+# second place to do it was a second place to check, always a little behind the
+# first. This app ranks posts against their own group's median, which is the
+# thing nothing else does.
+#
+# The paths answer with a redirect rather than a 404, and the /api/ endpoints
+# under them keep working on purpose: see the module note in today.py.
+
+
 @app.route("/today")
+@app.route("/comments")
+@app.route("/messages")
 @auth.login_required
-def today_page():
-    """Gone. Kept as a redirect, because the URL is out in the world.
+def replies_removed():
+    """The pages for answering people. Removed; they land on the Feed."""
+    return redirect(url_for("feed"))
 
-    Today held unanswered comments and waiting chats. The chats left first - a
-    merged inbox competed with Facebook's own and lost - and what remained was
-    a second view of the Comments page, which is the same duplication one level
-    in. So the tab went and the app opens on the Feed instead: what broke out
-    is the one thing here that nothing else can tell anybody.
 
-    Not deleted, because this path is bookmarked, the extension asks the
-    dashboard for its links, and saving from a comment used to come back here.
+def _panel_queue(_user_id):
+    """Always empty now.
+
+    The panel asks for this every minute, so answering with nothing empties its
+    reply queue and clears the icon badge on every build already installed -
+    without waiting for a store release. The shape is unchanged because an
+    older panel reads these three keys by name.
     """
-    return redirect(url_for("comments_page"))
-
-
-def _panel_queue(user_id):
-    return jsonify({"ok": True, "entries": today.for_panel(user_id),
-                    "waiting_total": today.waiting_count(user_id),
-                    # So the panel knows whether an opened chat may be sorted.
-                    "messenger_ai": _messenger_ai_on() and sage.get_config()["has_key"]})
+    return jsonify({"ok": True, "entries": [], "waiting_total": 0,
+                    "messenger_ai": False})
 
 
 @app.route("/api/today", methods=["POST", "OPTIONS"])
@@ -1731,48 +1740,8 @@ def api_today_done():
     return _panel_queue(api_user["id"])
 
 
-# ---------------------------------------------------------------- comments
-
-
-@app.route("/comments")
-@auth.login_required
-def comments_page():
-    """Comments on your own posts, the ones you have not answered first."""
-    show_done = request.args.get("done") == "1"
-    reply_samples.seed_once(_uid())
-    data = comments.threads_for(_uid(), show_done=show_done)
-    return render_template(
-        "comments.html",
-        ai_meter=_ai_meter(),
-        posts=data["posts"],
-        totals=data["totals"],
-        # The pipeline tally, which used to be shown only on Today.
-        stages=pipeline.summary(_uid()),
-        stage_labels=pipeline.STAGE_LABELS,
-        show_done=show_done,
-        version=APP_VERSION,
-        active="comments",
-    )
-
-
-@app.route("/comments/<int:comment_id>/status", methods=["POST"])
-@auth.login_required
-def comment_status(comment_id):
-    try:
-        comments.set_status(_uid(), comment_id, request.form.get("status"))
-    except ValueError:
-        pass
-    if request.args.get("next") == "today":
-        return redirect(url_for("comments_page") + "#c%d" % comment_id)
-    return redirect(url_for("comments_page", done=request.args.get("done")) +
-                    "#c%d" % comment_id)
-
-
-@app.route("/comments/post/<int:post_id>/forget", methods=["POST"])
-@auth.login_required
-def comment_post_forget(post_id):
-    comments.forget_post(_uid(), post_id)
-    return redirect(url_for("comments_page"))
+# The Comments page's own buttons - status, forget, draft - went with it.
+# /api/comments below still receives from the extension.
 
 
 @app.route("/api/comments", methods=["POST", "OPTIONS"])
@@ -1838,17 +1807,6 @@ def _draft_for(ctx, instructions="", comment_id=None):
     return jsonify({"ok": True, "reply": text})
 
 
-@app.route("/comments/<int:comment_id>/draft", methods=["POST"])
-@auth.login_required
-def comment_draft(comment_id):
-    """A reply drafted from the Comments page."""
-    ctx = comments.context_for(_uid(), comment_id=comment_id)
-    if not ctx:
-        return jsonify({"ok": False, "error": "Comment not found"}), 404
-    body = request.get_json(silent=True) or {}
-    return _draft_for(ctx, body.get("instructions", ""), comment_id=comment_id)
-
-
 @app.route("/api/comments/draft", methods=["POST", "OPTIONS"])
 def api_comment_draft():
     """A reply drafted on Facebook, for the extension to put in the reply box.
@@ -1895,39 +1853,7 @@ def _api_user():
     return api_user
 
 
-@app.route("/messages")
-@auth.login_required
-def messages_page():
-    """Messenger chats waiting on an answer, and ones that went quiet."""
-    reply_samples.seed_once(_uid())
-    return render_template(
-        "messages.html",
-        ai_meter=_ai_meter(),
-        inbox=messages.inbox(_uid()),
-        version=APP_VERSION,
-        active="messages",
-    )
-
-
-@app.route("/messages/<int:thread_id>/status", methods=["POST"])
-@auth.login_required
-def message_status(thread_id):
-    try:
-        messages.set_status(_uid(), thread_id, request.form.get("status"))
-    except ValueError:
-        pass
-    if request.args.get("next") == "today":
-        # Today is gone and chats were never the reason it existed. A chat
-        # saved from anywhere belongs back on the chats page.
-        return redirect(url_for("messages_page"))
-    return redirect(url_for("messages_page"))
-
-
-@app.route("/messages/forget", methods=["POST"])
-@auth.login_required
-def messages_forget():
-    messages.forget_all(_uid())
-    return redirect(url_for("messages_page"))
+# The Messages page and its buttons went the same way.
 
 
 @app.route("/api/messages/threads", methods=["POST", "OPTIONS"])
@@ -2011,9 +1937,6 @@ def _guide_urls():
         "capture": url_for("capture"),
         "groups": url_for("groups"),
         "write": url_for("write_page"),
-        # Was "today", which no longer exists. The walkthrough step that used
-        # it now points at Comments, which is the list that outlived it.
-        "comments": url_for("comments_page"),
         "playbook": url_for("playbook"),
     }
 
@@ -2222,11 +2145,13 @@ def audience_filter(count, kind):
 
 
 def _tip_counts(user):
-    """The two numbers a tip might use. Cheap, indexed, and never fatal.
+    """The one number a tip might use. Cheap, indexed, and never fatal.
 
-    Both are counts on an indexed column. Anything that needed a scoring pass
-    would be doing the work of a page to produce a sentence, so there is none
-    here.
+    A count on an indexed column. Anything that needed a scoring pass would be
+    doing the work of a page to produce a sentence, so there is none here.
+
+    It also carried a count of people waiting on a reply, until answering
+    people left the product.
     """
     if not user:
         return {}
@@ -2234,10 +2159,6 @@ def _tip_counts(user):
     try:
         counts["posts"] = billing.usage(user["id"])["posts"]
     except Exception:                         # noqa: BLE001 - never break a page
-        pass
-    try:
-        counts["waiting"] = today.waiting_count(user["id"])
-    except Exception:                         # noqa: BLE001
         pass
     return counts
 
@@ -2281,21 +2202,12 @@ def inject_globals():
         # one group while its own feature list said unlimited.
         "free_limits": billing.FREE_LIMITS,
         # People waiting on an answer, for the Today badge in the navigation.
-        "waiting_count": _waiting_count_for_nav(),
         # For telling a snooze that is still running from one that has ended.
         "now_utc": pipeline.now_utc(),
     }
 
 
-def _waiting_count_for_nav():
-    user = auth.current_user()
-    if not user:
-        return 0
-    try:
-        return today.waiting_count(user["id"])
-    except Exception:                                  # noqa: BLE001
-        return 0                                       # never break a page over a badge
-
+# _waiting_count_for_nav went with the badge it fed.
 
 # Endpoints that legitimately have no session cookie to protect: the extension
 # authenticates with an API key, and Stripe signs its webhooks.
@@ -2463,9 +2375,10 @@ def register():
                 if not claimed:
                     try:
                         seed_demo_data(user["id"])
-                        # And example comments and chats, so Today, Comments
-                        # and Messages show what they are for from the start.
-                        reply_samples.seed_once(user["id"])
+                        # Example comments and chats were seeded here too, for
+                        # Today, Comments and Messages. Those pages are gone -
+                        # answering people is work Facebook already carries -
+                        # so there is nothing left for them to fill.
                     except Exception:         # noqa: BLE001
                         # Sample data is a courtesy. Failing to write it must
                         # never cost somebody the account they just made.

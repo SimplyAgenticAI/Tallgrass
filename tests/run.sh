@@ -86,6 +86,8 @@ echo "--- what the dragonfly is allowed to say ---"
 python tests/tips.test.py
 echo "--- frontend survives a bare page ---"
 node tests/frontend.test.js
+echo "--- answering people is gone, and must stay gone ---"
+python tests/replies_gone.test.py
 echo "--- what a new account sees ---"
 python tests/onboarding.test.py
 echo "--- onboarding email ---"
@@ -140,10 +142,6 @@ echo "--- saved comments ---"
 python tests/comment_store.test.py
 echo "--- messenger inbox ---"
 python tests/messages_store.test.py
-echo "--- today queue ---"
-python tests/today.test.py
-echo "--- example comments and chats ---"
-python tests/reply_samples.test.py
 echo "--- capture health canary ---"
 python tests/health.test.py
 echo "--- app consistency ---"

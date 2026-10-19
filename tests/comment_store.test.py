@@ -62,7 +62,7 @@ def main():
 
     me = appmod.app.test_client()
     sign_up(me, "me@example.com", "birchwood")
-    me.get("/comments")                    # the CSRF token is made on first render
+    me.get("/")                            # the CSRF token is made on first render
     with me.session_transaction() as s:
         key = s["fresh_api_key"]
         csrf = s.get("csrf_token")
@@ -91,9 +91,13 @@ def main():
     print()
     print("a second read")
     mark = [t for t in post["threads"] if t["author"] == "Mark Twain"][0]
-    page = me.post("/comments/%d/status" % mark["id"],
-                   data={"status": "done", "csrf_token": csrf})
-    check("done is accepted", page.status_code, 302)
+    # Through the store, because the Comments page that had a Done button is
+    # gone — answering people is work Facebook already carries. The store
+    # itself still runs: the extension goes on sending comments until a new
+    # build reaches everybody.
+    comments.set_status(1, mark["id"], "done")
+    check("done is accepted",
+          comments.threads_for(1, show_done=True)["posts"][0]["threads"][0] is not None, True)
     partial = thread()
     partial["comments"] = [c for c in partial["comments"] if c["key"] != "c:444"]
     body = save(partial).get_json()
@@ -156,13 +160,15 @@ def main():
     print("yours only")
     other = appmod.app.test_client()
     sign_up(other, "other@example.com", "willow")
-    other.get("/comments")
+    other.get("/")
     with other.session_transaction() as s:
         other_csrf = s.get("csrf_token")
-    other_page = other.get("/comments").get_data(as_text=True)
+    other_page = other.get("/").get_data(as_text=True)
     check("another account sees none of it", "Logos too?" in other_page, False)
-    other.post("/comments/%d/status" % mark["id"],
-               data={"status": "open", "csrf_token": other_csrf})
+    try:
+        comments.set_status(2, mark["id"], "open")
+    except ValueError:
+        pass
     check("and cannot change it",
           [t for t in comments.threads_for(1, show_done=True)["posts"][0]["threads"]
            if t["author"] == "Mark Twain"][0]["status"], "done")
@@ -179,23 +185,6 @@ def main():
 
     appmod.replies.draft_reply = fake_draft
 
-    jane = [t for t in comments.threads_for(1, show_done=True)["posts"][0]["threads"]
-            if t["author"] == "Jane Doe"][0]
-    result = me.post("/comments/%d/draft" % jane["id"], json={},
-                     headers={"X-CSRF-Token": csrf}).get_json()
-    check("the Comments page gets a draft", result.get("reply"),
-          "Thanks Jane! Sending you a message now.")
-    check("  written from the post and the comment",
-          (asked[-1]["title"], asked[-1]["comment"]), ("New website packages", "How much?"))
-    check("  knowing the replies already under it",
-          [r["author"] for r in asked[-1]["replies"]], ["Jeff Randle"])
-    check("  and it is kept",
-          comments.context_for(1, comment_id=jane["id"])["draft"],
-          "Thanks Jane! Sending you a message now.")
-    check("another account cannot draft on it",
-          other.post("/comments/%d/draft" % jane["id"], json={},
-                     headers={"X-CSRF-Token": other_csrf}).status_code, 404)
-
     def api_draft(body, api_key=key):
         return me.post("/api/comments/draft", json=body, headers={"X-Outlier-Key": api_key})
 
@@ -205,9 +194,13 @@ def main():
     check("a saved comment is drafted from what was saved",
           (result.get("reply"), asked[-1]["comment"]),
           ("Thanks Mark! Sending you a message now.", "Logos too?"))
-    check("  and the draft shows on the Comments page",
-          "Thanks Mark! Sending you a message now." in
-          me.get("/comments?done=1").get_data(as_text=True), True)
+    # Kept on the row rather than shown on a page. The Comments page is gone -
+    # answering people is work Facebook already carries - and the draft now
+    # only ever appears in the panel on Facebook, which is where somebody is
+    # standing when they ask for it.
+    check("  and the draft is kept on the comment",
+          comments.context_for(1, post_key="p:1", comment_key="c:333")["draft"],
+          "Thanks Mark! Sending you a message now.")
     result = api_draft({"post": {"key": "p:new", "title": "Fresh post"},
                         "comment": {"key": "c:999", "author": "Ana Ruiz", "text": "Book a call?"},
                         "replies": [{"author": "Tom Hanks", "text": "Me too"}]}).get_json()
@@ -241,9 +234,11 @@ def main():
         g.user = {"id": 2, "email": "other@example.com"}
         check("  (the other account has none)", sage_mod.kit_summary(), "")
 
-    me.post("/comments/%d/draft" % jane["id"],
-            json={"instructions": "Rewrite this draft and make it noticeably shorter"},
-            headers={"X-CSRF-Token": csrf})
+    # Through the extension's endpoint: the Comments page's own draft button
+    # went with the page, and the panel on Facebook is the only thing that asks
+    # for a draft now.
+    api_draft({"post": {"key": "p:1"}, "comment": {"key": "c:333", "text": "ignored"},
+               "instructions": "Rewrite this draft and make it noticeably shorter"})
     check("a tone reaches the draft as the user's direction",
           asked[-1]["instructions"], "Rewrite this draft and make it noticeably shorter")
     settings_html = me.get("/settings").get_data(as_text=True)
@@ -257,7 +252,8 @@ def main():
          "came_back": True}]})
     rae = [t for p in comments.threads_for(1)["posts"] for t in p["threads"] if t["author"] == "Rae Wu"][0]
     check("is stored, so the page can say why", bool(rae["came_back"]), True)
-    check("  and says it", "wrote again after your last reply" in me.get("/comments").get_data(as_text=True), True)
+    # The page that said so is gone; the flag is still stored, and the panel
+    # on Facebook is what reads it.
 
     print()
     print("Open goes to the post, never the commenter")
@@ -272,9 +268,10 @@ def main():
         conn.execute("UPDATE post_comments SET url = ? WHERE comment_key = 'c:4444'", (profile,))
     dana = [t for p in comments.threads_for(1)["posts"] for t in p["threads"] if t["author"] == "Dana Brooks"][0]
     check("one already stored is not offered as its link", dana["url"], None)
-    html = me.get("/comments").get_data(as_text=True)
-    check("  so the page's Open falls back to the post", profile in html, False)
-    check("  which is there", "https://www.facebook.com/me/posts/77" in html, True)
+    check("  and the post's own link is what is left to open",
+          [p["url"] for p in comments.threads_for(1)["posts"]
+           if p["url"] == "https://www.facebook.com/me/posts/77"],
+          ["https://www.facebook.com/me/posts/77"])
     check("a real post link is kept",
           comments.post_link("https://www.facebook.com/me/posts/77?comment_id=4444"),
           "https://www.facebook.com/me/posts/77?comment_id=4444")
@@ -290,9 +287,6 @@ def main():
     check("a commenter's profile becomes a Messenger link",
           rows["Dana Price"]["dm_url"], "https://www.facebook.com/messages/t/dana.price")
     check("  anything that isn't a Facebook profile is never kept", rows["Not A Person"]["dm_url"], None)
-    html = me.get("/comments").get_data(as_text=True)
-    check("  the page offers Message them, carrying what they said",
-          'data-handoff-text="How much for 5 pages?"' in html and ">Message them</a>" in html, True)
     check("the server's rules match the extension's",
           [comments.messenger_link(u) for u in (
               "https://www.facebook.com/profile.php?id=10001234",
@@ -341,10 +335,16 @@ def main():
         {"key": "c:9104", "author": "Dee Moss", "text": "Can I book you for June 3rd?", "verdict": "unanswered"},
         {"key": "c:9105", "author": "Me", "text": "Thanks all", "verdict": "yours", "mine": True}]}
 
-    before = today.waiting_count(1)
+    def unanswered():
+        return sorted(t["author"] for p in comments.threads_for(1)["posts"]
+                      for t in p["threads"]
+                      if t["status"] == "open" and t["verdict"] in ("unanswered", "unknown"))
+
+    before = unanswered()
     save(triage_thread)
     check("without an AI key nothing is sent to sort", calls, [])
-    check("  and the keyword check still decides", before + 4, today.waiting_count(1))
+    check("  and the comments are still stored as unanswered",
+          len(unanswered()), len(before) + 4)
 
     with db.get_db() as conn:
         conn.execute("DELETE FROM comment_posts WHERE post_key = 'p:triage'")
@@ -357,20 +357,14 @@ def main():
                                 "AND author != 'Me'").fetchall())
     check("  each gets its label", got, {"Ava Stone": "praise", "Ben Hart": "tag",
                                          "Cal Reed": "spam", "Dee Moss": "hot_lead"})
-    check("spam leaves the waiting count", today.waiting_count(1), before + 3)
-    q = today.queue(1)
-    whos = [i["who"] for i in q["entries"]]
-    check("  and Today", "Cal Reed" in whos, False)
-    leads = [i["who"] for i in q["entries"] if i["opportunity"]]
-    check("a hot lead ranks with the opportunities, ahead of everything else",
-          "Dee Moss" in leads and whos.index("Dee Moss") < len(leads), True)
-    check("tags and praise sink below the rest",
-          whos.index("Ava Stone") > len(whos) - 3 and whos.index("Ben Hart") > len(whos) - 3, True)
-    # On the Comments page, which is where the queue lives now — Today was
-    # removed once the chats had left it, because what remained was a second
-    # view of this same list.
-    check("the page shows the label",
-          ">Hot lead</span>" in me.get("/comments").get_data(as_text=True), True)
+    # The queue these labels used to order is gone, along with the pages that
+    # showed it: answering people is work Facebook already carries. What the
+    # labels are still for is the panel on Facebook, which reads them off the
+    # row — so the label being STORED is the thing worth holding.
+    check("a hot lead is labelled as one", got["Dee Moss"], "hot_lead")
+    check("  and spam is labelled, not silently dropped", got["Cal Reed"], "spam")
+    check("the queue that ranked them no longer exists",
+          (today.queue(1)["entries"], today.waiting_count(1)), ([], 0))
     save(triage_thread)
     check("a rescan never sorts the same comments again", len(calls), 1)
     os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -392,39 +386,13 @@ def main():
     check("  and its reply still points at it", reply_parent, "c:9999")
 
     print()
-    print("the page")
-    html = me.get("/comments").get_data(as_text=True)
-    check("renders", "Unanswered" in html or "Check replies" in html, True)
-    check("names the post", "New website packages" in html, True)
-    check("says a reply is folded", "tell if you answered" in html, True)
-    check("nav says Extension, not Capture", ">Extension</a>" in html and ">Capture</a>" not in html, True)
-    check("nav has Comments", ">Comments" in html, True)
-    nav = html.split('<nav class="topnav">', 1)[1].split("</nav>", 1)[0]
-    in_view = nav.split("<details", 1)[0]
-    # Feed first, and Today gone.
-    #
-    # Today held unanswered comments and waiting chats. The chats left because
-    # a merged inbox competed with Facebook's own and lost; what remained was a
-    # second view of the Comments page, so the tab went too. The app opens on
-    # the Feed now — what broke out is the one thing in here that nothing else
-    # can tell anybody — and Comments came up into view with the badge, because
-    # a count on one page for the contents of another stops being believed.
-    check("five links in view, Feed first and no Today",
-          [label for label in ("Today", "Feed", "Groups", "Comments", "Write",
-                               "Sage", "Library", "Settings")
-           if ">" + label in in_view],
-          ["Feed", "Groups", "Comments", "Write", "Sage"])
-    check("  Messages, Library and Playbook under More",
-          all(">" + l + "</a>" in nav for l in ("Messages", "Library", "Playbook")), True)
-    check("  and Today is nowhere in the page", ">Today" in html, False)
-    account_menu = html.split("account-menu", 1)[1].split("</details>", 1)[0]
-    check("  Extension, Settings, Health and Feedback in the account menu",
-          all(">" + l + "</a>" in account_menu for l in ("Account", "Extension", "Settings", "Health", "Feedback")), True)
-    check("the extension page still lives at /capture",
-          me.get("/capture").status_code, 200)
+    # There was a block here checking the Comments page rendered, and the
+    # shape of the navigation. The page is gone - answering people is work
+    # Facebook already carries - and what the nav must and must not contain is
+    # now held by tests/replies_gone.test.py, next to the reasoning.
 
     pid = comments.threads_for(1)["posts"][0]["id"]
-    me.post("/comments/post/%d/forget" % pid, data={"csrf_token": csrf})
+    comments.forget_post(1, pid)
     with db.get_db() as conn:
         left = conn.execute("SELECT COUNT(*) FROM post_comments WHERE post_id = ?",
                             (pid,)).fetchone()[0]

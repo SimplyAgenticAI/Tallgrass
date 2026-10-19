@@ -1,132 +1,64 @@
-"""Today: the comments on your posts that nobody has answered.
+"""The reply queue. Removed, and this is what is left of it.
 
-This used to merge unanswered comments AND waiting Messenger chats into one
-queue. The chats are gone from it, deliberately.
+There was a queue here of everyone waiting on an answer: unanswered comments on
+your own posts, and Messenger chats where they spoke last. It is gone, in two
+steps and for two reasons.
 
-A merged inbox competes with Facebook's own, and loses on every axis that
-matters: Facebook delivers in real time where this scrapes, it has mobile apps,
-labels and saved replies, and it is free and native. A duplicated inbox is also
-a liability rather than a feature — when this said three people were waiting
-and Facebook said five, the trust that went was the trust the SCORING earned,
-which had nothing to do with chats.
+The chats went first. A merged inbox competed with Facebook's own and lost on
+every axis that matters — Facebook delivers in real time where this scrapes,
+and it has mobile apps, labels and saved replies. The duplication was worse
+than the weakness: when this said three people were waiting and Facebook said
+five, the trust that went was the trust the SCORING had earned.
 
-Comments are not the same bet, and they stay. Facebook's Professional Dashboard
-is Page-centric: it gives you nothing for comments on your own posts inside
-GROUPS from a personal profile, which is this product's whole premise. Those
-land in notification soup. And only this app knows which post is an outlier, so
-"these comments are on the post doing 14x its group's median" is a judgement
-Facebook cannot make.
+Then the comments went too, and the pages with them. Facebook already carries
+replying, so a second place to do it was a second place to check. What this app
+does that nothing else does is tell you what a post did against the median of
+its own group, and that is what it is now.
 
-Chats keep their own page under More, and keep "Suggest a message" in the
-on-Facebook panel, which works from inside an open chat and needs no queue.
+The three functions stay, returning nothing, because they are still called:
 
-Read-only over the comment store. Done and drafting still go through it.
+  waiting_count  - the number on the extension's icon badge. Returning 0 clears
+                   that badge on every build already installed, without waiting
+                   for a store release. Several /api/ endpoints report it back
+                   to the extension after a capture.
+  queue          - kept for shape. Nothing reads it in the app any more.
+  for_panel      - the reply queue in the on-Facebook panel.
+
+The comment and chat STORES are untouched and still accept what the extension
+sends, on purpose: a build already installed goes on sending until a new one
+reaches it, and refusing those posts would break capture rather than retire a
+feature. They come out after the extension stops sending.
+
+OPPORTUNITY_RE and DECLINE_RE moved to comments.py, which is where a comment's
+text belongs; they are re-exported here because tests import them from this
+module.
 """
 
 import comments
-import db
-import pipeline
 
-# The opportunity and decline signals now live in comments.py, which is where
-# the Comments page can reach them too — it needed the same ordering this page
-# had, and a copy here would have drifted from it. Re-exported under the old
-# names because tests and the panel import them from here.
 OPPORTUNITY_RE = comments.OPPORTUNITY_RE
 DECLINE_RE = comments.DECLINE_RE
 
-
-def queue(user_id):
-    with db.get_db() as conn:
-        comment_rows = conn.execute(
-            """
-            SELECT c.id, c.author, c.body, c.url, c.verdict, c.hidden_replies, c.draft, c.came_back,
-                   c.intent, c.intent_reason,
-                   c.first_seen_at, c.stage, c.note, c.author_url,
-                   p.title AS post_title, p.url AS post_url, p.is_demo
-            FROM post_comments c JOIN comment_posts p ON p.id = c.post_id
-            WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open'
-              AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown')
-              AND (c.snooze_until IS NULL OR c.snooze_until <= ?)
-              AND c.intent IS NOT 'spam'
-            """, (user_id, pipeline.now_utc())).fetchall()
-
-    items = []
-    for r in comment_rows:
-        items.append({
-            "kind": "comment",
-            "id": r["id"],
-            "who": r["author"] or "Someone",
-            "text": r["body"] or "",
-            "where": r["post_title"] or "Your post",
-            # Only ever a link to the post — never the commenter's profile.
-            "url": comments.post_link(r["url"]) or comments.post_link(r["post_url"]),
-            "when": r["first_seen_at"],
-            "verdict": r["verdict"],
-            "hidden_replies": r["hidden_replies"],
-            "came_back": bool(r["came_back"]),
-            "stage": r["stage"],
-            "note": r["note"],
-            "draft": r["draft"],
-            "sample": bool(r["is_demo"]),
-            # Message them: reach the commenter in Messenger.
-            "dm_url": comments.messenger_link(r["author_url"]),
-            # The AI's label when there is one; the keyword check when not.
-            "intent": r["intent"],
-            "intent_label": comments.INTENT_LABELS.get(r["intent"]),
-            "intent_reason": r["intent_reason"],
-            "opportunity": r["intent"] == "hot_lead" if r["intent"]
-                           else bool(OPPORTUNITY_RE.search(r["body"] or ""))
-                           and not DECLINE_RE.search(r["body"] or ""),
-            "question": r["intent"] == "question" if r["intent"]
-                        else (r["body"] or "").rstrip().endswith("?"),
-            "low": r["intent"] in ("praise", "tag", "other"),
-        })
-    items.sort(key=lambda i: i["when"] or "", reverse=True)
-    items.sort(key=lambda i: (not i["opportunity"], not i["question"], i["low"]))
-    # `messages` is kept at zero rather than dropped: the key is read in a
-    # couple of places that have nothing to do with this decision, and a
-    # KeyError there would be a worse outcome than a number that is always 0.
-    return {
-        "entries": items,
-        "comments": len(items),
-        "messages": 0,
-        "opportunities": sum(1 for i in items if i["opportunity"]),
-        "samples": any(i["sample"] for i in items),
-    }
+EMPTY = {"entries": [], "comments": 0, "messages": 0, "opportunities": 0,
+         "samples": False}
 
 
-def for_panel(user_id, limit=15):
-    """The top of the queue for the extension's panel: real people only.
+def queue(_user_id):
+    """Nothing is queued. See the module note."""
+    return dict(EMPTY)
 
-    Examples have no link to open and nobody behind them, so the panel never
-    offers one. Text is trimmed to what fits on a card.
+
+def for_panel(_user_id, limit=15):
+    """Nothing for the panel's reply queue. See the module note."""
+    return []
+
+
+def waiting_count(_user_id):
+    """Nobody is waiting, because nothing in this app asks anybody to reply.
+
+    Zero rather than a count of stored rows. The number is drawn on the
+    extension's icon as a red badge, and a badge pointing at a list that no
+    longer exists is worse than no badge: it asks somebody to go and find work
+    the app will not show them.
     """
-    entries = [e for e in queue(user_id)["entries"] if not e["sample"] and e["url"]][:limit]
-    return [{
-        "kind": e["kind"], "id": e["id"], "who": e["who"], "where": e["where"],
-        "text": (e["text"] or "")[:160], "url": e["url"],
-        "opportunity": e["opportunity"], "question": e["question"],
-        "stage": pipeline.STAGE_LABELS.get(e["stage"]),
-        "dm_url": e.get("dm_url"),
-    } for e in entries]
-
-
-def waiting_count(user_id):
-    """How many comments are waiting on an answer. Cheap: one count.
-
-    Examples are never counted: this is the number on a red badge, and it
-    should only ever mean somebody real is waiting.
-
-    It counts exactly what the queue above shows, and that is the point of it
-    being here rather than written out again wherever a badge is drawn. It used
-    to add waiting chats, and a badge that counts something the list does not
-    show is the specific way an app stops being believed.
-    """
-    now = pipeline.now_utc()
-    with db.get_db() as conn:
-        return conn.execute(
-            "SELECT COUNT(*) FROM post_comments c JOIN comment_posts p ON p.id = c.post_id "
-            "WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open' "
-            "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0 "
-            "AND (c.snooze_until IS NULL OR c.snooze_until <= ?) AND c.intent IS NOT 'spam'",
-            (user_id, now)).fetchone()[0]
+    return 0

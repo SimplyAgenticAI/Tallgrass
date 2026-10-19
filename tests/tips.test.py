@@ -80,14 +80,16 @@ def main():
     check("  but there is still advice", len(out) > 2, True)
 
     print()
-    print("people waiting on a reply come before craft")
-    out = words(tips.for_page("feed", [9.0, 2.0], SOMEBODY, {"posts": 300, "waiting": 3}))
-    check("it mentions them", any("3 people are waiting" in t for t in out), True)
-    check("  before the general advice",
-          [i for i, t in enumerate(out) if "waiting" in t][0] <
-          [i for i, t in enumerate(out) if "plausibly" in t][0], True)
-    one = words(tips.for_page("feed", [9.0], SOMEBODY, {"posts": 300, "waiting": 1}))
-    check("and one person is singular", any("1 person is waiting" in t for t in one), True)
+    print("nothing is said about people waiting on a reply")
+    # There was a tip here counting them, and it came before the craft advice.
+    # Answering people left the product - Facebook already carries that work -
+    # so a tip pointing at a queue that no longer exists would be sending
+    # somebody to look for work the app will not show them.
+    out = words(tips.for_page("feed", [9.0, 2.0], SOMEBODY,
+                              {"posts": 300, "waiting": 3}))
+    check("even when a count is passed in", any("waiting" in t for t in out), False)
+    check("  and the craft advice is still there",
+          any("plausibly" in t for t in out), True)
 
     print()
     print("the page they are on gets a word in")

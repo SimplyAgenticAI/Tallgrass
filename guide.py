@@ -108,12 +108,9 @@ def steps(user, urls):
             "you'd actually publish.",
             'a[href="%s"]' % urls["write"], urls["write"])
 
-    if facts["comments"]:
-        add("comments", "Nobody waiting too long",
-            "Comments on your own posts that nobody has answered, the ones "
-            "that read like somebody ready to buy first. Drafts wait for you "
-            "to send them.",
-            'a[href="%s"]' % urls["comments"], urls["comments"])
+    # There was a step here for answering comments. Answering people left the
+    # product - Facebook already carries that work - so the walkthrough stops
+    # teaching it.
 
     add("playbook", "How to win in a group",
         "The Playbook is what to do with a winner once you've found one — "

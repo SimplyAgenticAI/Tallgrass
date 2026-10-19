@@ -78,11 +78,13 @@ def for_page(active, scores, user, counts=None):
 
     `scores` is the list the meadow is already drawn from, so the numbers here
     and the blades agree and nothing is queried twice. `counts` is optional —
-    {"posts": n, "waiting": n} — and only used where it is given.
+    {"posts": n} — and only used where it is given.
+
+    There was a tip here counting people waiting on a reply. Answering people
+    left the product, because Facebook already carries that work.
     """
     counts = counts or {}
     posts = counts.get("posts")
-    waiting = counts.get("waiting")
     tips = []
 
     # Where they are stuck comes first: a tip about craft is no use to somebody
@@ -107,11 +109,6 @@ def for_page(active, scores, user, counts=None):
                 "Your best captured post so far did %s× the median of its "
                 "group. Open it and Write can build on what made it work."
                 % round(best, 1)))
-
-    if waiting:
-        tips.append(_fact(
-            "%d %s waiting on a reply from you. Oldest first is the habit worth "
-            "having." % (waiting, "person is" if waiting == 1 else "people are")))
 
     page_tip = BY_PAGE.get(active or "")
     if page_tip:
