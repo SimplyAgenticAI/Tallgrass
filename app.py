@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.0"
+APP_VERSION = "32.1"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1143,10 +1143,24 @@ def api_sage_stream():
             # who closed the tab must not be charged for a picture nobody will
             # see. An answer that errored has nothing to illustrate.
             if drawing and not failed and parts:
+                # The answer carries its own image brief on a last SCENE line.
+                # That brief is the subject, because the sentences above it are
+                # a caption and a caption describes no scene.
+                _prose, scene = sage.split_picture_brief("".join(parts))
                 yield "data: " + json.dumps({
                     "type": "picture",
-                    "ask": question[:600],
-                    "body": "".join(parts)[:2000],
+                    # The operator's own sentence, and ONLY as a fallback for a
+                    # model that wrote no brief.
+                    #
+                    # It must not be sent as art direction when there is a
+                    # brief. _graphic_prompt puts instructions first, under
+                    # "follow these exactly, where they conflict they win" - so
+                    # "make me a graphic for the Vibe Coding group" outranked
+                    # every rule about showing a real specific scene, while
+                    # containing no art direction at all. That is what made
+                    # these generic.
+                    "ask": "" if scene else question[:600],
+                    "body": (scene or "".join(parts))[:2000],
                     "configured": remix.graphic_configured(),
                 }) + "\n\n"
         finally:
@@ -1154,6 +1168,8 @@ def api_sage_stream():
             # closes this generator. Whatever the reader actually saw is what
             # gets stored, so the transcript never disagrees with the screen.
             answer = "".join(parts)
+            if drawing:
+                answer = sage.split_picture_brief(answer)[0]
             if answer:
                 with db.get_db() as conn:
                     conn.execute(

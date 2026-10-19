@@ -25,6 +25,16 @@ OPENAI_MODEL = "gpt-4o"
 MAX_POSTS_IN_CONTEXT = 25
 MAX_BODY_CHARS = 420
 
+# Per post, for the picture a post carried. Enough to say what a picture was
+# without a model's description of one image crowding out another post's words.
+MAX_IMAGE_WORDS = 160
+MAX_IMAGE_STYLE = 300
+
+# The one example carried for every group, so no room is described to Sage
+# without something that works in it. Shorter than MAX_BODY_CHARS because this
+# one is paid per group rather than per account.
+MAX_SOURCE_EXAMPLE = 220
+
 
 SYSTEM = """You are Sage, the analyst built into Tallgrass — a tool that finds \
 breakout posts in Facebook groups.
@@ -94,9 +104,48 @@ _ONLY_ASKING = re.compile(
 
 PICTURE_NOTE = """\
 The app is generating a real graphic from this answer and will show it \
-underneath. So do not describe the picture in detail and do not offer concepts \
-to choose between - it is being drawn now. In one or two sentences say what it \
-shows and why that fits the post. Then stop."""
+underneath, so do not describe the picture in detail and do not offer concepts \
+to choose between. In one or two sentences say what it shows and why that fits. \
+
+Then, as the very last line and with nothing after it, write:
+
+SCENE: one paragraph of 40 to 80 words describing the exact photograph to make.
+
+That line is read by the image generator and is not shown to anybody, so it is \
+the only part that decides what the picture looks like. Write it as a brief for \
+a photographer:
+
+- Name what is in frame - the place, the object, the person, the moment. Take \
+these from the posts that actually win in the group being asked about, not from \
+the idea of the group. A graphic "for a group" is a graphic about what that \
+group's best posts are about.
+- Say the angle, the light and the treatment, and where the data shows what \
+that group's winning graphics looked like, make this one belong beside them.
+- Fold in anything the operator asked for - a look, a colour, a thing to leave \
+out - because nothing else of what they typed reaches the generator.
+- No abstractions. No floating shapes, no glowing orbs, no collages, no \
+diagrams, no infographics, no text or lettering anywhere in the image.
+
+Never mention the SCENE line in the sentences above it."""
+
+
+def split_picture_brief(answer):
+    """Split an answer into what the operator reads and the image brief.
+
+    Returns (prose, scene). The scene is dropped from the prose: it is a note
+    to a generator, written in the imperative, and reading it in the chat makes
+    the answer look like a leaked prompt - which is what it is.
+
+    A model that ignores the instruction and writes no SCENE line yields
+    (whole answer, ""), and the caller illustrates the prose as before.
+    """
+    text = str(answer or "")
+    marker = re.search(r"(?:^|\n)\s*SCENE\s*:", text, re.I)
+    if not marker:
+        return text.strip(), ""
+    prose = text[:marker.start()].strip()
+    scene = " ".join(text[marker.end():].split())
+    return prose, scene
 
 
 def wants_picture(message):
@@ -270,9 +319,31 @@ def build_context():
     sources = []
     for name, group in by_source.items():
         engaged = [p for p in group if p["total_engagement"] > 0]
+
+        # This group's own best post, always, however many groups there are.
+        #
+        # top_outliers below is the best 25 posts in the ACCOUNT, so on an
+        # account with a dozen rooms a given room may contribute nothing to it
+        # at all. Asked for a graphic "for the Vibe Coding group", Sage then had
+        # the group's name, its median and no example of anything that works in
+        # it — and briefed a picture about the abstract idea of a group, which
+        # is what came out looking generic.
+        #
+        # One post per group, trimmed hard. Bounded by the number of groups, not
+        # by the number of posts.
+        best = max(group, key=lambda p: (p["outlier_multiple"] or 0,
+                                         p["total_engagement"]))
         sources.append({
             "name": name,
             "posts": len(group),
+            "best_post": {
+                "multiple": best["outlier_multiple"],
+                "reactions": best["likes"],
+                "body": (best["body"] or "")[:MAX_SOURCE_EXAMPLE] or None,
+                "image_looked_like": (
+                    (best["image_style"] or best["image_desc"] or "")
+                    [:MAX_SOURCE_EXAMPLE] or None),
+            },
             "is_sample": bool(group[0].get("is_demo")),
             # None where the group has no usable baseline. Sage is told the
             # difference explicitly rather than being handed a zero it would
@@ -341,6 +412,20 @@ def build_context():
                 "shares": p["shares"],
                 "posted": p["age_label"],
                 "body": (p["body"] or "")[:MAX_BODY_CHARS],
+                # What this post's picture was, for the ones that had one.
+                # Without these Sage was art-directing a graphic for a room it
+                # had only ever read the words of, and its briefs came back
+                # generic because nothing in its context said what the
+                # pictures that work here look like.
+                #
+                # image_style is a description written by a model that was
+                # shown the actual image; image_desc is Facebook's own alt
+                # text, which is usually six words. Style first where both
+                # exist.
+                "image_words": (p["image_text"] or "")[:MAX_IMAGE_WORDS] or None,
+                "image_looked_like": (
+                    (p["image_style"] or p["image_desc"] or "")[:MAX_IMAGE_STYLE]
+                    or None),
             }
             for p in top
         ],

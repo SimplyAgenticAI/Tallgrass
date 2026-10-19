@@ -2290,6 +2290,13 @@
        buttons use, so the allowance check, the cost record and the error
        wording all stay in one place rather than being written twice. */
 
+    /* Everything before a final "SCENE:" line. Written to survive arriving
+       one character at a time: "SCEN" is still prose, "SCENE:" is not. */
+    function withoutBrief(text) {
+      var at = String(text || "").search(/(^|\n)\s*SCENE\s*:/i);
+      return at === -1 ? text : text.slice(0, at);
+    }
+
     function drawForSage(bubble, event) {
       if (!event.configured) {
         var missing = document.createElement("p");
@@ -2421,7 +2428,12 @@
                  and the layout never settling. Still no markup from the model:
                  layOut builds nodes and every string goes in by textContent. */
               streamed += event.text;
-              layOut(streamed, body);
+              /* The answer may end with a SCENE line: a brief for the image
+                 generator, in the imperative, meant for nobody to read. It is
+                 cut here as well as on the server, because the server only
+                 sees the whole answer at the end and this is being painted a
+                 word at a time. */
+              layOut(withoutBrief(streamed), body);
               chat.scrollTop = chat.scrollHeight;
             } else if (event.type === "picture") {
               // Sent last, and only on a clean finish. Drawn after the words
