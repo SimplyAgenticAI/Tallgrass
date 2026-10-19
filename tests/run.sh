@@ -74,6 +74,8 @@ echo "--- the dragonfly that visits the meadow ---"
 node tests/dragonfly.test.js
 echo "--- Sage's answers, laid out ---"
 node tests/sageformat.test.js
+echo "--- asked for a graphic, gets a graphic ---"
+python tests/sagepic.test.py
 echo "--- judging a room ---"
 python tests/rating.test.py
 echo "--- the palette, measured ---"

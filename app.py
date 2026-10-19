@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "31.8"
+APP_VERSION = "31.9"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1109,15 +1109,42 @@ def api_sage_stream():
         ).fetchall()][::-1]
 
     messages = [{"role": m["role"], "content": m["content"]} for m in prior]
-    messages.append({"role": "user", "content": question})
+
+    # "Make me a graphic for the bee post" used to get a written concept and no
+    # graphic. The generator has existed all along, behind a button on a post;
+    # nothing connected it to the one place people actually ask for things.
+    #
+    # Two parts. The answer is asked to be a caption rather than a concept, and
+    # the stream ends with an event telling the page what to draw. The drawing
+    # itself goes through /api/graphic like every other graphic in the app, so
+    # it is gated, costed and reported in exactly one place.
+    drawing = sage.wants_picture(question)
+    messages.append({
+        "role": "user",
+        "content": (question + "\n\n" + sage.PICTURE_NOTE) if drawing else question,
+    })
 
     def events():
         parts = []
+        failed = False
         try:
             for event in sage.ask_stream(messages):
                 if event["type"] == "delta":
                     parts.append(event["text"])
+                if event["type"] == "error":
+                    failed = True
                 yield "data: " + json.dumps(event) + "\n\n"
+
+            # Only on a clean finish, and never from the finally below: a reader
+            # who closed the tab must not be charged for a picture nobody will
+            # see. An answer that errored has nothing to illustrate.
+            if drawing and not failed and parts:
+                yield "data: " + json.dumps({
+                    "type": "picture",
+                    "ask": question[:600],
+                    "body": "".join(parts)[:2000],
+                    "configured": remix.graphic_configured(),
+                }) + "\n\n"
         finally:
             # Runs on a clean finish AND on a cancelled request, where Flask
             # closes this generator. Whatever the reader actually saw is what

@@ -11,6 +11,7 @@ Authorization header to the provider they chose.
 """
 
 import json
+import re
 import os
 
 import aicost
@@ -64,6 +65,54 @@ is sample data, say that plainly first.
 Write in plain prose. The answer is shown as text, so markdown syntax arrives on screen as the literal characters: "### Suggested concept" appears with the hashes, "**Hook**" with the asterisks. So no #, no ##, no ###, no **bold**, no *italics*, no backticks, no tables.
 
 Short paragraphs instead of headings. Where something genuinely is a list, write one item per line starting with "- " and nothing else. If a line needs a label, write it as a sentence — "The hook: a question nobody can read past" — not as a bold run-in. Quote a post's words in "straight double quotes"."""
+
+
+# ------------------------------------------------------- asking for a picture
+
+# Sage could describe a graphic in detail and never make one: the generator has
+# existed since remix.py, behind a button on a post, and nothing connected the
+# two. So asking Sage for a graphic produced a concept and no graphic, which
+# from the outside is the feature being broken.
+#
+# Deliberately a narrow, deterministic test rather than asking a model whether
+# a model was asked for a picture. A false positive spends four cents of
+# somebody's allowance on an image they did not want, so the ask has to be
+# explicit: a making verb AND a picture noun, in the message the user just
+# typed.
+_MAKE = r"(?:make|made|create|generate|design|draw|mock ?up|render|give me|build)"
+_PICTURE = r"(?:graphic|image|picture|visual|illustration|poster|thumbnail|meme)"
+_WANTS_PICTURE = re.compile(
+    r"\b%s\b[^.?!]{0,40}\b%s\b|\b%s\b[^.?!]{0,30}\b%s\b"
+    % (_MAKE, _PICTURE, _PICTURE, _MAKE), re.I)
+
+# "what would a graphic for this look like" is a question about a concept,
+# not an instruction to spend somebody's allowance drawing one.
+_ONLY_ASKING = re.compile(
+    r"\b(?:what|which|how|why|should|would|could|describe|suggest|idea|"
+    r"ideas|concept|concepts|think|thoughts)\b", re.I)
+
+
+PICTURE_NOTE = """\
+The app is generating a real graphic from this answer and will show it \
+underneath. So do not describe the picture in detail and do not offer concepts \
+to choose between - it is being drawn now. In one or two sentences say what it \
+shows and why that fits the post. Then stop."""
+
+
+def wants_picture(message):
+    """Did this message actually ask for a graphic to be made?
+
+    True only for an explicit instruction. "Make me a graphic for the bee post"
+    yes; "what would a good graphic be?" no — that is a question about a
+    concept, and answering it in words is the right answer.
+    """
+    text = " ".join(str(message or "").split())
+    if not text or not _WANTS_PICTURE.search(text):
+        return False
+    # A question mark alone does not disqualify ("can you make me a graphic?"),
+    # but an interrogative opener does.
+    head = text[:48]
+    return not _ONLY_ASKING.search(head)
 
 
 # --------------------------------------------------------------- settings

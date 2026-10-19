@@ -2278,6 +2278,93 @@
       if (chatStop) chatStop.hidden = !asking;
     }
 
+    /* ------------------------------------------- the graphic Sage was asked for
+
+       Asking Sage for a graphic used to get a written concept and nothing else,
+       because the generator lived behind a button on a post and nothing joined
+       the two. The server decides whether the ask was really an instruction to
+       draw (sage.wants_picture) and ends the stream with a "picture" event; this
+       draws it into the same bubble as the answer.
+
+       It goes through /api/graphic, the same endpoint the post and Write
+       buttons use, so the allowance check, the cost record and the error
+       wording all stay in one place rather than being written twice. */
+
+    function drawForSage(bubble, event) {
+      if (!event.configured) {
+        var missing = document.createElement("p");
+        missing.className = "fine msg-note";
+        missing.textContent = "To draw it, add an OpenAI key on the Settings " +
+          "page — the words above are ready either way.";
+        bubble.appendChild(missing);
+        chat.scrollTop = chat.scrollHeight;
+        return;
+      }
+
+      var wrap = document.createElement("div");
+      wrap.className = "variant-graphic msg-graphic is-loading";
+      var skeleton = document.createElement("div");
+      skeleton.className = "graphic-skeleton";
+      var note = document.createElement("div");
+      note.className = "graphic-progress";
+      note.textContent = "Painting your graphic…";
+      wrap.appendChild(skeleton);
+      wrap.appendChild(note);
+      bubble.appendChild(wrap);
+      chat.scrollTop = chat.scrollHeight;
+
+      var started = Date.now();
+      var ticker = window.setInterval(function () {
+        var seconds = Math.round((Date.now() - started) / 1000);
+        note.textContent = "Painting your graphic… " + seconds + "s" +
+          (seconds >= 30 ? " — this one is taking a while" : "");
+      }, 1000);
+
+      post("/api/graphic", {
+        // Sage's own answer is the scene to illustrate; the request is the art
+        // direction. Instructions outrank the house style inside remix.py,
+        // which is right: "make it look hand-drawn" should win.
+        hook: "",
+        body: event.body || "",
+        instructions: event.ask || ""
+      })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || "Could not draw that");
+          var img = document.createElement("img");
+          img.alt = "Graphic generated for this answer";
+          var dl = document.createElement("a");
+          dl.href = data.image;
+          dl.download = "tallgrass-graphic.png";
+          dl.className = "graphic-dl";
+          dl.textContent = "Download";
+          // Swapped only once the bytes decode, so the shimmer is never
+          // replaced by an empty frame.
+          img.addEventListener("load", function () {
+            wrap.className = "variant-graphic msg-graphic";
+            wrap.textContent = "";
+            wrap.appendChild(img);
+            wrap.appendChild(dl);
+            chat.scrollTop = chat.scrollHeight;
+          });
+          img.addEventListener("error", function () {
+            wrap.remove();
+            toast("The graphic could not be displayed", true);
+          });
+          img.src = data.image;
+        })
+        .catch(function (error) {
+          wrap.remove();
+          var said = document.createElement("p");
+          said.className = "fine msg-note";
+          // In the bubble rather than a toast: a toast disappears, and the
+          // answer above it is still promising a picture.
+          said.textContent = "The words are above, but the graphic did not " +
+            "come out: " + error.message;
+          bubble.appendChild(said);
+        })
+        .finally(function () { window.clearInterval(ticker); });
+    }
+
     function askSage(question) {
       if (!question) return;
 
@@ -2336,6 +2423,11 @@
               streamed += event.text;
               layOut(streamed, body);
               chat.scrollTop = chat.scrollHeight;
+            } else if (event.type === "picture") {
+              // Sent last, and only on a clean finish. Drawn after the words
+              // so the caption is on screen while the picture is painted.
+              ensureBody();
+              drawForSage(pending, event);
             } else if (event.type === "error") {
               failure = event.error;
             }
