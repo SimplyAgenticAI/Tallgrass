@@ -2674,8 +2674,21 @@
       // Whether anything was actually read, as opposed to defaulting to zero.
       // "0 reactions" claims the post got none; "not read" says nothing could
       // be found. Different facts, and the dashboard reports the difference.
+      //
+      // video_plays used to be in this list and must never be again. Plays are
+      // not one of the three counts anything is scored on, and a video post
+      // renders its plays line before its reaction bar - often instead of it.
+      // So a reel with "52K plays" and no readable reactions was sent as a post
+      // that HAD been read, carrying an engagement of zero. A video-first page
+      // is mostly those, they dragged its median to nothing, and because they
+      // claimed to have been read, the guard that withholds a verdict when too
+      // little could be read stayed quiet. A page doing thousands of reactions
+      // a post was reported as dead and offered up as one to leave.
+      //
+      // The play count is still captured and still sent. It is just not
+      // evidence about reactions, comments or shares.
       var engagementRead = !!(engagement.likes || engagement.comments ||
-                              engagement.shares || engagement.video_plays);
+                              engagement.shares);
 
       // Words rendered into the graphic rather than typed. Facebook runs OCR
       // for screen readers and publishes it in the image's alt, so a meme

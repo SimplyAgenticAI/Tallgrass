@@ -125,6 +125,27 @@ def _hours_since(timestamp, now=None):
     return None
 
 
+def plays_only(post):
+    """Was a play count the only number read off this post?
+
+    A video post renders its plays line before its reaction bar, and often
+    instead of it. The extension marked such a post as read, because it had
+    read A number - but plays appear in neither weighted_engagement nor
+    total_engagement, so what it recorded was a measured post with an
+    engagement of zero.
+
+    On a video-first page that is most of the page, and the zeros dragged the
+    median to nothing while the "too little of this could be read to judge it"
+    guard stayed quiet, because the rows claimed to have been read. A page
+    doing thousands of reactions a post was reported as dead.
+
+    Plays are kept and still shown. They are simply not evidence about
+    reactions, comments or shares, which is what every number here measures.
+    """
+    return ((post.get("video_plays") or 0) > 0
+            and total_engagement(post) == 0)
+
+
 def engagement_known(post):
     """Did the extractor actually read this post's counts?
 
@@ -138,6 +159,11 @@ def engagement_known(post):
     it is then scored against that. Unread posts are excluded from the
     baseline entirely rather than counted as zeros.
     """
+    # A play count is not one of the counts this measures. Checked before the
+    # flag, because the flag is what was wrong: the extension set it on plays
+    # alone, so these rows claim to have been read and have nothing in them.
+    if plays_only(post):
+        return False
     flag = post.get("engagement_read")
     if flag is None:
         return total_engagement(post) > 0
@@ -422,5 +448,13 @@ def source_stats(items):
              if s["outlier_multiple"] is not None),
             default=None,
         ),
+        # The biggest measured post in absolute weighted engagement.
+        #
+        # Every other number here is relative - a multiple of this source's own
+        # median - and a multiple cannot tell a busy room from an empty one.
+        # This is what lets a verdict notice that its own median is impossible:
+        # a median of 2 next to a post that did 4,300 is a reading failure, not
+        # a quiet group.
+        "top_engagement": max(post_engagements, default=0.0),
         "comments_scored": any(s["has_baseline"] for s in scored_comments),
     }

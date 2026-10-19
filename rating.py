@@ -33,6 +33,21 @@ QUIET = outliers.MIN_BASELINE          # 8
 # could not be read is not a group that failed.
 NEEDS_READABLE_PCT = 55
 
+# One post at or above this, in weighted engagement, and the room is not dead -
+# whatever its median says and whatever its newest date says.
+#
+# This exists because of a page that was called dead while its posts were doing
+# thousands of reactions and hundreds of shares. Two different capture faults
+# can produce that, and this catches both without having to know which: when
+# the evidence inside one source contradicts itself this badly, the fault is in
+# the reading, not in the room. "I cannot tell" is the honest answer, and it is
+# already a first-class one here.
+#
+# A hundred is the operator's own line, and a generous one: a room where the
+# best post anybody captured cleared a hundred weighted engagement is not a
+# room to walk out of on our advice.
+ALIVE_PEAK = 100
+
 # Nothing posted in this long, from what we captured, and the room is not a room
 # any more. Measured off the newest post, not off the last scan: a group nobody
 # has scanned in a month is not thereby dead.
@@ -48,6 +63,34 @@ LABELS = {
     "unclear": "Can't tell yet",
     "new": "Not enough yet",
 }
+
+
+def _number(value):
+    """1,204 rather than 1204.0, because these are read aloud to people."""
+    return "{:,}".format(int(round(value)))
+
+
+def _contradiction(baseline, peak):
+    """The one sentence for a median a single post has already disproved."""
+    return ("A typical post here scores %s, but one of them scored %s. A "
+            "median that far below a single post is a reading failure, not a "
+            "quiet room — scan it again before judging it."
+            % (round(baseline, 1), _number(peak)))
+
+
+def _cannot_tell(verdict, why):
+    """No verdict, and never a suggestion to leave.
+
+    The band exists already and means exactly this. Routed through one function
+    so every new reason to withhold a verdict also withholds the suggestion -
+    the two were separate fields, and the damage from this feature comes
+    entirely from them disagreeing.
+    """
+    verdict["band"] = "unclear"
+    verdict["label"] = LABELS["unclear"]
+    verdict["leave"] = False
+    verdict["why"].append(why)
+    return verdict
 
 
 def _days_since(stamp, now=None):
@@ -79,8 +122,13 @@ def of(source, stats, newest=None, now=None):
     outlier_rate = round((stats.get("outlier_count") or 0) / posts * 100) if posts else 0
     days = _days_since(newest, now)
 
+    # The best post anybody captured here, in absolute terms. Every other
+    # number in this function is relative to this source's own median, and a
+    # multiple cannot tell a busy room from an empty one.
+    peak = stats.get("top_engagement") or 0
     verdict["numbers"] = {
         "posts": posts,
+        "top_engagement": round(peak, 1),
         "readable_pct": readable,
         "baseline": baseline,
         "outlier_pct": outlier_rate,
@@ -94,6 +142,40 @@ def of(source, stats, newest=None, now=None):
         verdict["band"] = "new"
         verdict["label"] = LABELS["new"]
         verdict["why"].append("Sample data, not a group you are in.")
+        return verdict
+
+    # Read in full, and nothing in it moved. This is the one shape that means
+    # dead rather than unreadable, and until now it had no way to say so: the
+    # engagement test below needs a baseline, and a baseline is only issued
+    # when the median clears the same floor the test was looking under. So the
+    # rooms this feature exists to find were all reported as "not enough yet".
+    #
+    # Three conditions, and all three are needed. Enough posts measured for a
+    # median to mean anything; most of the room readable, so this is the room
+    # and not a failed scan; and no post in it anywhere near ALIVE_PEAK.
+    low = stats.get("raw_baseline") or 0
+    if not stats.get("has_baseline") and stats.get("blocker") == "low-baseline":
+        # Enough posts were measured here; there is simply nothing in them. So
+        # none of the three answers below is "capture more" — the generic
+        # not-enough-yet line that used to handle this case told people to go
+        # and measure twenty posts they had already measured.
+        if peak >= ALIVE_PEAK:
+            return _cannot_tell(verdict, _contradiction(low, peak))
+        if readable < NEEDS_READABLE_PCT:
+            return _cannot_tell(
+                verdict,
+                "Only %d%% of what was captured here could be read, so its "
+                "median describes a fraction of the room. Scan it again before "
+                "judging it." % readable)
+        verdict["band"] = "dead"
+        verdict["label"] = LABELS["dead"]
+        verdict["why"].append(
+            "A typical post here scores %s, and the best one anybody captured "
+            "scored %s." % (round(low, 1), _number(peak)))
+        verdict["why"].append(
+            "%d%% of it was readable, so that is the room and not a reading "
+            "failure." % readable)
+        verdict["leave"] = True
         return verdict
 
     # Not enough measured posts for scoring to mean anything. The groups page
@@ -117,6 +199,17 @@ def of(source, stats, newest=None, now=None):
         return verdict
 
     if days is not None and days >= STALE_DAYS:
+        # Old dates on a room whose best post did real numbers means the
+        # capture is a thin slice of it, not that the room stopped. Pages are
+        # usually scrolled once, and a reel often carries no readable date at
+        # all, so the newest date we hold can be months behind the page.
+        if peak >= ALIVE_PEAK:
+            return _cannot_tell(
+                verdict,
+                "The newest post captured here is %d days old, but one of them "
+                "scored %s. That reads as a thin capture rather than a quiet "
+                "room — scan it again before judging it."
+                % (int(days), _number(peak)))
         verdict["band"] = "dead"
         verdict["why"].append(
             "Nothing posted here in %d days, from what has been captured." % int(days))
@@ -127,6 +220,8 @@ def of(source, stats, newest=None, now=None):
         return verdict
 
     if baseline < QUIET:
+        if peak >= ALIVE_PEAK:
+            return _cannot_tell(verdict, _contradiction(baseline, peak))
         verdict["band"] = "dead"
         verdict["label"] = LABELS["dead"]
         verdict["why"].append(

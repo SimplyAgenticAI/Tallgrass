@@ -78,6 +78,8 @@ echo "--- asked for a graphic, gets a graphic ---"
 python tests/sagepic.test.py
 echo "--- judging a room ---"
 python tests/rating.test.py
+echo "--- a busy page is not a dead one ---"
+python tests/pagerating.test.py
 echo "--- the palette, measured ---"
 python tests/contrast.test.py
 echo "--- what the dragonfly is allowed to say ---"

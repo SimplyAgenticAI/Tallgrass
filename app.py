@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "31.9"
+APP_VERSION = "32.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -370,8 +370,12 @@ def _uid():
 #
 # So the ranking is computed from these, and the words are fetched only for
 # the handful of posts actually being shown.
+# video_plays is here because a post with plays and nothing else was being
+# counted as measured, with an engagement of zero - see outliers.plays_only.
+# One integer per row, against the twelve already carried.
 SCORING_COLUMNS = ("p.id, p.source_id, p.item_type, p.likes, p.comments, "
-                   "p.shares, p.engagement_read, p.posted_at, p.captured_at, "
+                   "p.shares, p.video_plays, p.engagement_read, "
+                   "p.posted_at, p.captured_at, "
                    "p.is_demo, p.fb_post_id, p.parent_fb_id")
 
 
