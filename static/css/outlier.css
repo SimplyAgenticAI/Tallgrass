@@ -3740,3 +3740,43 @@ h2 { font-weight: 700; }
 .leave-name:hover { color: var(--emerald-bright); }
 .leave-why { margin: 6px 0 9px; }
 .leave-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ------------------------------- Sage's answers, laid out (V31.8)
+
+   The reply used to be printed with textContent, so every "###" and "**" the
+   model wrote arrived on screen as the characters themselves. It is laid out
+   as typography now — still built from DOM nodes with textContent, never from
+   a string of HTML, because the model's input includes post bodies captured
+   from strangers. */
+.msg-body.is-laid-out {
+  /* Paragraphs are real elements now, so pre-wrap would double every gap. */
+  white-space: normal;
+}
+
+.msg-body.is-laid-out p { margin: 0 0 9px; }
+.msg-body.is-laid-out p:last-child { margin-bottom: 0; }
+
+/* What a heading or a bolded run-in line becomes: a little louder than the
+   prose, without the type-size jump a real <h3> would bring into a chat. */
+.msg-h {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--emerald-bright);
+}
+
+.msg-body.is-laid-out > .msg-h:first-child { margin-top: 0; }
+
+.msg-list { margin: 0 0 9px; padding-left: 18px; }
+.msg-list li { margin: 0 0 4px; }
+.msg-list li::marker { color: var(--emerald); }
+
+.msg-body.is-laid-out b { font-weight: 700; color: var(--text); }
+
+.msg-body.is-laid-out code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(110, 231, 183, 0.1);
+  font-size: 0.92em;
+}

@@ -59,7 +59,11 @@ cannot be reasoned about — flag it rather than inventing a read.
 - Sample data is generated demonstration content, not real Facebook posts. \
 Never present it as evidence about a real audience. If the only data available \
 is sample data, say that plainly first.
-- Be direct and concrete. No preamble, no restating the question."""
+- Be direct and concrete. No preamble, no restating the question.
+
+Write in plain prose. The answer is shown as text, so markdown syntax arrives on screen as the literal characters: "### Suggested concept" appears with the hashes, "**Hook**" with the asterisks. So no #, no ##, no ###, no **bold**, no *italics*, no backticks, no tables.
+
+Short paragraphs instead of headings. Where something genuinely is a list, write one item per line starting with "- " and nothing else. If a line needs a label, write it as a sentence — "The hook: a question nobody can read past" — not as a bold run-in. Quote a post's words in "straight double quotes"."""
 
 
 # --------------------------------------------------------------- settings

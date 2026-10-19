@@ -580,6 +580,140 @@
 
   }
 
+
+  /* ------------------------------------------- laying out an answer
+
+     Sage's replies are prose, and they used to be printed with textContent —
+     correct about safety and wrong about reading. Every "###" and "**" the
+     model wrote arrived on screen as the literal characters, so an answer came
+     out covered in hashes and asterisks.
+
+     The prompt now asks for plain prose, which fixes most of it. Models leak
+     markdown anyway, so this is the other half: the leaked markers become
+     typography rather than punctuation.
+
+     The safety property is unchanged, and it is the reason this builds DOM
+     nodes rather than assembling a string of HTML. Every piece of text goes in
+     through textContent, so there is nothing an injected tag could do — and it
+     has to stay that way, because the model's input includes post bodies
+     captured from strangers on Facebook. No innerHTML in here, ever. */
+
+  function inlineInto(parent, text) {
+    // **bold** becomes bold; `code` becomes code; the markers themselves go.
+    var pattern = /\*\*([^*]+)\*\*|`([^`]+)`/g;
+    var at = 0;
+    var match;
+    while ((match = pattern.exec(text)) !== null) {
+      if (match.index > at) {
+        parent.appendChild(document.createTextNode(text.slice(at, match.index)));
+      }
+      var strong = match[1] !== undefined;
+      var node = document.createElement(strong ? "b" : "code");
+      node.textContent = strong ? match[1] : match[2];
+      parent.appendChild(node);
+      at = match.index + match[0].length;
+    }
+    if (at < text.length) {
+      parent.appendChild(document.createTextNode(text.slice(at)));
+    }
+  }
+
+  function layOut(text, el) {
+    el.textContent = "";
+    el.classList.add("is-laid-out");
+
+    var lines = String(text == null ? "" : text).split(/\r?\n/);
+    var list = null;          // the <ul> being filled, if any
+    var para = [];            // lines of the paragraph being gathered
+
+    function flushPara() {
+      if (!para.length) return;
+      var p = document.createElement("p");
+      inlineInto(p, para.join(" "));
+      el.appendChild(p);
+      para = [];
+    }
+
+    function flushList() {
+      list = null;
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+
+      if (!line) {                                  // a blank line ends both
+        flushPara();
+        flushList();
+        continue;
+      }
+
+      var heading = line.match(/^#{1,6}\s+(.*)$/);
+      if (heading) {
+        flushPara();
+        flushList();
+        var h = document.createElement("div");
+        h.className = "msg-h";
+        inlineInto(h, heading[1].replace(/[:\s]+$/, ""));
+        el.appendChild(h);
+        continue;
+      }
+
+      // "- item", "* item" and "1. item" are all one thing on screen.
+      var item = line.match(/^(?:[-*•]|\d+\.)\s+(.*)$/);
+      if (item) {
+        flushPara();
+        if (!list) {
+          list = document.createElement("ul");
+          list.className = "msg-list";
+          el.appendChild(list);
+        }
+        var li = document.createElement("li");
+        inlineInto(li, item[1]);
+        list.appendChild(li);
+        continue;
+      }
+
+      flushList();
+      para.push(line);
+    }
+    flushPara();
+
+    /* A line the model made entirely bold is a heading in everything but
+       name — "**Visual Elements**" — and reads better as one. Done after the
+       fact so the paragraph logic above stays simple. */
+    var paras = el.querySelectorAll("p");
+    for (var n = 0; n < paras.length; n++) {
+      var kids = paras[n].childNodes;
+      // A whole line in bold is a heading in everything but name, and so is a
+      // bold line with a colon after it — "**Visual Elements**:" — which is
+      // the shape these answers actually arrive in. A bold label with real
+      // words after it ("**Graphic Type**: Meme-style") is a sentence and
+      // stays one.
+      var only = kids.length && kids[0].nodeName === "B" &&
+                 (kids.length === 1 ||
+                  (kids.length === 2 && /^[:\s]*$/.test(kids[1].textContent)));
+      if (only) {
+        var lead = document.createElement("div");
+        lead.className = "msg-h";
+        lead.textContent = paras[n].textContent.replace(/[:\s]+$/, "");
+        paras[n].parentNode.replaceChild(lead, paras[n]);
+      }
+    }
+    return el;
+  }
+
+  /* Answers already on the page when it loads: the server renders their text,
+     and this lays out the same text through the same formatter rather than a
+     second implementation that would drift from this one. */
+  (function () {
+    var older = document.querySelectorAll(".msg-assistant .msg-body");
+    for (var i = 0; i < older.length; i++) {
+      if (!older[i].classList.contains("is-laid-out")) {
+        layOut(older[i].textContent, older[i]);
+      }
+    }
+  })();
+
   /* ---------------------------------------------------- admin: backups */
 
   var backupNow = document.getElementById("backup-now");
@@ -2157,6 +2291,9 @@
       var pending = thinkingBubble();
       var body = null;
       var failure = null;
+      // The answer as the model actually sent it, kept so each delta can be
+      // laid out from the whole text rather than appended to the screen.
+      var streamed = "";
 
       // The dots stay until the first real word, then the bubble becomes the
       // answer and fills in place.
@@ -2191,8 +2328,13 @@
           return readEvents(response.body.getReader(), function (event) {
             if (event.type === "delta") {
               ensureBody();
-              // textContent — model output is never trusted as markup.
-              body.textContent += event.text;
+              /* The raw text is kept and laid out again on each delta, rather
+                 than appended to the screen. Appending would mean half-written
+                 markers ("**Hoo") rendering as literal asterisks for a moment
+                 and the layout never settling. Still no markup from the model:
+                 layOut builds nodes and every string goes in by textContent. */
+              streamed += event.text;
+              layOut(streamed, body);
               chat.scrollTop = chat.scrollHeight;
             } else if (event.type === "error") {
               failure = event.error;
