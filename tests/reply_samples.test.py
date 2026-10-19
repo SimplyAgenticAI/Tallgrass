@@ -66,7 +66,13 @@ def main():
     uid = 1
     page = me.get("/today").get_data(as_text=True)
     check("Today shows examples, labelled", "These are examples" in page and "sample" in page, True)
-    check("  with the example people in it", "Dana Brooks" in page and "Chris Alvarez" in page, True)
+    # The example COMMENTER. The example chat (Chris Alvarez) belongs to the
+    # Messages page now — Today carries comments only, because a merged inbox
+    # competed with Facebook's own and lost.
+    check("  with the example commenter in it", "Dana Brooks" in page, True)
+    check("  and no example chat", "Chris Alvarez" in page, False)
+    check("  which is on the Messages page instead",
+          "Chris Alvarez" in me.get("/messages").get_data(as_text=True), True)
     check("the waiting badge does not count them", today.waiting_count(uid), 0)
     check("  so there is no red count in the nav", 'class="nav-count"' in page, False)
     check("Comments shows the example post",
@@ -90,7 +96,11 @@ def main():
         {"key": "t:9", "name": "Real Chat", "last_from": "them", "last_hash": "x"}]})
     check("  and then they go too",
           [t["name"] for t in messages.inbox(uid)["waiting"]], ["Real Chat"])
-    check("the badge now counts the real ones", today.waiting_count(uid), 2)
+    # One: the real comment. The real chat is not counted, because the badge
+    # counts exactly what Today shows and Today no longer shows chats. A badge
+    # that counts something the list does not show is how an app stops being
+    # believed.
+    check("the badge now counts the real comment", today.waiting_count(uid), 1)
 
     print()
     print("seeded once")

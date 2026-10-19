@@ -118,9 +118,15 @@ def main():
     check("never creates a chat", label("t:nope", "opportunity")["changed"], False)
     check("a chat can be labelled not now", label("t:4", "not_now")["changed"], True)
     import today as today_mod
-    check("  and sits below the rest on Today, marked as such",
-          [(i["not_now"], i["opportunity"]) for i in today_mod.queue(1)["entries"] if i["who"] == "Tom Hanks"],
-          [(True, False)])
+    # The label is read on the Messages page, which is where chats live now.
+    # It used to be asserted against Today's queue, and Today no longer carries
+    # chats at all — a merged inbox competed with Facebook's own and lost, so
+    # comments kept the queue and chats kept their own page.
+    check("  and is marked as such where chats are listed",
+          [t["signal"] for t in messages.inbox(1)["waiting"] if t["name"] == "Tom Hanks"],
+          ["not_now"])
+    check("  while Today stays out of it entirely",
+          [i for i in today_mod.queue(1)["entries"] if i["kind"] != "comment"], [])
     check("a comment turning you down is not an opportunity either",
           [bool(today_mod.OPPORTUNITY_RE.search(t)) and not today_mod.DECLINE_RE.search(t) for t in (
               "Love it, as much as I'd love to buy one money is tight right now", "How much for two?")],

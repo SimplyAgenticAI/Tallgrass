@@ -1,11 +1,26 @@
-"""Today: everyone waiting on an answer, in one list.
+"""Today: the comments on your posts that nobody has answered.
 
-Unanswered comments lived on the Comments page and waiting chats on the
-Messages page, so answering people meant working two lists. This merges them
-into one queue — what looks like an opportunity first, then the newest — and
-gives the count that the navigation and the extension icon show.
+This used to merge unanswered comments AND waiting Messenger chats into one
+queue. The chats are gone from it, deliberately.
 
-Read-only over the two stores. Done and drafting still go through them.
+A merged inbox competes with Facebook's own, and loses on every axis that
+matters: Facebook delivers in real time where this scrapes, it has mobile apps,
+labels and saved replies, and it is free and native. A duplicated inbox is also
+a liability rather than a feature — when this said three people were waiting
+and Facebook said five, the trust that went was the trust the SCORING earned,
+which had nothing to do with chats.
+
+Comments are not the same bet, and they stay. Facebook's Professional Dashboard
+is Page-centric: it gives you nothing for comments on your own posts inside
+GROUPS from a personal profile, which is this product's whole premise. Those
+land in notification soup. And only this app knows which post is an outlier, so
+"these comments are on the post doing 14x its group's median" is a judgement
+Facebook cannot make.
+
+Chats keep their own page under More, and keep "Suggest a message" in the
+on-Facebook panel, which works from inside an open chat and needs no queue.
+
+Read-only over the comment store. Done and drafting still go through it.
 """
 
 import re
@@ -52,12 +67,6 @@ def queue(user_id):
               AND (c.snooze_until IS NULL OR c.snooze_until <= ?)
               AND c.intent IS NOT 'spam'
             """, (user_id, pipeline.now_utc())).fetchall()
-        chat_rows = conn.execute(
-            """
-            SELECT id, name, url, last_at, signal, unread, is_demo, stage, note FROM message_threads
-            WHERE user_id = ? AND status = 'open' AND last_from = 'them'
-              AND (snooze_until IS NULL OR snooze_until <= ?)
-            """, (user_id, pipeline.now_utc())).fetchall()
 
     items = []
     for r in comment_rows:
@@ -90,31 +99,15 @@ def queue(user_id):
                         else (r["body"] or "").rstrip().endswith("?"),
             "low": r["intent"] in ("praise", "tag", "other"),
         })
-    for r in chat_rows:
-        items.append({
-            "kind": "message",
-            "id": r["id"],
-            "who": r["name"] or "Unnamed chat",
-            "text": "",
-            "where": "Messenger",
-            "url": r["url"],
-            "when": (r["last_at"] or "").replace("T", " "),
-            "unread": bool(r["unread"]),
-            "sample": bool(r["is_demo"]),
-            "stage": r["stage"],
-            "note": r["note"],
-            "opportunity": r["signal"] == "opportunity",
-            "question": r["signal"] == "question",
-            "not_now": r["signal"] == "not_now",
-            "low": r["signal"] == "not_now",
-        })
-
     items.sort(key=lambda i: i["when"] or "", reverse=True)
     items.sort(key=lambda i: (not i["opportunity"], not i["question"], i["low"]))
+    # `messages` is kept at zero rather than dropped: the key is read in a
+    # couple of places that have nothing to do with this decision, and a
+    # KeyError there would be a worse outcome than a number that is always 0.
     return {
         "entries": items,
-        "comments": sum(1 for i in items if i["kind"] == "comment"),
-        "messages": sum(1 for i in items if i["kind"] == "message"),
+        "comments": len(items),
+        "messages": 0,
         "opportunities": sum(1 for i in items if i["opportunity"]),
         "samples": any(i["sample"] for i in items),
     }
@@ -137,21 +130,21 @@ def for_panel(user_id, limit=15):
 
 
 def waiting_count(user_id):
-    """How many people are waiting on an answer. Cheap: two counts.
+    """How many comments are waiting on an answer. Cheap: one count.
 
     Examples are never counted: this is the number on a red badge, and it
     should only ever mean somebody real is waiting.
+
+    It counts exactly what the queue above shows, and that is the point of it
+    being here rather than written out again wherever a badge is drawn. It used
+    to add waiting chats, and a badge that counts something the list does not
+    show is the specific way an app stops being believed.
     """
     now = pipeline.now_utc()
     with db.get_db() as conn:
-        comments = conn.execute(
+        return conn.execute(
             "SELECT COUNT(*) FROM post_comments c JOIN comment_posts p ON p.id = c.post_id "
             "WHERE c.user_id = ? AND c.parent_key IS NULL AND c.status = 'open' "
             "AND c.is_mine = 0 AND c.verdict IN ('unanswered', 'unknown') AND p.is_demo = 0 "
             "AND (c.snooze_until IS NULL OR c.snooze_until <= ?) AND c.intent IS NOT 'spam'",
             (user_id, now)).fetchone()[0]
-        chats = conn.execute(
-            "SELECT COUNT(*) FROM message_threads WHERE user_id = ? AND status = 'open' "
-            "AND last_from = 'them' AND is_demo = 0 "
-            "AND (snooze_until IS NULL OR snooze_until <= ?)", (user_id, now)).fetchone()[0]
-    return comments + chats

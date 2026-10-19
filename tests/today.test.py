@@ -1,10 +1,25 @@
-"""Today: one queue of everyone waiting, and a count that agrees with it.
+"""Today: the unanswered comments on your posts, and a count that agrees.
 
-The queue is only useful if it holds exactly the people still waiting —
-unanswered comments and chats where they spoke last — with likely
-opportunities first, and never your own comments, answered ones, or chats set
-aside. The count on the navigation and the extension icon must be the same
+The queue holds exactly the people still waiting on a reply to a comment, with
+likely opportunities first, and never your own comments, answered ones, or ones
+set aside. The count on the navigation and the extension icon must be the same
 number the page shows.
+
+Chats are NOT in it, and most of this file exists to hold that line.
+
+Today used to merge unanswered comments and waiting Messenger chats. A merged
+inbox competes with Facebook's own and loses on every axis that matters -
+Facebook delivers in real time where this scrapes, and it has mobile apps,
+labels and saved replies. The duplication was also a liability: when this said
+three people were waiting and Facebook said five, the trust that went was the
+trust the SCORING earned.
+
+Comments stayed because they are a different bet. Facebook's Professional
+Dashboard is Page-centric and gives a group poster no queue at all for comments
+on their own posts, and only this app knows which post is an outlier.
+
+So: chats keep their own page, the badge counts what Today shows, and nothing
+here may quietly merge them again.
 
 Run: python tests/today.test.py
 """
@@ -59,7 +74,11 @@ def main():
     check("  and no red count for them", 'class="nav-count"' in first, False)
 
     body = me.post("/api/comments", headers=headers, json={
-        "post": {"key": "p:1", "title": "New website packages"},
+        # With a real post link, because the extension's panel only offers
+        # entries it can open — and without one every comment was filtered out
+        # of it, which left the panel queue showing nothing but chats.
+        "post": {"key": "p:1", "title": "New website packages",
+                 "url": "https://www.facebook.com/groups/1/posts/1/"},
         "comments": [
             {"key": "c:1", "author": "Jane Doe", "text": "How much for the full package?", "verdict": "unanswered"},
             {"key": "c:2", "author": "Tom Hanks", "text": "Love this", "verdict": "unanswered"},
@@ -69,49 +88,64 @@ def main():
              "hidden_replies": 1},
         ]}).get_json()
     check("saving comments reports everyone waiting, for the icon", body.get("waiting_total"), 3)
+    # Two chats waiting, one of them an opportunity. None of this may reach
+    # Today, and the badge must not move.
     body = me.post("/api/messages/threads", headers=headers, json={"threads": [
         {"key": "t:1", "name": "Lee Chan", "last_from": "them", "last_at": ago(1),
          "signal": "opportunity", "last_hash": "a", "url": "https://www.facebook.com/messages/t/1/"},
         {"key": "t:2", "name": "Mark Twain", "last_from": "me", "last_at": ago(2), "last_hash": "b"},
         {"key": "t:3", "name": "Old Friend", "last_from": "them", "last_at": ago(30), "last_hash": "c"},
     ]}).get_json()
-    check("  and so does saving chats", body.get("waiting_total"), 5)
+    check("  saving chats does not change it", body.get("waiting_total"), 3)
 
     print()
     print("the queue")
     q = today.queue(1)
     names = [i["who"] for i in q["entries"]]
-    check("everyone waiting, nobody else", sorted(names),
-          sorted(["Jane Doe", "Tom Hanks", "Sara Lee", "Lee Chan", "Old Friend"]))
-    check("opportunities first, from comments and chats alike", set(names[:2]), {"Jane Doe", "Lee Chan"})
-    check("  then questions", names[2], "Sara Lee")
+    check("everyone waiting on a comment, nobody else", sorted(names),
+          sorted(["Jane Doe", "Tom Hanks", "Sara Lee"]))
+    check("the opportunity is first", names[0], "Jane Doe")
+    check("  then questions", names[1], "Sara Lee")
     check("the count agrees with the list", today.waiting_count(1), len(q["entries"]))
-    check("  and splits by kind", (q["comments"], q["messages"], q["opportunities"]), (3, 2, 2))
+    check("  and nothing is a chat", (q["comments"], q["messages"]), (3, 0))
+    check("  not even the one that looked like an opportunity",
+          [i for i in q["entries"] if i["kind"] != "comment"], [])
 
     html = me.get("/today").get_data(as_text=True)
-    check("the page lists them", all(n in html for n in ("Jane Doe", "Lee Chan", "Old Friend")), True)
+    check("the page lists the comments", "Jane Doe" in html, True)
+    check("  and names no chat", ("Lee Chan" in html, "Old Friend" in html), (False, False))
+    check("  and does not send people to Messenger",
+          "facebook.com/messages" in html, False)
     check("comments can be drafted from here", 'data-suggest="' in html, True)
-    check("the nav shows the count", 'class="nav-count"' in html and ">5</span>" in html, True)
+    check("the nav count is what the page shows",
+          'class="nav-count"' in html and ">3</span>" in html, True)
+
+    # The chats did not vanish — they have their own page, which is the whole
+    # point: one place for them, and it is not the one that competes.
+    chats = me.get("/messages").get_data(as_text=True)
+    check("the Messages page still has them",
+          all(n in chats for n in ("Lee Chan", "Old Friend")), True)
 
     print()
     print("the queue in the extension's panel")
     panel = me.post("/api/today", headers=headers).get_json()
     check("needs a key", me.post("/api/today", headers={"X-Outlier-Key": "olk_wrong"}).status_code, 401)
     check("real people with somewhere to open, opportunities first",
-          [e["who"] for e in panel["entries"]][:1], ["Lee Chan"])
+          [e["who"] for e in panel["entries"]][:1], ["Jane Doe"])
     check("  only entries that can be opened", all(e["url"] for e in panel["entries"]), True)
-    check("  and the total for the badge", panel["waiting_total"], 5)
+    check("  no chats here either", [e for e in panel["entries"] if e["kind"] != "comment"], [])
+    check("  and the total for the badge", panel["waiting_total"], 3)
+    tom_id = [e["id"] for e in panel["entries"] if e["who"] == "Tom Hanks"][0]
     after = me.post("/api/today/done", headers=headers,
-                    json={"kind": "message", "id": panel["entries"][0]["id"]}).get_json()
+                    json={"kind": "comment", "id": tom_id}).get_json()
     check("Done from the panel returns the queue without them",
-          ("Lee Chan" in [e["who"] for e in after["entries"]], after["waiting_total"]), (False, 4))
-    me.post("/messages/%d/status" % panel["entries"][0]["id"], data={"status": "open", "csrf_token": csrf})
+          ("Tom Hanks" in [e["who"] for e in after["entries"]], after["waiting_total"]), (False, 2))
+    me.post("/comments/%d/status" % tom_id, data={"status": "open", "csrf_token": csrf})
 
     print()
     print("the pipeline: stage, note, snooze")
     import pipeline
     jane = [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]
-    lee = [e for e in today.queue(1)["entries"] if e["who"] == "Lee Chan"][0]
     r = me.post("/pipeline/comment/%d" % jane["id"], data={
         "stage": "quoted", "note": "wants the 5-page site, ~$2k", "next": "today", "csrf_token": csrf})
     check("saved from Today, back to that row", r.headers.get("Location"), "/today#comment-%d" % jane["id"])
@@ -125,17 +159,17 @@ def main():
            [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]["stage"])[1], None)
     me.post("/pipeline/comment/%d" % jane["id"], data={"stage": "quoted", "csrf_token": csrf})
 
+    # Snoozing, on a comment now. A chat's own snooze is the Messages page's
+    # business and is tested in messages_store.test.py.
+    sara = [e for e in today.queue(1)["entries"] if e["who"] == "Sara Lee"][0]
     before = today.waiting_count(1)
-    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "3", "csrf_token": csrf})
-    check("snoozing takes them out of Today", "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], False)
+    me.post("/pipeline/comment/%d" % sara["id"], data={"snooze": "3", "csrf_token": csrf})
+    check("snoozing takes them out of Today",
+          "Sara Lee" in [e["who"] for e in today.queue(1)["entries"]], False)
     check("  and out of the waiting count", today.waiting_count(1), before - 1)
-    me.post("/api/messages/threads", headers=headers, json={"threads": [
-        {"key": "t:1", "name": "Lee Chan", "last_from": "them", "last_at": ago(0), "last_hash": "new-msg"}]})
-    check("a chat's snooze ends when they write again",
-          "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], True)
-    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "7", "csrf_token": csrf})
-    me.post("/pipeline/message/%d" % lee["id"], data={"snooze": "wake", "csrf_token": csrf})
-    check("  and Unsnooze brings them back", "Lee Chan" in [e["who"] for e in today.queue(1)["entries"]], True)
+    me.post("/pipeline/comment/%d" % sara["id"], data={"snooze": "wake", "csrf_token": csrf})
+    check("  and Unsnooze brings them back",
+          "Sara Lee" in [e["who"] for e in today.queue(1)["entries"]], True)
 
     other_client = appmod.app.test_client()
     other_client.post("/register", data={"email": "x@example.com", "password": "a-long-enough-pass",
@@ -169,12 +203,9 @@ def main():
     print()
     print("done from Today stays on Today")
     tom = [i for i in q["entries"] if i["who"] == "Tom Hanks"][0]
-    friend = [i for i in q["entries"] if i["who"] == "Old Friend"][0]
     r1 = me.post("/comments/%d/status?next=today" % tom["id"], data={"status": "done", "csrf_token": csrf})
-    r2 = me.post("/messages/%d/status?next=today" % friend["id"], data={"status": "done", "csrf_token": csrf})
-    check("back to Today after each", [r1.headers.get("Location"), r2.headers.get("Location")],
-          ["/today", "/today"])
-    check("and both are gone from the queue", today.waiting_count(1), 3)
+    check("back to Today after it", r1.headers.get("Location"), "/today")
+    check("and they are gone from the queue", today.waiting_count(1), 2)
 
     print()
     print("yours only")
@@ -183,15 +214,14 @@ def main():
                                   "password_confirm": "a-long-enough-pass", "username": "willow"})
     theirs = other.get("/today").get_data(as_text=True)
     check("another account sees only its own examples, none of mine",
-          ("These are examples" in theirs, "Jane Doe" in theirs, "Lee Chan" in theirs),
-          (True, False, False))
+          ("These are examples" in theirs, "Jane Doe" in theirs), (True, False))
 
     shutil.rmtree(tmp, ignore_errors=True)
     print()
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1
-    print("one queue, one count, and they agree")
+    print("one queue of comments, one count, and they agree")
     return 0
 
 

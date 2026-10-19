@@ -7,13 +7,17 @@
 <section class="feed-head">
   <div>
     <h1>Today</h1>
+    {# Not "everyone waiting on an answer from you" any more. That sentence was
+       a promise to be an inbox, and it is a promise this app should not make:
+       Facebook's own inbox delivers in real time where this scrapes, and the
+       comparison is lost on completeness every time. What it says now is what
+       it is actually better at — the comments on YOUR posts, which Facebook
+       gives a group poster no queue for at all. #}
     <p class="sub">
-      Everyone waiting on an answer from you — comments on your posts and
-      Messenger chats — in one list, likely opportunities first.
+      The comments on your own posts that nobody has answered, likely
+      opportunities first.
       {% if queue.entries %}<span data-waiting-detail>
-        <b data-waiting-num>{{ queue.entries|length }}</b> waiting:
-        {{ queue.comments }} comment{{ '' if queue.comments == 1 else 's' }},
-        {{ queue.messages }} chat{{ '' if queue.messages == 1 else 's' }}
+        <b data-waiting-num>{{ queue.entries|length }}</b> waiting
         {%- if queue.opportunities %}, {{ queue.opportunities }} that look like opportunities{% endif %}.
       </span>{% endif %}
     </p>
@@ -40,11 +44,13 @@
 <div class="glass empty-panel">
   {% include "_empty_mark.html" %}
   <p>
-    Nobody is waiting on you. On Facebook, save the comments on your posts, or
-    press <b>Find unanswered chats</b> on facebook.com/messages, and anyone
-    still waiting shows up here.
+    Nobody is waiting on you. Open one of your own posts on Facebook and save
+    its comments from the {{ app_name }} panel — anyone still waiting on a
+    reply shows up here, with the ones that read like opportunities first.
   </p>
-  <a class="btn btn-primary" href="https://www.facebook.com/messages" target="_blank" rel="noopener">Open Messenger</a>
+  {# Messenger is no longer what this page is for, so it is no longer what the
+     empty state sends people to. Chats keep their own page under More. #}
+  <a class="btn btn-primary" href="{{ url_for('feed') }}">See what broke out</a>
 </div>
 {% else %}
 <section class="glass panel cm-post">
