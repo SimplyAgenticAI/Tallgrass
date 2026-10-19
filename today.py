@@ -23,34 +23,16 @@ on-Facebook panel, which works from inside an open chat and needs no queue.
 Read-only over the comment store. Done and drafting still go through it.
 """
 
-import re
-
 import comments
 import db
 import pipeline
 
-# The same signals the extension looks for in a chat's last line, applied to
-# comment text here. A hint for ordering, never a verdict.
-OPPORTUNITY_RE = re.compile(
-    r"\b(?:how much|price|pricing|prices|cost|costs|quote|rates?|available|availability"
-    r"|interested|book|booking|appointment|schedule|order|buy|purchase"
-    r"|still (?:have|available|for sale)|ship|shipping|deliver|delivery|invoice|payment"
-    r"|deposit|call me|text me|dm me|pm me|inbox me|more info|details)\b",
-    re.IGNORECASE)
-
-# Someone saying no, or not yet — the extension's DECLINE_RE, for comments that
-# have no AI label. A comment that matches is never called an opportunity.
-DECLINE_RE = re.compile(
-    r"as much as i(?:'d|’d| would)? (?:love|like)|wish i could|i(?:'d|’d| would) love to,? but"
-    r"|(?:can't|can’t|cannot|can not|won't be able to|unable to|not able to) (?:afford|swing|do it|buy|purchase|right now)"
-    r"|\bbroke\b|no money|out of money|money(?:'s|’s| is) tight|tight budget|on a budget|not in (?:my|the) budget"
-    r"|between jobs|unemployed|(?:lost|lose|losing) (?:my|our) (?:job|work)|until i (?:get|find) (?:a |another )?(?:job|work)"
-    r"|(?:rough|hard|tough|difficult) (?:time|year|patch|few months)"
-    r"|not (?:right now|now|this (?:year|month|time|season)|at (?:the|this) (?:moment|time)|interested|for me|ready)"
-    r"|(?:maybe|perhaps) (?:next|later|another time|down the road|in the future)"
-    r"|no,? thank(?:s| you)|i(?:'ll|’ll| will) pass|(?:going|gonna) (?:to )?pass"
-    r"|(?:changed|change) my mind|found someone else|went with (?:someone|another)|already (?:found|hired|bought|booked)",
-    re.IGNORECASE)
+# The opportunity and decline signals now live in comments.py, which is where
+# the Comments page can reach them too — it needed the same ordering this page
+# had, and a copy here would have drifted from it. Re-exported under the old
+# names because tests and the panel import them from here.
+OPPORTUNITY_RE = comments.OPPORTUNITY_RE
+DECLINE_RE = comments.DECLINE_RE
 
 
 def queue(user_id):

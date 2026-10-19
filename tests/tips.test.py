@@ -91,7 +91,10 @@ def main():
 
     print()
     print("the page they are on gets a word in")
-    for page, must in (("groups", "Needs more data"), ("today", "ever sent for you"),
+    # "comments" carries the never-sends-for-you line that used to be Today's.
+    # Today was removed: once chats had left it, it was a second view of the
+    # Comments page.
+    for page, must in (("groups", "Needs more data"), ("comments", "ever sent for you"),
                        ("write", "opening line"), ("results", "same medians")):
         out = words(tips.for_page(page, [9.0], SOMEBODY, {"posts": 300}))
         check("  %s" % page, any(must in t for t in out), True)

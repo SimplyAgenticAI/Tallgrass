@@ -49,15 +49,16 @@ BY_PAGE = {
               "few of its posts could be read to know what normal is there.",
     "write": "Give it an opening line that already worked in that group and it "
              "has something real to build on, rather than inventing a hook.",
-    "today": "Nothing here is ever sent for you. Every draft waits for you to "
-             "read it, change it, and press the button yourself.",
     "results": "Your own posts are scored against the same medians as everybody "
                "else's, so a 2× here means the same thing it means anywhere.",
     "playbook": "The findings at the top are only from posts in your groups "
                 "whose engagement could actually be read. That is why they "
                 "appear slowly.",
-    "comments": "Answering the oldest waiting comment first is usually worth "
-                "more than answering the cleverest one.",
+    # Was also the Today page's tip, and it is the more useful of the two:
+    # nothing in this product sends anything for anybody, and that is the fact
+    # worth repeating where the drafts are.
+    "comments": "Nothing here is ever sent for you. Every draft waits for you "
+                "to read it, change it, and press the button yourself.",
     "library": "Saved posts and remixes are kept for good — they are never aged "
                "out, whatever happens to the rest of a group's history.",
 }

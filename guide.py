@@ -109,11 +109,11 @@ def steps(user, urls):
             'a[href="%s"]' % urls["write"], urls["write"])
 
     if facts["comments"]:
-        add("today", "Nobody waiting too long",
-            "Comments and messages waiting on a reply collect here, oldest "
-            "first, with a draft ready for each. Tallgrass never sends "
-            "anything — you approve every word.",
-            'a[href="%s"]' % urls["today"], urls["today"])
+        add("comments", "Nobody waiting too long",
+            "Comments on your own posts that nobody has answered, the ones "
+            "that read like somebody ready to buy first. Drafts wait for you "
+            "to send them.",
+            'a[href="%s"]' % urls["comments"], urls["comments"])
 
     add("playbook", "How to win in a group",
         "The Playbook is what to do with a winner once you've found one — "

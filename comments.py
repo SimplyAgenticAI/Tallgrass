@@ -248,6 +248,45 @@ def _stored_twin(conn, user_id, post_id, author, body):
     return None
 
 
+# The same signals the extension looks for in a chat's last line, applied to
+# comment text here. A hint for ordering, never a verdict.
+OPPORTUNITY_RE = re.compile(
+    r"\b(?:how much|price|pricing|prices|cost|costs|quote|rates?|available|availability"
+    r"|interested|book|booking|appointment|schedule|order|buy|purchase"
+    r"|still (?:have|available|for sale)|ship|shipping|deliver|delivery|invoice|payment"
+    r"|deposit|call me|text me|dm me|pm me|inbox me|more info|details)\b",
+    re.IGNORECASE)
+
+# Someone saying no, or not yet — the extension's DECLINE_RE, for comments that
+# have no AI label. A comment that matches is never called an opportunity.
+DECLINE_RE = re.compile(
+    r"as much as i(?:'d|’d| would)? (?:love|like)|wish i could|i(?:'d|’d| would) love to,? but"
+    r"|(?:can't|can’t|cannot|can not|won't be able to|unable to|not able to) (?:afford|swing|do it|buy|purchase|right now)"
+    r"|\bbroke\b|no money|out of money|money(?:'s|’s| is) tight|tight budget|on a budget|not in (?:my|the) budget"
+    r"|between jobs|unemployed|(?:lost|lose|losing) (?:my|our) (?:job|work)|until i (?:get|find) (?:a |another )?(?:job|work)"
+    r"|(?:rough|hard|tough|difficult) (?:time|year|patch|few months)"
+    r"|not (?:right now|now|this (?:year|month|time|season)|at (?:the|this) (?:moment|time)|interested|for me|ready)"
+    r"|(?:maybe|perhaps) (?:next|later|another time|down the road|in the future)"
+    r"|no,? thank(?:s| you)|i(?:'ll|’ll| will) pass|(?:going|gonna) (?:to )?pass"
+    r"|(?:changed|change) my mind|found someone else|went with (?:someone|another)|already (?:found|hired|bought|booked)",
+    re.IGNORECASE)
+
+
+def is_opportunity(row):
+    """Does this comment read like somebody ready to buy?
+
+    The AI's label when there is one, the keyword check when there is not, and
+    never when they are turning you down. A hint for ordering, never a verdict:
+    nothing is hidden on the strength of it and nothing is claimed about it.
+    """
+    # Subscript rather than .get, so a sqlite3.Row and a dict both work — the
+    # queue hands over rows and the Comments page hands over dicts.
+    if row["intent"]:
+        return row["intent"] == "hot_lead"
+    body = row["body"] or ""
+    return bool(OPPORTUNITY_RE.search(body)) and not DECLINE_RE.search(body)
+
+
 def threads_for(user_id, show_done=False):
     """Every post with its comments, the ones needing an answer first."""
     with db.get_db() as conn:
@@ -294,10 +333,26 @@ def threads_for(user_id, show_done=False):
         if not show_done:
             p["done_count"] = sum(1 for t in p["threads"] if t["status"] == "done")
             p["threads"] = [t for t in p["threads"] if t["status"] != "done"]
-        p["threads"].sort(key=lambda t: (order.get(t["verdict"], 1), t["position"]))
+        for t in p["threads"]:
+            t["opportunity"] = (t["status"] == "open"
+                                and t["verdict"] in ("unanswered", "unknown")
+                                and is_opportunity(t))
+        # Likely opportunities first, then the verdict order, then the order
+        # they appear under the post.
+        #
+        # This came from the Today page, which put them first across every post
+        # while this page grouped by post — so somebody asking a price on the
+        # fourth post down was buried under praise on the first. Today was
+        # removed because it had become a second view of this list, and this is
+        # the part of it worth keeping.
+        p["threads"].sort(key=lambda t: (not t["opportunity"],
+                                         order.get(t["verdict"], 1), t["position"]))
+        p["opportunities"] = sum(1 for t in p["threads"] if t["opportunity"])
 
-    posts.sort(key=lambda p: (-p["counts"]["unanswered"], -p["counts"]["unknown"]))
+    posts.sort(key=lambda p: (-p["opportunities"],
+                              -p["counts"]["unanswered"], -p["counts"]["unknown"]))
     totals = {v: sum(p["counts"][v] for p in posts) for v in VERDICTS}
+    totals["opportunities"] = sum(p["opportunities"] for p in posts)
     return {"posts": posts, "totals": totals}
 
 

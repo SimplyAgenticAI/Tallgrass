@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.4"
+APP_VERSION = "32.5"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1646,9 +1646,10 @@ def pipeline_update(kind, row_id):
             wake=snooze == "wake")
     except ValueError:
         pass
-    back = {"today": "today_page", "comments": "comments_page", "messages": "messages_page"}
+    back = {"today": "comments_page", "comments": "comments_page",
+            "messages": "messages_page"}
     anchor = ("#%s-%d" % (kind, row_id)) if form.get("next") == "today" else ""
-    return redirect(url_for(back.get(form.get("next"), "today_page")) + anchor)
+    return redirect(url_for(back.get(form.get("next"), "comments_page")) + anchor)
 
 
 # ---------------------------------------------------------------- today
@@ -1679,17 +1680,18 @@ def _ai_meter():
 @app.route("/today")
 @auth.login_required
 def today_page():
-    """Everyone waiting on an answer — comments and chats — in one queue."""
-    reply_samples.seed_once(_uid())
-    return render_template(
-        "today.html",
-        queue=today.queue(_uid()),
-        stages=pipeline.summary(_uid()),
-        stage_labels=pipeline.STAGE_LABELS,
-        ai_meter=_ai_meter(),
-        version=APP_VERSION,
-        active="today",
-    )
+    """Gone. Kept as a redirect, because the URL is out in the world.
+
+    Today held unanswered comments and waiting chats. The chats left first - a
+    merged inbox competed with Facebook's own and lost - and what remained was
+    a second view of the Comments page, which is the same duplication one level
+    in. So the tab went and the app opens on the Feed instead: what broke out
+    is the one thing here that nothing else can tell anybody.
+
+    Not deleted, because this path is bookmarked, the extension asks the
+    dashboard for its links, and saving from a comment used to come back here.
+    """
+    return redirect(url_for("comments_page"))
 
 
 def _panel_queue(user_id):
@@ -1744,6 +1746,9 @@ def comments_page():
         ai_meter=_ai_meter(),
         posts=data["posts"],
         totals=data["totals"],
+        # The pipeline tally, which used to be shown only on Today.
+        stages=pipeline.summary(_uid()),
+        stage_labels=pipeline.STAGE_LABELS,
         show_done=show_done,
         version=APP_VERSION,
         active="comments",
@@ -1758,7 +1763,7 @@ def comment_status(comment_id):
     except ValueError:
         pass
     if request.args.get("next") == "today":
-        return redirect(url_for("today_page"))
+        return redirect(url_for("comments_page") + "#c%d" % comment_id)
     return redirect(url_for("comments_page", done=request.args.get("done")) +
                     "#c%d" % comment_id)
 
@@ -1912,7 +1917,9 @@ def message_status(thread_id):
     except ValueError:
         pass
     if request.args.get("next") == "today":
-        return redirect(url_for("today_page"))
+        # Today is gone and chats were never the reason it existed. A chat
+        # saved from anywhere belongs back on the chats page.
+        return redirect(url_for("messages_page"))
     return redirect(url_for("messages_page"))
 
 
@@ -2004,7 +2011,9 @@ def _guide_urls():
         "capture": url_for("capture"),
         "groups": url_for("groups"),
         "write": url_for("write_page"),
-        "today": url_for("today_page"),
+        # Was "today", which no longer exists. The walkthrough step that used
+        # it now points at Comments, which is the list that outlived it.
+        "comments": url_for("comments_page"),
         "playbook": url_for("playbook"),
     }
 

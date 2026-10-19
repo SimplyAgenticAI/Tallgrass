@@ -1,4 +1,4 @@
-"""Today: the unanswered comments on your posts, and a count that agrees.
+"""The reply queue: the unanswered comments on your posts, and a count.
 
 The queue holds exactly the people still waiting on a reply to a comment, with
 likely opportunities first, and never your own comments, answered ones, or ones
@@ -18,8 +18,17 @@ Comments stayed because they are a different bet. Facebook's Professional
 Dashboard is Page-centric and gives a group poster no queue at all for comments
 on their own posts, and only this app knows which post is an outlier.
 
-So: chats keep their own page, the badge counts what Today shows, and nothing
-here may quietly merge them again.
+The Today PAGE is gone as well, one step later. Once the chats had left it, it
+was showing unanswered comments — which is what the Comments page already was,
+so it was a second view of one list, the same duplication one level in. The tab
+went, the app opens on the Feed, and Comments took the badge and the
+opportunity-first ordering that was the only thing Today did better.
+
+today.py itself stayed: the queue still feeds the extension's panel and the
+count on the navigation, which is what this file tests.
+
+So: chats keep their own page, the count counts what Comments shows, and
+nothing here may quietly merge them again.
 
 Run: python tests/today.test.py
 """
@@ -62,14 +71,14 @@ def main():
     me = appmod.app.test_client()
     me.post("/register", data={"email": "me@example.com", "password": "a-long-enough-pass",
                                "password_confirm": "a-long-enough-pass", "username": "birchwood"})
-    me.get("/today")
+    me.get("/comments")
     with me.session_transaction() as s:
         key = s["fresh_api_key"]
         csrf = s.get("csrf_token")
     headers = {"X-Outlier-Key": key}
 
     print("a new account")
-    first = me.get("/today").get_data(as_text=True)
+    first = me.get("/comments").get_data(as_text=True)
     check("the page shows labelled examples", "These are examples" in first, True)
     check("  and no red count for them", 'class="nav-count"' in first, False)
 
@@ -111,7 +120,13 @@ def main():
     check("  not even the one that looked like an opportunity",
           [i for i in q["entries"] if i["kind"] != "comment"], [])
 
-    html = me.get("/today").get_data(as_text=True)
+    # /today is gone. The URL still answers, because it is bookmarked and
+    # older pages still post back to it.
+    gone = me.get("/today")
+    check("/today redirects rather than 404ing",
+          (gone.status_code, gone.headers.get("Location")), (302, "/comments"))
+
+    html = me.get("/comments").get_data(as_text=True)
     check("the page lists the comments", "Jane Doe" in html, True)
     check("  and names no chat", ("Lee Chan" in html, "Old Friend" in html), (False, False))
     check("  and does not send people to Messenger",
@@ -119,6 +134,18 @@ def main():
     check("comments can be drafted from here", 'data-suggest="' in html, True)
     check("the nav count is what the page shows",
           'class="nav-count"' in html and ">3</span>" in html, True)
+    check("  and the count sits on Comments, not on a page that is gone",
+          'Comments\n      <span class="nav-count"' in html
+          or 'Comments <span class="nav-count"' in html, True)
+    check("there is no Today tab", ">Today" in html, False)
+
+    # The one thing Today did better than this page, kept: an opportunity is
+    # above the praise, across every post rather than within one.
+    import comments as comments_mod
+    data = comments_mod.threads_for(1)
+    check("opportunities are ordered first here now",
+          [t["author"] for t in data["posts"][0]["threads"]][:1], ["Jane Doe"])
+    check("  and counted", data["totals"]["opportunities"], 1)
 
     # The chats did not vanish — they have their own page, which is the whole
     # point: one place for them, and it is not the one that competes.
@@ -148,12 +175,19 @@ def main():
     jane = [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]
     r = me.post("/pipeline/comment/%d" % jane["id"], data={
         "stage": "quoted", "note": "wants the 5-page site, ~$2k", "next": "today", "csrf_token": csrf})
-    check("saved from Today, back to that row", r.headers.get("Location"), "/today#comment-%d" % jane["id"])
+    # next=today is still sent by a page somebody already had open, and it
+    # lands on the list that holds the row rather than on nothing.
+    check("saved from an older page, back to that row",
+          r.headers.get("Location"), "/comments#comment-%d" % jane["id"])
     jane = [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]
     check("  stage and note stored", (jane["stage"], jane["note"]), ("quoted", "wants the 5-page site, ~$2k"))
     check("  and counted in the pipeline", pipeline.summary(1)["quoted"], 1)
-    page = me.get("/today").get_data(as_text=True)
-    check("  shown on the page", "wants the 5-page site" in page and "Pipeline:" in page, True)
+    page = me.get("/comments").get_data(as_text=True)
+    check("  shown on the page", "wants the 5-page site" in page, True)
+    # The tally came across from Today with it: the stages were always
+    # settable on this page, but where they add up was only ever shown
+    # on the one that is gone.
+    check("  and the pipeline tally came with it", "Pipeline:" in page, True)
     check("a made-up stage is not stored",
           (me.post("/pipeline/comment/%d" % jane["id"], data={"stage": "hot", "csrf_token": csrf}),
            [e for e in today.queue(1)["entries"] if e["who"] == "Jane Doe"][0]["stage"])[1], None)
@@ -204,7 +238,8 @@ def main():
     print("done from Today stays on Today")
     tom = [i for i in q["entries"] if i["who"] == "Tom Hanks"][0]
     r1 = me.post("/comments/%d/status?next=today" % tom["id"], data={"status": "done", "csrf_token": csrf})
-    check("back to Today after it", r1.headers.get("Location"), "/today")
+    check("back to the list after it, at that row",
+          r1.headers.get("Location"), "/comments#c%d" % tom["id"])
     check("and they are gone from the queue", today.waiting_count(1), 2)
 
     print()
@@ -212,7 +247,7 @@ def main():
     other = appmod.app.test_client()
     other.post("/register", data={"email": "o@example.com", "password": "a-long-enough-pass",
                                   "password_confirm": "a-long-enough-pass", "username": "willow"})
-    theirs = other.get("/today").get_data(as_text=True)
+    theirs = other.get("/comments").get_data(as_text=True)
     check("another account sees only its own examples, none of mine",
           ("These are examples" in theirs, "Jane Doe" in theirs), (True, False))
 
@@ -221,7 +256,7 @@ def main():
     if FAILURES:
         print("%d FAILURES: %s" % (len(FAILURES), ", ".join(FAILURES)))
         return 1
-    print("one queue of comments, one count, and they agree")
+    print("one list of comments, one count, and they agree")
     return 0
 
 

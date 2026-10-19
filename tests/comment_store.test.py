@@ -366,7 +366,11 @@ def main():
           "Dee Moss" in leads and whos.index("Dee Moss") < len(leads), True)
     check("tags and praise sink below the rest",
           whos.index("Ava Stone") > len(whos) - 3 and whos.index("Ben Hart") > len(whos) - 3, True)
-    check("Today shows the label", ">Hot lead</span>" in me.get("/today").get_data(as_text=True), True)
+    # On the Comments page, which is where the queue lives now — Today was
+    # removed once the chats had left it, because what remained was a second
+    # view of this same list.
+    check("the page shows the label",
+          ">Hot lead</span>" in me.get("/comments").get_data(as_text=True), True)
     save(triage_thread)
     check("a rescan never sorts the same comments again", len(calls), 1)
     os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -394,14 +398,25 @@ def main():
     check("names the post", "New website packages" in html, True)
     check("says a reply is folded", "tell if you answered" in html, True)
     check("nav says Extension, not Capture", ">Extension</a>" in html and ">Capture</a>" not in html, True)
-    check("nav has Comments", ">Comments</a>" in html, True)
+    check("nav has Comments", ">Comments" in html, True)
     nav = html.split('<nav class="topnav">', 1)[1].split("</nav>", 1)[0]
     in_view = nav.split("<details", 1)[0]
-    check("five links in view: Today, Feed, Groups, Write, Sage",
-          [label for label in ("Today", "Feed", "Groups", "Write", "Sage", "Library", "Comments", "Settings")
-           if ">" + label in in_view], ["Today", "Feed", "Groups", "Write", "Sage"])
-    check("  Comments, Messages, Library and Playbook under More",
-          all(">" + l + "</a>" in nav for l in ("Comments", "Messages", "Library", "Playbook")), True)
+    # Feed first, and Today gone.
+    #
+    # Today held unanswered comments and waiting chats. The chats left because
+    # a merged inbox competed with Facebook's own and lost; what remained was a
+    # second view of the Comments page, so the tab went too. The app opens on
+    # the Feed now — what broke out is the one thing in here that nothing else
+    # can tell anybody — and Comments came up into view with the badge, because
+    # a count on one page for the contents of another stops being believed.
+    check("five links in view, Feed first and no Today",
+          [label for label in ("Today", "Feed", "Groups", "Comments", "Write",
+                               "Sage", "Library", "Settings")
+           if ">" + label in in_view],
+          ["Feed", "Groups", "Comments", "Write", "Sage"])
+    check("  Messages, Library and Playbook under More",
+          all(">" + l + "</a>" in nav for l in ("Messages", "Library", "Playbook")), True)
+    check("  and Today is nowhere in the page", ">Today" in html, False)
     account_menu = html.split("account-menu", 1)[1].split("</details>", 1)[0]
     check("  Extension, Settings, Health and Feedback in the account menu",
           all(">" + l + "</a>" in account_menu for l in ("Account", "Extension", "Settings", "Health", "Feedback")), True)

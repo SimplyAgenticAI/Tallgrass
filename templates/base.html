@@ -51,17 +51,26 @@
      avatar's menu. Menus are <details>, so they open without script; a
      little script only closes them on an outside click or Escape. #}
   <nav class="topnav">
-    <a href="{{ url_for('today_page') }}" class="{{ 'active' if active == 'today' }}">Today
-      {%- if waiting_count %} <span class="nav-count" title="{{ waiting_count }} waiting on an answer">{{ waiting_count }}</span>{% endif %}</a>
+    {# Feed first, and first in the row.
+       Today used to sit here. It held unanswered comments and waiting chats;
+       the chats left because a merged inbox competed with Facebook's own and
+       lost, and what remained was a second view of the Comments page. So it
+       went, and the first thing anybody sees is what broke out — the one thing
+       in here that nothing else can tell them.
+
+       The waiting count moved with the list it counts, onto Comments. A badge
+       on one page counting the contents of another is how a number stops being
+       believed. #}
     <a href="{{ url_for('feed') }}" class="{{ 'active' if active == 'feed' }}">Feed</a>
     <a href="{{ url_for('groups') }}" class="{{ 'active' if active == 'groups' }}">Groups</a>
+    <a href="{{ url_for('comments_page') }}" class="{{ 'active' if active == 'comments' }}">Comments
+      {%- if waiting_count %} <span class="nav-count" title="{{ waiting_count }} waiting on an answer">{{ waiting_count }}</span>{% endif %}</a>
     <a href="{{ url_for('write_page') }}" class="{{ 'active' if active == 'write' }}">Write</a>
     <a href="{{ url_for('sage_page') }}" class="{{ 'active' if active == 'sage' }}">Sage</a>
     <details class="nav-menu">
-      <summary class="{{ 'active' if active in ('results', 'comments', 'messages', 'library', 'playbook') }}">More</summary>
+      <summary class="{{ 'active' if active in ('results', 'messages', 'library', 'playbook') }}">More</summary>
       <div class="nav-menu-panel">
         <a href="{{ url_for('results_page') }}" class="{{ 'active' if active == 'results' }}">My results</a>
-        <a href="{{ url_for('comments_page') }}" class="{{ 'active' if active == 'comments' }}">Comments</a>
         <a href="{{ url_for('messages_page') }}" class="{{ 'active' if active == 'messages' }}">Messages</a>
         <a href="{{ url_for('library') }}" class="{{ 'active' if active == 'library' }}">Library</a>
         <a href="{{ url_for('playbook') }}" class="{{ 'active' if active == 'playbook' }}">Playbook</a>

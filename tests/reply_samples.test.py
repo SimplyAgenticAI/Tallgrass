@@ -38,7 +38,7 @@ def db_user(db, user_id):
 def sign_up(client, email, username):
     client.post("/register", data={"email": email, "password": "a-long-enough-pass",
                                    "password_confirm": "a-long-enough-pass", "username": username})
-    client.get("/today")
+    client.get("/comments")
     with client.session_transaction() as s:
         return s["fresh_api_key"], s.get("csrf_token")
 
@@ -64,8 +64,8 @@ def main():
     me = appmod.app.test_client()
     key, csrf = sign_up(me, "new@example.com", "birchwood")
     uid = 1
-    page = me.get("/today").get_data(as_text=True)
-    check("Today shows examples, labelled", "These are examples" in page and "sample" in page, True)
+    page = me.get("/comments").get_data(as_text=True)
+    check("the page shows examples, labelled", "These are examples" in page and "sample" in page, True)
     # The example COMMENTER. The example chat (Chris Alvarez) belongs to the
     # Messages page now — Today carries comments only, because a merged inbox
     # competed with Facebook's own and lost.
@@ -107,7 +107,7 @@ def main():
     messages.forget_all(uid)
     for post in comments.threads_for(uid, show_done=True)["posts"]:
         comments.forget_post(uid, post["id"])
-    me.get("/today")
+    me.get("/comments")
     me.get("/comments")
     check("clearing everything does not bring the examples back",
           (len(comments.threads_for(uid)["posts"]), len(messages.inbox(uid)["waiting"])), (0, 0))
@@ -133,9 +133,9 @@ def main():
     with db.get_db() as conn:
         vid_row = conn.execute("SELECT id FROM users WHERE email = 'vet@example.com'").fetchone()
     check("no meter when drafts do not run on a shared key",
-          "AI drafts used this month" in veteran.get("/today").get_data(as_text=True), False)
+          "AI drafts used this month" in veteran.get("/comments").get_data(as_text=True), False)
     os.environ["ANTHROPIC_API_KEY"] = "sk-test"
-    html = veteran.get("/today").get_data(as_text=True)
+    html = veteran.get("/comments").get_data(as_text=True)
     check("on the shared key, the allowance is shown", "0 of 40 AI drafts used this month" in html, True)
     for _ in range(38):
         db.record_ai_call(vid_row[0], "reply")
@@ -146,7 +146,7 @@ def main():
     check("  and says what to do when it is gone",
           "reached this month" in veteran.get("/messages").get_data(as_text=True), True)
     check("the owner is never metered",
-          "AI drafts used this month" in me.get("/today").get_data(as_text=True), False)
+          "AI drafts used this month" in me.get("/comments").get_data(as_text=True), False)
     os.environ.pop("ANTHROPIC_API_KEY", None)
 
     shutil.rmtree(tmp, ignore_errors=True)

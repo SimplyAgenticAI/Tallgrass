@@ -15,9 +15,11 @@
   <div>
     <h1>Comments</h1>
     <p class="sub">
-      Comments on your own posts, the ones you haven't answered first.
+      Comments on your own posts — the ones that read like somebody ready to
+      buy first, then the rest you haven't answered.
       {% if posts %}
         <b>{{ totals.unanswered }}</b> unanswered
+        {%- if totals.opportunities %} · {{ totals.opportunities }} that look like opportunities{% endif %}
         {%- if totals.unknown %} · {{ totals.unknown }} with replies still folded{% endif %}.
       {% endif %}
     </p>
@@ -29,6 +31,18 @@
 </section>
 
 {% include "_ai_meter.html" %}
+{# The pipeline strip came from Today. The stages were always settable here —
+   pipeline_controls is on every comment below — but where they ADD UP was only
+   ever shown on a page that no longer exists, so somebody marking leads as
+   quoted had nowhere left to see how many there were. #}
+{% if stages and stages.values()|sum %}
+<div class="pl-summary">
+  <span class="fine">Pipeline:</span>
+  {% for key, label in stage_labels.items() %}
+  <span class="pl-stage pl-{{ key }}{{ ' is-empty' if not stages[key] }}">{{ label }} {{ stages[key] }}</span>
+  {% endfor %}
+</div>
+{% endif %}
 {% if posts|selectattr("is_demo")|list %}{% include "_sample_note.html" %}{% endif %}
 
 {% if not posts %}
