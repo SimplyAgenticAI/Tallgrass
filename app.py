@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.1"
+APP_VERSION = "32.2"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -3837,11 +3837,21 @@ def api_graphic():
     # worst at and a long line comes back as confident nonsense.
     caption_text = (body.get("caption_text") or "").strip()
 
+    drew = {}
     image, error = remix.generate_graphic(
         hook, instructions=instructions, body=copy,
-        like_original=like_original, caption_text=caption_text)
+        like_original=like_original, caption_text=caption_text, detail=drew)
     if error:
         return jsonify({"ok": False, "error": error}), 400
+
+    # The fallback to the older model is the one failure that looks like bad
+    # taste rather than a fault: the picture arrives, and it is visibly worse.
+    # Said out loud, with what to do about it.
+    if drew.get("model") == "dall-e-3":
+        note = (note + " " if note else "") + (
+            "Drawn with DALL·E 3. Your OpenAI key cannot reach gpt-image-1, "
+            "which makes noticeably better pictures — verifying your "
+            "organisation in the OpenAI dashboard unlocks it.")
     # `note` is how a partial success reports itself: the picture was made, but
     # not in the way that was asked for.
     return jsonify({"ok": True, "image": image, "note": note})

@@ -985,12 +985,59 @@ def _graphic_prompt(hook, instructions="", body="", like_original=None,
     # when the operator has filled in a brand profile, steers it to their look.
     import sage
     brand = sage.get_brand()
+
+    # The default is a PHOTOGRAPH, and it is described in camera terms.
+    #
+    # It used to be "modern editorial illustration — bold shapes ... tasteful
+    # texture", which fought the opening line of this same prompt asking for a
+    # photographic-quality image with shallow depth of field. The model split
+    # the difference, and the average of a photograph and a flat illustration is
+    # the half-rendered look that reads as stock art.
+    #
+    # The adjectives went too. "Tasteful", "cohesive", "premium, confident,
+    # aspirational" are not direction - they are what beige corporate stock
+    # photography is made of, and they are exactly what "muted" looks like
+    # coming out of an image model. Lens, aperture and light source move a
+    # picture; adjectives about quality do not.
     style = brand.get("visual") or (
-        "modern editorial illustration — bold shapes, dramatic depth and "
-        "lighting, confident cinematic composition, tasteful texture"
+        "a real photograph, shot on a full-frame camera with an 85mm lens at "
+        "f/1.8 — crisp focus on the subject, deep natural background blur, "
+        "hard directional light raking across it from one side, strong "
+        "shadows, visible texture and fine detail"
     )
-    palette = brand.get("colors") or "a cohesive, high-contrast, tasteful palette"
-    mood = brand.get("voice") or "premium, confident, aspirational"
+    palette = brand.get("colors") or (
+        "rich saturated colour with deep blacks and bright highlights — "
+        "nothing washed out, nothing pastel, nothing grey"
+    )
+    # Mood is about the picture, and it is a constant.
+    #
+    # It used to be brand["voice"], which is a writing instruction - "direct,
+    # no fluff", "warm and chatty" - and it was steering the picture with the
+    # wrong half of the profile. The profile's visual style and colours are the
+    # two fields that belong to an image, and both are read above.
+    mood = "vivid, striking, full of light and depth"
+
+    # Whether the operator has said anything about how their pictures should
+    # look. When they have, it is theirs: the tone negatives below are dropped,
+    # because telling a model "nothing pastel" under a brand that asked for
+    # pastel is an argument it will settle at random.
+    styled = bool(brand.get("visual") or brand.get("colors"))
+
+    # Named in the terms the complaint was made in. A model given nothing but
+    # positive direction still regresses to the middle of its training
+    # distribution, and the middle of "image for a social post" is flat stock
+    # art — which is what came back twice.
+    #
+    # The first group is structural and always applies: nobody's brand is
+    # clip art of a person smiling at a laptop. The second is about tone, and
+    # it yields to an operator who has said what they want.
+    avoid = ("NOT clip art, NOT a vector illustration, NOT an infographic, "
+             "NOT a collage, NOT a plain gradient background, NOT a stock "
+             "photo of somebody smiling at a laptop.")
+    if not styled:
+        avoid += (" NOT flat, NOT washed out, NOT muted, NOT pastel, NOT "
+                  "desaturated, no neutral grey-beige palette, no soft "
+                  "haze over everything.")
     ctx = []
     if brand.get("name"):
         ctx.append(f"for the brand {brand['name']}")
@@ -1109,9 +1156,13 @@ def _graphic_prompt(hook, instructions="", body="", like_original=None,
     prompt = (
         f"{lead}"
         f"{echo}"
-        "A single photographic-quality image for a social post. Award-winning "
-        "art direction: one clear subject, dramatic directional light, shallow "
-        "depth of field, rule-of-thirds composition with room to breathe.\n\n"
+        "ONE striking image for a social post, good enough to stop a thumb. "
+        "One clear subject, filling the frame, lit hard from one side. "
+        "Rule-of-thirds composition with room to breathe.\n\n"
+        # Named in the terms the complaint was made in. A model given only
+        # positive direction still regresses to the middle of its training
+        # distribution, which for "image for a social post" is flat stock art.
+        f"{avoid}\n\n"
         "THE POST THIS ILLUSTRATES:\n"
         f"{about}\n\n"
         # Concrete beats clever. Asking for a "visual metaphor" was inviting
@@ -1132,7 +1183,7 @@ def _graphic_prompt(hook, instructions="", body="", like_original=None,
 
 
 def generate_graphic(hook, instructions="", body="", like_original=None,
-                     caption_text=""):
+                     caption_text="", detail=None):
     """Turn a post's hook into a shareable illustration. Returns (image, error).
 
     `like_original` is the brief from a graphic that already worked — see
@@ -1151,6 +1202,12 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
 
     Text is kept OUT of the image by default, because image models render
     lettering as garbage. That default lifts if the instructions ask for text.
+
+    `detail`, when a dict is passed, is filled in with the model and quality
+    that actually produced the picture. The fallback to dall-e-3 is silent
+    otherwise, and dall-e-3's output is visibly worse - so somebody whose key
+    cannot reach gpt-image-1 was getting the weaker model with nothing to tell
+    them that was what they were looking at.
     """
     instructions = (instructions or "").strip()[:600]
     key = _openai_key()
@@ -1173,7 +1230,21 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
     # which is available without organisation verification.
     for model in ("gpt-image-1", "dall-e-3"):
         try:
-            resp = client.images.generate(model=model, prompt=prompt, size="1024x1024", n=1)
+            # quality="high" on gpt-image-1, and nothing on dall-e-3, which
+            # does not take the same values.
+            #
+            # This was sent with no quality at all, so it rendered at the
+            # model's default - and the default is where "lame and muted" comes
+            # from. It is the largest single fidelity difference available here.
+            # It also costs about four times as much per picture, which is why
+            # IMAGE_PRICES carries the high-quality price and nothing pretends
+            # a graphic is four cents any more.
+            extra = {"quality": "high"} if model == "gpt-image-1" else {}
+            resp = client.images.generate(model=model, prompt=prompt,
+                                          size="1024x1024", n=1, **extra)
+            if detail is not None:
+                detail["model"] = model
+                detail["quality"] = extra.get("quality", "standard")
             # Image models charge per picture, so the count is the billable
             # quantity and there are no tokens to read.
             aicost.note(model=model, images=1)

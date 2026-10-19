@@ -87,8 +87,15 @@ def main():
     check("cached input costs a tenth", (full, discounted), (5.0, 0.5))
     check("an unknown model is assumed dear, not free",
           aicost.dollars("some-new-model", 1_000_000, 0) > 0, True)
+    # Per picture, at the quality remix.generate_graphic actually asks for.
+    # It asked for none and got the model's default, which is where "muted and
+    # generic" came from; it asks for high now, and that is four times the
+    # price, so the table has to say so rather than quietly under-billing.
     check("images are priced per picture, not per token",
-          aicost.dollars("gpt-image-1", images=2), 0.08)
+          aicost.dollars("gpt-image-1", images=2),
+          round(aicost.IMAGE_PRICES["gpt-image-1"] * 2, 6))
+    check("  and a high-quality picture is priced as one",
+          aicost.IMAGE_PRICES["gpt-image-1"] > 0.1, True)
     check("nothing at all costs nothing", aicost.dollars("claude-opus-5"), 0.0)
 
     print()

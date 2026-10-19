@@ -158,6 +158,61 @@ def main():
     check("  unless the operator asks for it",
           "ABSOLUTELY NO text" in asked, False)
 
+    # ------------------------------------------- one medium, and not a muted one
+    #
+    # Reported twice: the graphics came out "generic, muted, crap". The brief
+    # was not the problem by then — this prompt's own closing lines were. It
+    # opened asking for a photographic-quality image with shallow depth of
+    # field and closed with "Visual style: modern editorial illustration — bold
+    # shapes", so the model was handed two different pictures to make and
+    # averaged them. The average of a photograph and a flat illustration is the
+    # half-rendered look that reads as stock art.
+    #
+    # And the direction was written in the words that MEAN muted: "tasteful
+    # texture", "a cohesive, high-contrast, tasteful palette", "premium,
+    # confident, aspirational". That is a recipe for beige corporate stock.
+    print()
+    print("one medium per prompt, described in camera terms")
+    check("no illustration in a photographic brief",
+          "illustration" in plain.lower() and "NOT a vector illustration" not in plain,
+          False)
+    check("the camera is specified, not the vibe",
+          "85mm" in plain and "f/1.8" in plain, True)
+    check("the light is specified",
+          "directional light" in plain, True)
+    for word in ("tasteful", "aspirational", "cohesive"):
+        check("  %r is gone" % word, word in plain.lower(), False)
+    check("washed-out is ruled out by name",
+          "NOT washed out" in plain and "NOT muted" in plain, True)
+    check("  along with the shapes that made these generic",
+          "NOT clip art" in plain, True)
+
+    # An operator who has said what their pictures should look like owns it,
+    # and the tone negatives stand down rather than argue with them.
+    with appmod.app.test_request_context("/"):
+        from flask import session
+        session["user_id"] = uid
+        sage.set_brand({"visual": "soft muted pastel watercolour",
+                        "colors": "dusty pink and sage"})
+        theirs = remix._graphic_prompt("A hook", body="Words")
+        sage.set_brand({"visual": "", "colors": ""})
+    check("a brand style is used as given",
+          "soft muted pastel watercolour" in theirs, True)
+    check("  and is not argued with",
+          "NOT pastel" in theirs, False)
+    check("  while clip art is still out",
+          "NOT clip art" in theirs, True)
+
+    # The writing voice must not steer the picture.
+    with appmod.app.test_request_context("/"):
+        from flask import session
+        session["user_id"] = uid
+        sage.set_brand({"voice": "blunt, no fluff, swear occasionally"})
+        voiced = remix._graphic_prompt("A hook", body="Words")
+        sage.set_brand({"voice": ""})
+    check("the brand's writing voice is not the image's mood",
+          "no fluff" in voiced, False)
+
     # The post and a saved remix, needed by everything below.
     with db.get_db() as conn:
         sid = conn.execute(
@@ -240,8 +295,14 @@ def main():
         sess["csrf_token"] = "known-token"
     made = {"like_original": "unset"}
 
-    def fake_graphic(hook, instructions="", body="", like_original=None, caption_text=""):
+    def fake_graphic(hook, instructions="", body="", like_original=None,
+                     caption_text="", detail=None):
         made["like_original"] = like_original
+        # The real one fills this in with what drew the picture, and the route
+        # reads it to tell the operator when it fell back to the older model.
+        if detail is not None:
+            detail["model"] = "gpt-image-1"
+            detail["quality"] = "high"
         return "data:image/png;base64,AAAA", None
 
     real_graphic = remix.generate_graphic
@@ -259,6 +320,23 @@ def main():
         check("it says what it could not do",
               "illustrates the words instead" in (data.get("note") or ""), True)
         check("  and did not pretend to echo anything", made["like_original"], None)
+
+        # The fallback to the older model is the one failure that looks like
+        # bad taste rather than a fault: a picture arrives and it is visibly
+        # worse. It is said out loud now, with what to do about it.
+        def older_model(hook, instructions="", body="", like_original=None,
+                        caption_text="", detail=None):
+            if detail is not None:
+                detail["model"] = "dall-e-3"
+            return "data:image/png;base64,AAAA", None
+
+        remix.generate_graphic = older_model
+        data = client_gone.post("/api/graphic", json={
+            "hook": "A hook", "body": "Words",
+        }, headers={"X-CSRF-Token": "known-token"}).get_json()
+        check("a fallback to DALL·E 3 is named", "DALL·E 3" in (data.get("note") or ""), True)
+        check("  with the reason it happened",
+              "cannot reach gpt-image-1" in (data.get("note") or ""), True)
     finally:
         remix.generate_graphic = real_graphic
         remix.describe_original_graphic = real_describe

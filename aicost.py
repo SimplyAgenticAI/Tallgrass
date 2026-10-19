@@ -35,8 +35,11 @@ PRICES = {
 }
 
 # Dollars per generated image, for the models that charge that way.
+# Per picture, at the size and quality remix.generate_graphic actually asks
+# for: 1024x1024, and quality="high" on gpt-image-1. The 0.04 that used to sit
+# here was the medium-quality price, and nothing was asking for medium.
 IMAGE_PRICES = {
-    "gpt-image-1": 0.04,
+    "gpt-image-1": 0.17,
     "dall-e-3": 0.04,
 }
 

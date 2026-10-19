@@ -85,8 +85,9 @@ Short paragraphs instead of headings. Where something genuinely is a list, write
 # from the outside is the feature being broken.
 #
 # Deliberately a narrow, deterministic test rather than asking a model whether
-# a model was asked for a picture. A false positive spends four cents of
-# somebody's allowance on an image they did not want, so the ask has to be
+# a model was asked for a picture. A false positive spends a real part of
+# somebody's allowance on an image they did not want (see aicost.IMAGE_PRICES —
+# a high-quality picture is about seventeen cents), so the ask has to be
 # explicit: a making verb AND a picture noun, in the message the user just
 # typed.
 _MAKE = r"(?:make|made|create|generate|design|draw|mock ?up|render|give me|build)"
@@ -123,6 +124,12 @@ group's best posts are about.
 that group's winning graphics looked like, make this one belong beside them.
 - Fold in anything the operator asked for - a look, a colour, a thing to leave \
 out - because nothing else of what they typed reaches the generator.
+- Brief a PHOTOGRAPH unless the operator asked for something else, and say the \
+light: where it comes from, how hard it is, what time of day. Light is what \
+makes a picture look expensive.
+- Never ask for muted, soft, pastel, desaturated, minimal or tasteful anything. \
+Those words are what made the first attempts at this look cheap. Ask for strong \
+colour, deep shadow and real texture.
 - No abstractions. No floating shapes, no glowing orbs, no collages, no \
 diagrams, no infographics, no text or lettering anywhere in the image.
 
