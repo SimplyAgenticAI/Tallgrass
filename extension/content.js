@@ -42,13 +42,22 @@
   var autoScrolling = false;
   var scrollTimer = null;
   var idleScrolls = 0;
+  // When something was last actually captured, and how many articles were on
+  // the page at that moment. Together they separate the two faults that both
+  // present as "it stopped about halfway": Facebook not loading more, and
+  // Facebook loading plenty that cannot be read.
+  var lastCaptureAt = 0;
+  var artsAtLastCapture = 0;
   var currentSourceId = null;   // resets counters when you move to a new group
 
   // A scan needs a finish line. Left alone it would scroll until Facebook
   // stops serving posts, which in a large group is effectively forever, and
   // engagement on very old posts is not comparable to recent ones anyway.
   var DEFAULT_MAX_POSTS = 200;
-  var DEFAULT_MAX_MINUTES = 10;
+  // A placeholder only, for the moment between this script running and the
+  // stored target arriving. minutesFor() owns the real figure and overwrites
+  // this before a scan can be started.
+  var DEFAULT_MAX_MINUTES = 15;
   var maxPosts = DEFAULT_MAX_POSTS;
   var maxMinutes = DEFAULT_MAX_MINUTES;
   var scanStartedAt = 0;
@@ -3034,6 +3043,19 @@
    * the tab is visible, so the ordinary path is unchanged.
    */
   var STEP_EVERY_MS = 2200;
+
+  /* How long a scan may capture NOTHING before it is called stuck.
+   *
+   * This is the real end of a scan that has gone wrong, and it is what the
+   * total clock was being used for by accident. idleScrolls below catches the
+   * bottom of the feed - no new articles AND nothing captured - but it resets
+   * on any step where the article count grew, so a feed that keeps rendering
+   * posts the extractor refuses never trips it, and the scan ran on until the
+   * clock ran out.
+   *
+   * Three minutes is about eighty steps. Far past any ordinary run of
+   * unreadable posts, so this only fires on a genuine fault. */
+  var NO_PROGRESS_MS = 3 * 60 * 1000;
   var SETTLE_MS = 1100;
   var pendingBefore = 0;
   var scanPort = null;
@@ -3070,16 +3092,46 @@
     var found = scanPosts();
     flush();
 
-    // Three ways a scan ends, all of them deliberate.
+    if (found > 0) {
+      lastCaptureAt = Date.now();
+      artsAtLastCapture = document.querySelectorAll('div[role="article"]').length;
+    }
+
+    // Four ways a scan ends, all of them deliberate.
     if (SEEN.size >= maxPosts) {
       stopAutoScroll(null, "Target reached — " + SEEN.size + " posts");
       return;
     }
 
+    // Nothing captured for three minutes. This is what "stuck" is, and until
+    // now nothing detected it: the scan carried on scrolling a feed it could
+    // not read until the total clock expired, which on a 500-post target
+    // happened around post 250 and looked like stopping halfway for no reason.
+    if (Date.now() - lastCaptureAt >= NO_PROGRESS_MS) {
+      var arts = document.querySelectorAll('div[role="article"]').length;
+      var grew = arts - artsAtLastCapture;
+      stopAutoScroll(null,
+        "Stuck at " + SEEN.size + " of " + maxPosts + " — nothing new for " +
+        Math.round(NO_PROGRESS_MS / 60000) + " min. " +
+        (grew > 5
+          // Facebook kept loading and the extractor refused all of it. The
+          // scroll is working; the reading is not.
+          ? "Facebook loaded " + grew + " more posts but none could be read — " +
+            "please send this line in."
+          // Nothing more arrived. Usually the feed has genuinely ended, or
+          // the thing that scrolls on this page is not what we are scrolling.
+          : "Facebook stopped loading more. Scroll down by hand once, then " +
+            "scan again to carry on."));
+      return;
+    }
+
     var minutes = (Date.now() - scanStartedAt) / 60000;
     if (minutes >= maxMinutes) {
-      stopAutoScroll(null, "Time limit — " + SEEN.size + " posts in " +
-                           Math.round(minutes) + " min");
+      // Still productive, just out of budget. Scanning again continues from
+      // here rather than starting over, because SEEN survives on this page.
+      stopAutoScroll(null, "Out of time at " + SEEN.size + " of " + maxPosts +
+                           " posts (" + Math.round(minutes) + " min). " +
+                           "Scan again to carry on.");
       return;
     }
     finishStep(beforeArts, found);
@@ -3125,6 +3177,10 @@
     autoScrolling = true;
     idleScrolls = 0;
     scanStartedAt = Date.now();
+    // Counted from the start, so a scan that never captures anything at all
+    // stops after NO_PROGRESS_MS rather than running the whole clock.
+    lastCaptureAt = Date.now();
+    artsAtLastCapture = document.querySelectorAll('div[role="article"]').length;
     STATS.lastError = null;
     STATS.done = null;
     // Tells the service worker not to self-update mid-capture.
@@ -5691,9 +5747,32 @@
    */
   var POST_TARGETS = [50, 100, 200, 500];
 
+  /* Seconds of budget per post asked for.
+   *
+   * This was n / 20 - three seconds a post - and that is not survivable: one
+   * step costs STEP_EVERY_MS (2.2s) and yields at most ONE new post, usually
+   * well under one once duplicates, shells, comments and tall video posts come
+   * out. So a 500-post scan was given 25 minutes for work that cannot be done
+   * in under 18 even in the best case, and in practice it ran out at about
+   * half - which is exactly how it was reported.
+   *
+   * Two steps per captured post is the honest figure, with the no-progress
+   * timeout above as the thing that actually ends a scan that has gone wrong.
+   * The clock is a backstop now, not the mechanism. */
+  var SECONDS_PER_POST = (STEP_EVERY_MS / 1000) * 2;
+
+  // Pure, and the only place the ceiling is worked out. Separate from the
+  // setter below because the setter PERSISTS, and the two places that adopt a
+  // target they were handed must not write it back — storage.onChanged fires on
+  // every set, including one that changed nothing, so a setter calling itself
+  // through it would never stop.
+  function minutesFor(n) {
+    return Math.max(5, Math.ceil(n * SECONDS_PER_POST / 60));
+  }
+
   function setPostTarget(n) {
     maxPosts = n;
-    maxMinutes = Math.max(5, Math.round(n / 20));
+    maxMinutes = minutesFor(n);
     try { chrome.storage.local.set({ maxPosts: n, maxMinutes: maxMinutes }); } catch (e) {}
   }
 
@@ -6038,7 +6117,14 @@
     function (state) {
       enabled = state.enabled !== false;
       maxPosts = state.maxPosts || DEFAULT_MAX_POSTS;
-      maxMinutes = state.maxMinutes || DEFAULT_MAX_MINUTES;
+      // Derived, never read back from storage.
+      //
+      // It is a pure function of the target, and the stored copy is whatever
+      // the version that wrote it believed. Somebody who had already picked
+      // 500 had 25 minutes saved against it - the too-tight figure this
+      // release exists to correct - and reading that back would have kept the
+      // bug for exactly the people who hit it.
+      maxMinutes = minutesFor(maxPosts);
       endpointLabel = hostOf(state.endpoint || "http://localhost:5050");
       renderHud();
     }
@@ -6049,8 +6135,12 @@
       enabled = changes.enabled.newValue !== false;
       if (!enabled && autoScrolling) stopAutoScroll("Capture turned off");
     }
-    if (changes.maxPosts) maxPosts = changes.maxPosts.newValue || DEFAULT_MAX_POSTS;
-    if (changes.maxMinutes) maxMinutes = changes.maxMinutes.newValue || DEFAULT_MAX_MINUTES;
+    // The target carries its own time ceiling with it, here as on load, so a
+    // change made in the popup cannot leave the two disagreeing.
+    if (changes.maxPosts) {
+      maxPosts = changes.maxPosts.newValue || DEFAULT_MAX_POSTS;
+      maxMinutes = minutesFor(maxPosts);
+    }
     if (changes.endpoint) endpointLabel = hostOf(changes.endpoint.newValue || "");
     renderHud();
   });

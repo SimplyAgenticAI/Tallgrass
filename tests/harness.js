@@ -190,6 +190,10 @@ function buildPage(specs) {
 function runScan(page, urlPath, opts) {
   var stored = { enabled: true, endpoint: "https://dash.test", apiKey: "olk_x" };
   if (opts && opts.maxPosts) { stored.maxPosts = opts.maxPosts; }
+  // A ceiling an older build saved. It must NOT be adopted — it is derived
+  // from the target now, and the stale copy is the too-tight figure that made
+  // a 500-post scan stop at about 250.
+  if (opts && opts.maxMinutes) { stored.maxMinutes = opts.maxMinutes; }
 
   global.chrome = {
     runtime: {
