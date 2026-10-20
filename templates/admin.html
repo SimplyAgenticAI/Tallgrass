@@ -125,8 +125,8 @@
       {{ '{:,}'.format(retention.kept.own) }} the users wrote themselves and
       {{ '{:,}'.format(retention.kept.floor) }} held back so no group drops
       below the {{ floor_per_source }} posts it needs to stay scoreable.
-      Saved posts and remixes are never candidates, and the reply pipeline is a
-      different table entirely.
+      Saved posts and remixes are never candidates, and the comment and chat
+      rows the extension still sends are different tables entirely.
     </p>
     <div class="demo-actions" style="gap:10px">
       <button class="btn {{ 'btn-ghost' if retention.enabled else 'btn-primary' }}"

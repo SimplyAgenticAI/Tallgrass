@@ -4,8 +4,8 @@ Everything else in this app only happens while somebody is on Facebook with
 the extension running. Nothing ever reached out to an ACTIVE user — welcome and
 nudge are both about getting started — so once the novelty wore off there was
 no reason in anybody's week to come back. This is that reason: once a week,
-their best posts from recent scans, how many people are waiting on a reply,
-and a nudge to rescan when the numbers have gone stale.
+their best posts from recent scans, and a nudge to rescan when the numbers
+have gone stale.
 
 This module only composes. Sending, switches, the once-a-week claim and the
 unsubscribe all belong to outreach, the same as every other automatic email.
@@ -84,14 +84,6 @@ def _snippet(text):
     return text[:SNIPPET].rsplit(" ", 1)[0] + "…"
 
 
-def _waiting(user_id):
-    try:
-        import today
-        return today.waiting_count(user_id)
-    except Exception:                         # noqa: BLE001 - a brief without it
-        return 0
-
-
 def compose(user_id, base_url):
     """This account's brief as {"headline", "summary"}, or None if there is
     nothing honest to send (no real posts, or no scan in ACTIVE_DAYS)."""
@@ -115,7 +107,6 @@ def compose(user_id, base_url):
          and s["outlier_multiple"] >= MIN_MULTIPLE),
         key=lambda s: s["outlier_multiple"], reverse=True)[:TOP_N]
     info = _details(user_id, [s["id"] for s in top])
-    waiting = _waiting(user_id)
 
     lines = []
     if top:
@@ -171,12 +162,9 @@ def compose(user_id, base_url):
                          "in those groups yet to score them." % len(own))
         lines.append("%sresults" % base_url)
 
-    if waiting:
-        lines.append("")
-        lines.append("%d %s waiting on a reply from you:" % (
-            waiting, "person is" if waiting == 1 else "people are"))
-        lines.append("%stoday" % base_url)
-        if not top and not own_hit:
-            headline = "%d waiting on a reply" % waiting
+    # A block here counted people waiting on a reply and linked to /today.
+    # Answering people left the product in V32.6, so it counted nothing and
+    # linked to a page that redirects - and it could still have become the
+    # headline of the email on a quiet week.
 
     return {"headline": headline, "summary": "\n".join(lines)}

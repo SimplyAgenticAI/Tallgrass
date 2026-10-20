@@ -267,7 +267,7 @@ TOKENS = {
     "{dashboard}": "the dashboard's address",
     "{install}": "the install instructions page",
     "{store}": "the Chrome Web Store listing",
-    "{summary}": "weekly brief only: their top posts and who is waiting",
+    "{summary}": "weekly brief only: their top posts and what to rescan",
     "{headline}": "weekly brief only: one short line, e.g. 7.2× in Group Name",
 }
 
@@ -283,7 +283,7 @@ NOTES = {
            "still has not captured a real post." % (NUDGE_AFTER_DAYS,
                                                     NUDGE_BEFORE_DAYS),
     BRIEF: "Once a week to anyone who has scanned in the last %d days: their "
-           "top posts from recent scans, who is waiting on a reply, or a "
+           "top posts from recent scans, or a "
            "prompt to rescan. Skipped for anyone with nothing real to show."
            % brief.ACTIVE_DAYS,
 }

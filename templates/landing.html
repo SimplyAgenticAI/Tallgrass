@@ -18,7 +18,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ app_name }} — {{ app_tagline }}</title>
-<meta name="description" content="{{ app_tagline }} {{ app_name }} scores every post against the median for its own group, then finds the comments and Messenger chats still waiting on you and drafts the reply in your voice.">
+<meta name="description" content="{{ app_tagline }} {{ app_name }} scores every post against the median for its own group, so a quiet group's runaway hit stops being buried under a big group's ordinary day — then helps you write the next one.">
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -65,8 +65,8 @@
     <p class="lp-lede">
       {{ app_name }} scores every post against the median for its own group — so a
       quiet group's runaway hit stops being buried under a big group's ordinary day.
-      And when people respond, it finds the comments and Messenger chats still
-      waiting on you and drafts the reply.
+      Then it shows you what the winners have in common, and helps you write the
+      next one.
     </p>
     <div class="lp-cta-row">
       {% if allow_signups %}
@@ -284,48 +284,12 @@
     </div>
   </section>
 
-  {# ------------------------------------------------------- when they answer
-     The reply side. Every claim is one the app does today: the comment and
-     Messenger readers, the drafts typed into Facebook's own boxes, the lists
-     that move themselves, and — the one that matters for trust — never
-     sending anything on the user's behalf. #}
-  <section class="lp-section">
-    <span class="lp-tag">When people respond</span>
-    <h2 class="lp-h2">Never leave an interested person on read</h2>
-    <p class="lp-sub">
-      A post that breaks out brings comments and messages, and the ones that turn
-      into business are the ones somebody answered. {{ app_name }} finds who is still
-      waiting and writes the reply — you read it, tweak it, and send it.
-    </p>
-    <div class="lp-cards">
-      <article class="glass lp-card">
-        <h3>Unanswered comments</h3>
-        <p>
-          Open one of your posts and every comment you haven't answered is picked
-          out. Press <b>✨ Suggest reply</b> beside it and a reply in your voice
-          appears in Facebook's own reply box — answering the question, and
-          moving real interest a step forward without forcing a pitch.
-        </p>
-      </article>
-      <article class="glass lp-card">
-        <h3>Messenger opportunities</h3>
-        <p>
-          It reads your chat list and sorts it: who is waiting on you, which of
-          those look like opportunities — price, availability, booking — and
-          which conversations went quiet after your last message. One press drafts the
-          next message — an answer, or an easy reason to pick the chat back up.
-        </p>
-      </article>
-      <article class="glass lp-card">
-        <h3>A list that keeps itself</h3>
-        <p>
-          Reply and the chat moves to <b>Replied</b> on its own. No answer in a
-          few days and it moves to <b>Gone quiet</b>. They write back and it's in
-          front of you again. Nothing to tick off, and nothing slips.
-        </p>
-      </article>
-    </div>
-  </section>
+  {# A section here sold an inbox: unanswered comments, Messenger
+     opportunities, and a list that moved itself. All three were removed from
+     the product in V32.6 — answering people is work Facebook already carries,
+     and a second place to do it was a second place to check. The section went
+     with them rather than being reworded, because there is nothing behind it
+     to describe. #}
 
   {# ------------------------------------------------------------ the limit #}
   <section class="lp-section">
@@ -335,9 +299,9 @@
       {{ app_name }} is a browser extension. It reads the posts on the pages you visit
       while you visit them — the groups you joined, the pages you follow. It does
       not sign into anything on your behalf, and it cannot reach a group you are
-      not a member of. And it never posts, comments or sends a message for you:
-      every reply it drafts waits in the box until you send it yourself. That is
-      the real limit of the tool, and it is also the reason you can run it on
+      not a member of. And it never posts, comments, likes or sends a message
+      for you — it reads, scores and drafts, and nothing leaves your hands. That
+      is the real limit of the tool, and it is also the reason you can run it on
       your own account without wondering what it is doing when you are not
       looking.
     </p>

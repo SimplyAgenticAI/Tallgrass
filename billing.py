@@ -78,11 +78,13 @@ PRO_FEATURES = [
     "%d months of everybody else's posts, so the scores describe now" % RETENTION_MONTHS,
 ]
 
+# The two reply lines here - comments and chats found for you, replies drafted
+# in your voice - described features removed in V32.6, and this is the page
+# somebody reads before paying.
 FREE_FEATURES = [
     "Every feature — Sage, remix, ideas, export",
-    "Unanswered comments and Messenger chats, found for you",
-    "Replies and follow-ups drafted in your voice",
     "Full outlier scoring and the meadow",
+    "What your winners have in common, from your own data",
     "Unlimited groups, pages and profiles",
     "1,000 captured posts",
 ]

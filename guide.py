@@ -49,14 +49,13 @@ def _facts(user, conn):
         (uid,)).fetchone()[0]
     remixed = conn.execute(
         "SELECT 1 FROM remixes WHERE user_id = ? LIMIT 1", (uid,)).fetchone()
-    waiting = conn.execute(
-        "SELECT 1 FROM post_comments WHERE user_id = ? AND is_mine = 0 LIMIT 1",
-        (uid,)).fetchone()
+    # A third query asked whether this account had any comments saved, for a
+    # step about answering them. The step went when the Comments page did, and
+    # the query outlived it by a release.
     return {
         "connected": bool(user.get("api_key_prefix")),
         "captured": real,
         "remixed": bool(remixed),
-        "comments": bool(waiting),
     }
 
 

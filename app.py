@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.6"
+APP_VERSION = "32.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1631,50 +1631,10 @@ def go_store():
 # ---------------------------------------------------------------- pipeline
 
 
-@app.route("/pipeline/<kind>/<int:row_id>", methods=["POST"])
-@auth.login_required
-def pipeline_update(kind, row_id):
-    """Stage, note and snooze for one comment or chat, from any of the pages."""
-    form = request.form
-    try:
-        snooze = form.get("snooze")
-        pipeline.set_meta(
-            kind, _uid(), row_id,
-            stage=form.get("stage") if "stage" in form else None,
-            note=form.get("note") if "note" in form else None,
-            snooze_days=int(snooze) if snooze and snooze.isdigit() else None,
-            wake=snooze == "wake")
-    except ValueError:
-        pass
-    # Every page that posted here is gone, so there is nowhere to go back to
-    # but the Feed. Kept answering because a form already open in somebody's
-    # browser will still submit, and it should save rather than 404.
-    return redirect(url_for("feed"))
-
-
-# ---------------------------------------------------------------- today
-
-
-def _ai_meter():
-    """How much of the monthly AI allowance is used, when one applies.
-
-    Only on the shared key: somebody on their own key has no allowance, and
-    the owner is never metered. Shown where drafts are made, so the limit is
-    something people can see coming rather than an error mid-reply.
-    """
-    user = auth.current_user()
-    if not user or billing.is_admin(user):
-        return None
-    try:
-        if sage.get_config().get("key_source") != "environment":
-            return None
-        pro = billing.is_pro(user)
-        cap = billing.AI_LIMITS["pro" if pro else "free"]
-        used = db.ai_calls_this_month(user["id"])
-    except Exception:                                  # noqa: BLE001
-        return None
-    return {"used": used, "cap": cap, "left": max(0, cap - used), "pro": pro,
-            "pro_cap": billing.AI_LIMITS["pro"]}
+# The /pipeline route was here: it set a stage, a note or a snooze on a comment
+# or a chat. Its controls were rendered only on the Comments and Messages pages,
+# so nothing has reached it since those were removed. Taken out rather than left
+# authenticated and callable with no caller.
 
 
 # ------------------------------------------------- answering people: removed
@@ -2067,7 +2027,7 @@ def api_message_draft():
 # ---------------------------------------------------------------- ingest API
 
 
-def _field_scores(limit=90):
+def _field_scores(limit=90, user=None):
     """The reader's own multiples, for the meadow in the background.
 
     The tall blades used to be picked arbitrarily — decoration in the shape of
@@ -2077,7 +2037,7 @@ def _field_scores(limit=90):
     Cheap on purpose: one indexed read of a single column, capped, and only
     for a signed-in reader. Nothing here is worth a slow page.
     """
-    user = auth.current_user()
+    user = user or auth.current_user()
     if not user:
         return []
     try:
@@ -2168,8 +2128,9 @@ def inject_globals():
     """Values every page needs, so no route can forget them."""
     viewer = auth.current_user()
     # Computed once and shared: the meadow is drawn from these and so are the
-    # tips, and two reads would be two different pictures.
-    scores = _field_scores()
+    # tips, and two reads would be two different pictures. The viewer is handed
+    # over rather than looked up again inside.
+    scores = _field_scores(user=viewer)
     return {
         "ephemeral": db.storage_is_ephemeral(),
         # One cheap settings lookup, and only for a signed-in page. The steps
@@ -2201,9 +2162,6 @@ def inject_globals():
         # page contradicted itself inside a single screen — its header said
         # one group while its own feature list said unlimited.
         "free_limits": billing.FREE_LIMITS,
-        # People waiting on an answer, for the Today badge in the navigation.
-        # For telling a snooze that is still running from one that has ended.
-        "now_utc": pipeline.now_utc(),
     }
 
 
