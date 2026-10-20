@@ -78,6 +78,8 @@ echo "--- judging a room ---"
 python tests/rating.test.py
 echo "--- a busy page is not a dead one ---"
 python tests/pagerating.test.py
+echo "--- what broke out since you were last here ---"
+python tests/since.test.py
 echo "--- the palette, measured ---"
 python tests/contrast.test.py
 echo "--- what the dragonfly is allowed to say ---"

@@ -1,0 +1,41 @@
+{# What broke out since the last look.
+
+   The daily reason to open the app. Comments and DMs were the only thing in
+   here anybody opened every day — scoring is a weekly habit — so removing them
+   left nothing to come back for between scans. This is the replacement, and it
+   is the one thing nothing else can say: these posts cleared the median of
+   their own group, and they arrived since you last looked.
+
+   It clears itself. The watermark moves to the newest post named here, so the
+   next load has nothing to announce and the card is gone — which is what
+   "since you were last here" has to mean to stay true. #}
+{% if fresh and fresh.count and fresh_items %}
+<section class="glass panel reveal whats-new">
+  <h2 class="wn-head">
+    {% if fresh.count == 1 %}
+      One post broke out
+    {% else %}
+      {{ fresh.count }} posts broke out
+    {% endif %}
+    {%- if since_mark %} since {{ since_mark | ago }}{% endif %}
+  </h2>
+  <ul class="wn-list">
+    {% for p in fresh_items %}
+    <li class="wn-item">
+      <a class="wn-link" href="{{ url_for('post_detail', post_id=p.id) }}">
+        <span class="wn-mult">{{ p.outlier_multiple | round(1) }}×</span>
+        <span class="wn-words">
+          {{ (p.body or p.author_name or 'A post')|truncate(90, true, '…') }}
+        </span>
+        <span class="wn-where">{{ p.source_name or 'a group' }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if fresh.count > fresh_items|length %}
+  <p class="fine wn-rest">
+    and {{ fresh.count - fresh_items|length }} more below.
+  </p>
+  {% endif %}
+</section>
+{% endif %}

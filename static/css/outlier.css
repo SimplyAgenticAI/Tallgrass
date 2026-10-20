@@ -2259,6 +2259,32 @@ body.score-help-open { overflow: hidden; }
 .msg-graphic img { max-width: 100%; }
 .msg-note { margin: 8px 0 0; font-size: calc(14px * var(--fs, 1.1)); }
 
+/* What broke out since you were last here: the card at the top of the feed.
+   Deliberately quiet — it is a prompt to look down, not a second feed. */
+.whats-new { margin-bottom: 16px; }
+.wn-head {
+  margin: 0 0 10px; font-size: calc(17px * var(--fs, 1.1)); font-weight: 650;
+}
+.wn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.wn-link {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+  align-items: baseline; padding: 9px 11px; border-radius: var(--r-md);
+  border: 1px solid var(--border); background: #0d2418;
+  text-decoration: none; color: var(--text);
+  font-size: calc(14px * var(--fs, 1.1));
+}
+.wn-link:hover { border-color: rgba(110, 231, 183, 0.52); }
+.wn-mult { color: #d9b45f; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wn-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wn-where { color: var(--text-muted); white-space: nowrap; }
+.wn-rest { margin: 9px 0 0; }
+
+@media (max-width: 560px) {
+  /* The group name drops below the words rather than squeezing them. */
+  .wn-link { grid-template-columns: auto 1fr; }
+  .wn-where { grid-column: 2; }
+}
+
 /* Signposts to the things that used to be on Settings. */
 .settings-pointers {
   margin: 0; padding-left: 18px;

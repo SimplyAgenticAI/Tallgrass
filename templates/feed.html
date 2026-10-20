@@ -32,6 +32,11 @@
 
 {% else %}
 
+  {# The first thing on the page, above the sample banner and the filters: the
+     one fact nobody else can tell them, about posts that arrived since they
+     last looked. #}
+  {% include "_whats_new.html" %}
+
   {% if not real_count and sample_count %}
   {# Everything below is the sample set, which a new account is given so the
      product can be seen working before anybody is asked to install anything.

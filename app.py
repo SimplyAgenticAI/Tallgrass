@@ -38,6 +38,7 @@ import remix
 import retention
 import replies
 import sage
+import since
 from demo_data import refresh_sample_accounts, seed_demo_data
 
 app = Flask(__name__)
@@ -73,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.9"
+APP_VERSION = "33.0"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -673,6 +674,22 @@ def feed():
 
     real_count = sum(1 for s in scored if not s["is_demo"])
 
+    # What broke out since the last look.
+    #
+    # Read before anything is written, from the scoring pass above rather than
+    # a query of its own. The mark then advances only as far as the newest post
+    # actually announced - see since.py for why that is not "now".
+    mark = sage.get_setting(since.MARK)
+    fresh = since.whats_new(scored, mark)
+    if fresh["watermark"]:
+        sage.set_setting(since.MARK, fresh["watermark"])
+    elif not mark:
+        # First visit. The mark starts here so the next one has something to be
+        # relative to, and nothing is announced now: a card naming forty-seven
+        # posts to somebody who has just arrived is noise.
+        sage.set_setting(since.MARK, since.now_mark())
+    fresh_items = _hydrate(fresh["items"]) if fresh["items"] else []
+
     # The moment the product has shown them what it is for, on their own posts.
     if real_count and any(not s["is_demo"] and s["tier"] in ("breakout", "strong")
                           for s in scored):
@@ -713,6 +730,11 @@ def feed():
     return render_template(
         "feed.html",
         posts=page_items,
+        # The card at the top. `since_mark` is what it was before this request
+        # moved it, so the card can say how long it has been.
+        fresh=fresh,
+        fresh_items=fresh_items,
+        since_mark=mark,
         stats=_global_stats(scored),
         tier_filter=tier_filter,
         tier_labels=outliers.TIER_LABELS,
