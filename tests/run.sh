@@ -51,11 +51,7 @@ echo "--- members and followers ---"
 node tests/audience.test.js
 echo "--- posts to scan, from the panel ---"
 node tests/limits.test.js
-echo "--- comment threads and who answered ---"
-node tests/comments.test.js
 echo "--- checking your recent posts ---"
-echo "--- messenger chats and conversations ---"
-node tests/messenger.test.js
 echo "--- captions ---"
 node tests/caption.test.js
 echo "--- timestamps ---"
@@ -66,6 +62,8 @@ echo "--- service worker ---"
 node tests/worker.test.js
 echo "--- self-update ---"
 node tests/updater.test.js
+echo "--- the extension reads posts, and nothing written to anybody ---"
+node tests/extension_replies_gone.test.js
 echo "--- only a real dashboard can connect the extension ---"
 node tests/connect.test.js
 echo "--- a no is taken as a no ---"

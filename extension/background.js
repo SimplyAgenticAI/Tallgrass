@@ -131,48 +131,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;  // keep the channel open for the async reply
   }
 
-  if (message.type === "OUTLIER_COMMENTS") {
-    postToDashboard("/api/comments", message.body).then(sendResponse);
-    return true;
-  }
-
-  // A reply draft for one comment. Returned to the page to be put in
-  // Facebook's reply box — never sent anywhere else, never posted.
-  if (message.type === "OUTLIER_DRAFT") {
-    postToDashboard("/api/comments/draft", message.body).then(sendResponse);
-    return true;
-  }
-
-  // Messenger: the chat list summary (no message text), and a draft for the
-  // open conversation, which comes back to the page and is never sent.
-  if (message.type === "OUTLIER_THREADS") {
-    postToDashboard("/api/messages/threads", message.body).then(sendResponse);
-    return true;
-  }
-  if (message.type === "OUTLIER_MESSAGE_DRAFT") {
-    postToDashboard("/api/messages/draft", message.body).then(sendResponse);
-    return true;
-  }
-
-  // A chat's opportunity label, judged on the open conversation. No text.
-  if (message.type === "OUTLIER_MESSAGE_SORT") {
-    postToDashboard("/api/messages/sort", message.body).then(sendResponse);
-    return true;
-  }
-  if (message.type === "OUTLIER_SIGNAL") {
-    postToDashboard("/api/messages/signal", message.body).then(sendResponse);
-    return true;
-  }
-
-  // The reply queue shown in the panel, and setting someone aside from it.
-  if (message.type === "OUTLIER_TODAY") {
-    postToDashboard("/api/today", {}).then(sendResponse);
-    return true;
-  }
-  if (message.type === "OUTLIER_TODAY_DONE") {
-    postToDashboard("/api/today/done", message.body).then(sendResponse);
-    return true;
-  }
+  /* Eight handlers were here, relaying to /api/comments, /api/comments/draft,
+   * /api/messages/threads, /api/messages/draft, /api/messages/sort,
+   * /api/messages/signal, /api/today and /api/today/done.
+   *
+   * Nothing in the page sends those messages any more: reading comments and
+   * Messenger chats was removed from the content script. The dashboard keeps
+   * answering those paths, because a build older than this one is still out
+   * there posting to them and a 404 would be a broken capture rather than a
+   * retired feature - but this build does not ask. */
 
   if (message.type === "OUTLIER_PING") {
     testConnection().then(sendResponse);

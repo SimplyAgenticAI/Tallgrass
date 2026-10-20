@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tallgrass — by MacRandle Acres",
-  "version": "30.3",
+  "version": "31.0",
   "description": "Ranks every Facebook post against the median of its own group, so a quiet group's runaway hit stops hiding behind a big one.",
   "icons": {
     "16": "icons/icon16.png",
@@ -33,6 +33,10 @@
       "matches": [
         "https://www.facebook.com/*",
         "https://web.facebook.com/*"
+      ],
+      "exclude_matches": [
+        "https://www.facebook.com/messages/*",
+        "https://web.facebook.com/messages/*"
       ],
       "js": [
         "content.js"
