@@ -41,35 +41,13 @@ def now_utc():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def set_meta(kind, user_id, row_id, stage=None, note=None, snooze_days=None, wake=False):
-    """Update any of stage, note and snooze on one comment or chat. Returns rows changed."""
-    table = TABLES.get(kind)
-    if not table:
-        raise ValueError("unknown kind")
-    sets, values = [], []
-    if stage is not None:
-        sets.append("stage = ?")
-        values.append(stage if stage in STAGES else None)
-    if note is not None:
-        sets.append("note = ?")
-        values.append(db.clean_text(str(note), 500).strip() or None)
-    if snooze_days is not None:
-        days = int(snooze_days)
-        sets.append("snooze_until = ?")
-        values.append((datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
-                      if days > 0 else None)
-    if wake:
-        sets.append("snooze_until = NULL")
-    if not sets:
-        return 0
-    with db.get_db() as conn:
-        return conn.execute("UPDATE %s SET %s WHERE id = ? AND user_id = ?" % (table, ", ".join(sets)),
-                            values + [int(row_id), user_id]).rowcount
+# set_meta wrote a stage, note or snooze. Its only caller was the
+# /pipeline route, whose controls were rendered only on the Comments
+# and Messages pages. All three are gone.
 
 
-def is_snoozed(row):
-    until = row.get("snooze_until") if isinstance(row, dict) else row["snooze_until"]
-    return bool(until) and until > now_utc()
+# is_snoozed had no caller even before that: the templates compared
+# snooze_until to now_utc themselves.
 
 
 def summary(user_id):

@@ -512,20 +512,8 @@ def login_required(view):
     return wrapped
 
 
-def api_key_required(view):
-    """Authenticates the extension. Never falls back to the session cookie —
-    an endpoint reachable cross-origin must not accept ambient browser
-    authority, or facebook.com could drive it on a signed-in user's behalf."""
-    @functools.wraps(view)
-    def wrapped(*args, **kwargs):
-        header = request.headers.get("X-Outlier-Key", "")
-        user = user_for_api_key(header.strip())
-        if not user:
-            return jsonify({
-                "ok": False,
-                "error": "Invalid or missing API key. Copy it from the "
-                         "dashboard's Capture page into the extension.",
-            }), 401
-        g.api_user = user
-        return view(*args, **kwargs)
-    return wrapped
+# api_key_required was a decorator nothing used. The keyed endpoints
+# resolve their user with app._api_user() and answer 401 themselves,
+# because they must also handle CORS preflight.
+
+

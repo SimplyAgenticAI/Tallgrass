@@ -144,41 +144,32 @@ def main():
     check("off: the dashboard asks for no text", (body["ai_sort"], body["classify"]), (False, []))
     check("  and refuses any that is sent", sort([{"key": "t:1", "text": preview}]).status_code, 403)
 
-    seen_by_ai = []
-    def fake_chats(cfg, brand, items):
-        seen_by_ai.append([(i["id"], i["text"]) for i in items])
-        return [{"id": i["id"], "label": "not_now" if "rough time" in i["text"] else "question",
-                 "reason": "said no for now" if "rough time" in i["text"] else "asks something"} for i in items]
-    real_chats = appmod.replies.classify_chats
-    appmod.replies.classify_chats = fake_chats
-    messages.SORT_ASYNC = False
+    # No "on" any more, and this is the half worth testing.
+    #
+    # Turning it on sent the preview line of every waiting chat - and the
+    # recent messages of a chat somebody opened - to an AI provider to be
+    # labelled. The labels were read by the Messages page and the reply queue,
+    # both removed in V32.6, so what remained was private message text leaving
+    # the browser and AI allowance being spent for a feature with no screen.
+    #
+    # The switch is gone and _messenger_ai_on() is False. A stored setting from
+    # an account that had it on must not resurrect it, which is what this
+    # asserts: the setting is written, and nothing happens.
     with db.get_db() as conn:
-        conn.execute("INSERT INTO user_settings (user_id, key, value) VALUES (1, ?, '1')", (messages.AI_SETTING,))
+        conn.execute("INSERT INTO user_settings (user_id, key, value) VALUES (1, ?, '1')",
+                     (messages.AI_SETTING,))
     body = save(chats()).get_json()
-    check("on: it asks for the chats waiting on you, and only those", sorted(body["classify"]), ["t:1", "t:4"])
-    got = sort([{"key": "t:1", "name": "Jane Doe", "text": preview},
-                {"key": "t:2", "name": "Mark Twain", "text": "You: sure"}]).get_json()
-    check("  one AI call, for the chat that needed it", (got["sorting"], len(seen_by_ai)), (1, 1))
-    jane = [t for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"][0]
-    check("  labelled from what they said", (jane["signal"], jane["signal_reason"]), ("not_now", "said no for now"))
+    check("a stored 'on' cannot turn it back on",
+          (body["ai_sort"], body["classify"]), (False, []))
+    check("  and the sort endpoint still refuses",
+          sort([{"key": "t:1", "text": preview}]).status_code, 403)
     with db.get_db() as conn:
-        everything = " ".join(str(v) for r in conn.execute("SELECT * FROM message_threads") for v in tuple(r))
-    check("  and the text itself was not kept", "rough time" in everything, False)
-    save(chats())
-    jane = [t for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"][0]
-    check("a rescan's keyword guess never overwrites the AI's label", jane["signal"], "not_now")
-    check("  nor does the open-chat keyword check", label("t:1", "opportunity")["changed"], False)
-    check("  and it is not asked for again", "t:1" in save(chats()).get_json()["classify"], False)
-    check("the whole chat, once opened, is judged again",
-          sort([{"key": "t:1", "text": "Them: " + preview}], "conversation").get_json()["sorting"], 1)
-    check("  but only once", sort([{"key": "t:1", "text": "Them: hi"}], "conversation").get_json()["sorting"], 0)
-    body = save(chats(jane_hash="h1-new")).get_json()
-    check("when they write again, the label is theirs to earn again",
-          ("t:1" in body["classify"], [t["signal"] for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"]),
-          (True, ["opportunity"]))
-    save(chats())                       # back where the next section expects
-    appmod.replies.classify_chats = real_chats
-    messages.SORT_ASYNC = True
+        everything = " ".join(str(v) for r in conn.execute("SELECT * FROM message_threads")
+                              for v in tuple(r))
+    check("  so no message text was ever stored", "rough time" in everything, False)
+    check("  and the keyword check in the browser still labels chats",
+          [t["signal"] for t in messages.inbox(1)["waiting"] if t["name"] == "Jane Doe"],
+          ["opportunity"])
     os.environ.pop("ANTHROPIC_API_KEY", None)
 
     print()

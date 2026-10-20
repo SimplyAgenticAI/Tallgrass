@@ -22,7 +22,6 @@ import comments
 import messages
 import mine
 import pipeline
-import reply_samples
 import tips
 import today
 import demo_snapshot
@@ -74,7 +73,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "32.7"
+APP_VERSION = "32.8"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -1248,24 +1247,35 @@ def api_reply_kit():
 @app.route("/settings")
 @auth.login_required
 def settings():
-    sources = _sources_with_stats()
-    # `sources` still feeds the counters at the top of the page; the table
-    # that listed them lives on Groups, which is the page about sources.
+    # Four counts, not a scoring pass.
+    #
+    # This called _sources_with_stats(), which reads every post in the account,
+    # scores all of them grouped by source and item type, and issues a verdict
+    # per source - to add up four integers for the counters at the top. It made
+    # Settings the slowest page in the app, slower than the feed, which at
+    # least has something to show for the work. The table that needed the stats
+    # moved to Groups; the call stayed behind.
+    uid = _uid()
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS posts, "
+            "       COALESCE(SUM(CASE WHEN is_demo = 1 THEN 1 ELSE 0 END), 0) AS demo "
+            "FROM posts WHERE user_id = ?", (uid,)).fetchone()
+        source_count = conn.execute(
+            "SELECT COUNT(*) FROM sources WHERE user_id = ?", (uid,)).fetchone()[0]
     return render_template(
         "settings.html",
-        sources=sources,
         totals={
-            "posts": sum(s["post_count"] for s in sources),
-            "demo": sum(s["demo_count"] or 0 for s in sources),
-            "real": sum(s["post_count"] - (s["demo_count"] or 0) for s in sources),
-            "sources": len(sources),
+            "posts": row["posts"],
+            "demo": row["demo"],
+            "real": row["posts"] - row["demo"],
+            "sources": source_count,
         },
         sage_config=sage.get_config(),
         anthropic_model=sage.ANTHROPIC_MODEL,
         openai_model=sage.OPENAI_MODEL,
         brand=sage.get_brand(),
         kit=sage.get_kit(),
-        messenger_ai=_messenger_ai_on(),
         mine=mine.summary(_uid()),
         # The same link the emails carry. A plain link rather than a toggle
         # calling an endpoint: it reuses the one page that already does this
@@ -1840,7 +1850,21 @@ def api_message_threads():
 
 
 def _messenger_ai_on():
-    return sage.get_setting(messages.AI_SETTING) == "1"
+    """Always off now, and there is no longer a switch for it.
+
+    This sent the preview line of every waiting chat - and the recent messages
+    of a chat somebody opened - to an AI provider to be labelled Opportunity,
+    Question or Not now. The labels were read by the Messages page and the
+    reply queue, both removed in V32.6, so what was left was private message
+    text leaving the browser and AI allowance being spent for a feature with no
+    screen.
+
+    False here switches it off everywhere at once: /api/messages/threads stops
+    advertising ai_sort, so an extension already installed never asks for a
+    sort, and api_message_sort refuses on this same check. The stored setting
+    is ignored rather than read, so an account that had it on is off too.
+    """
+    return False
 
 
 @app.route("/api/messages/sort", methods=["POST", "OPTIONS"])
@@ -1972,11 +1996,8 @@ def settings_my_name():
     return redirect(url_for("settings") + "#my-posts")
 
 
-@app.route("/settings/messenger-ai", methods=["POST"])
-@auth.login_required
-def settings_messenger_ai():
-    sage.set_setting(messages.AI_SETTING, "1" if request.form.get("on") == "1" else "0")
-    return redirect(url_for("settings") + "#messenger-ai")
+# settings_messenger_ai was here: the switch for AI chat sorting. See
+# _messenger_ai_on, which is now False and takes no setting.
 
 
 @app.route("/api/messages/signal", methods=["POST", "OPTIONS"])

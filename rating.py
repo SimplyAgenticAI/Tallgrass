@@ -94,7 +94,6 @@ def _cannot_tell(verdict, why):
 
 
 def _days_since(stamp, now=None):
-    from datetime import datetime, timezone
     if not stamp:
         return None
     hours = outliers._hours_since(stamp, now)

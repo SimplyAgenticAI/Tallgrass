@@ -46,43 +46,11 @@ def _flag(conn, user_id):
                         (user_id, SEEDED_KEY)).fetchone()
 
 
-def seed_once(user_id):
-    """Seed the examples if this account has never had them. Never raises."""
-    if not user_id:
-        return False
-    try:
-        with db.get_db() as conn:
-            if _flag(conn, user_id):
-                return False
-            has_real = conn.execute(
-                "SELECT (SELECT COUNT(*) FROM comment_posts WHERE user_id = ?) + "
-                "(SELECT COUNT(*) FROM message_threads WHERE user_id = ?)",
-                (user_id, user_id)).fetchone()[0]
-            conn.execute("INSERT OR REPLACE INTO user_settings (user_id, key, value) "
-                         "VALUES (?, ?, '1')", (user_id, SEEDED_KEY))
-            if has_real:
-                return False            # already using it for real — no examples needed
-
-            conn.execute("INSERT INTO comment_posts (user_id, post_key, title, is_demo) "
-                         "VALUES (?, ?, ?, 1)", (user_id, POST["key"], POST["title"]))
-            post_id = conn.execute("SELECT id FROM comment_posts WHERE user_id = ? AND post_key = ?",
-                                   (user_id, POST["key"])).fetchone()["id"]
-            for position, (key, parent, author, text, verdict, mine) in enumerate(COMMENTS):
-                conn.execute(
-                    "INSERT INTO post_comments (user_id, post_id, comment_key, parent_key, author, "
-                    "body, is_mine, verdict, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (user_id, post_id, key, parent, author, text, mine, verdict, position))
-
-            now = datetime.now(timezone.utc)
-            for key, name, last_from, hours, signal in THREADS:
-                conn.execute(
-                    "INSERT INTO message_threads (user_id, thread_key, name, last_from, last_at, "
-                    "signal, last_hash, is_demo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                    (user_id, key, name, last_from,
-                     (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S"), signal, key))
-        return True
-    except Exception:                                   # noqa: BLE001
-        return False                                    # examples are a courtesy
+# seed_once was here: it wrote the example comments and chats a new
+# account used to open on. Nothing seeds them since the pages that
+# showed them were removed. The two pruners below stay, because an
+# account made by an older build still HAS those rows and they are
+# cleared the first time a real capture lands.
 
 
 def clear_comment_samples(conn, user_id):
