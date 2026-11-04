@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Pricing — {{ app_name }}{% endblock %}
+{% block head_extra %}
+{% with title="Pricing — " ~ app_name,
+        description="Start free on as many groups as you like. " ~ app_name ~ " scores every post against the median for its own group. Free keeps 1,000 posts; Pro removes the cap.",
+        canonical_path="/pricing" %}
+{% include "_public_meta.html" %}
+{% endwith %}
+{% endblock %}
 
 {% block content %}
 <section class="pricing-head">
-  <h1>Find what broke out. Answer everyone it brings in.</h1>
+  <h1>Find what broke out. Then write the next one.</h1>
   <p class="sub">
-    Start free on as many groups as you like, with reply drafting for your
-    comments and Messenger included. Upgrade when it earns it.
+    Start free on as many groups as you like. The whole product, capped at
+    1,000 posts. Upgrade when the cap gets in the way.
   </p>
 </section>
 
@@ -45,8 +52,7 @@
       <div class="price-current">Your current plan</div>
       {% if usage %}
       <div class="price-usage">
-        {{ usage.sources }}/{{ free_limits.sources }} groups ·
-        {{ '{:,}'.format(usage.posts) }}/{{ '{:,}'.format(free_limits.posts) }} posts used
+        {{ '{:,}'.format(usage.posts) }} of {{ '{:,}'.format(free_limits.posts) }} posts used
       </div>
       {% endif %}
     {% elif not user %}
@@ -109,22 +115,21 @@
   <h2>Worth knowing</h2>
   {% if shared_ai %}
   <p class="fine">
-    <b>AI drafting is included.</b> Suggested replies and messages, Sage, remix
+    <b>AI drafting is included.</b> Sage, remix
     and the post-idea writer run on the included AI allowance —
     {{ ai_limits.free }} generations a month on Free, {{ ai_limits.pro }} on Pro.
     Add your own Claude or OpenAI key in Settings and there's no cap at all.
   </p>
   {% else %}
   <p class="fine">
-    <b>You bring your own AI key.</b> Suggested replies and messages, Sage and
+    <b>You bring your own AI key.</b> Sage, remix and
     the post-idea writer run on your own Claude or OpenAI key, so there's no
     model cost baked into the price and no cap on how much you use them.
   </p>
   {% endif %}
   <p class="fine">
-    <b>It never posts for you.</b> Every reply and message {{ app_name }} drafts
-    is put in Facebook's own box for you to read, edit and send. Nothing is
-    ever posted or sent on your behalf.
+    <b>It never posts for you.</b> {{ app_name }} reads, scores and drafts.
+    Nothing is ever posted, commented, liked or sent on your behalf.
   </p>
   <p class="fine">
     <b>Payments are handled by Stripe.</b> Card details go straight to Stripe

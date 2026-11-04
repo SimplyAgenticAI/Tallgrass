@@ -150,6 +150,84 @@ def main():
     for path in ["/", "/welcome", "/login", "/register", "/pricing"]:
         check("GET %s signed out" % path, anon.get(path).status_code, 200)
 
+    print()
+    print("the public pages can be found, and the app cannot")
+    robots = anon.get("/robots.txt")
+    robots_text = robots.get_data(as_text=True)
+    check("robots.txt", robots.status_code, 200)
+    check("  names the sitemap",
+          "Sitemap: https://tallgrassapp.com/sitemap.xml" in robots_text, True)
+    check("  keeps crawlers out of the API", "Disallow: /api/" in robots_text, True)
+    check("  and out of the signed-in app", "Disallow: /groups" in robots_text, True)
+    sitemap = anon.get("/sitemap.xml").get_data(as_text=True)
+    check("sitemap.xml", anon.get("/sitemap.xml").status_code, 200)
+    for loc in ("https://tallgrassapp.com/",
+                "https://tallgrassapp.com/pricing",
+                "https://tallgrassapp.com/privacy",
+                "https://tallgrassapp.com/terms"):
+        check("  lists %s" % loc, loc in sitemap, True)
+    check("  and not the app", "https://tallgrassapp.com/groups" in sitemap, False)
+    check("  nor an account page", "https://tallgrassapp.com/login" in sitemap, False)
+    llms = anon.get("/llms.txt")
+    llms_text = llms.get_data(as_text=True)
+    check("llms.txt", llms.status_code, 200)
+    check("  says what the landing says", "median" in llms_text.lower(), True)
+    check("  and does not invent a reply queue",
+          "messenger" not in llms_text.lower(), True)
+
+    def has_public_meta(html):
+        return all(bit in html for bit in (
+            "<title>", 'name="description"', 'rel="canonical"',
+            'property="og:title"', 'name="twitter:card"'))
+
+    home = anon.get("/").get_data(as_text=True)
+    welcome = anon.get("/welcome").get_data(as_text=True)
+    check("the landing page has a title, description, canonical and cards",
+          has_public_meta(home), True)
+    check("  canonical is the public home, not this host",
+          'href="https://tallgrassapp.com/"' in home, True)
+    check("  /welcome canonicalises to the same page",
+          'href="https://tallgrassapp.com/"' in welcome, True)
+    check("  and no longer sells a reply queue",
+          "waiting on a reply" not in home, True)
+    for path in ("/pricing", "/privacy", "/terms"):
+        html = anon.get(path).get_data(as_text=True)
+        check("%s has a title, description, canonical and cards" % path,
+              has_public_meta(html), True)
+        check("  %s canonical stays on that page" % path,
+              ('href="https://tallgrassapp.com%s"' % path) in html, True)
+    pricing = anon.get("/pricing").get_data(as_text=True)
+    check("pricing does not sell reply drafting",
+          "Messenger" not in pricing and "reply drafting" not in pricing, True)
+    feed = c.get("/").get_data(as_text=True)
+    check("the signed-in feed is not tagged as a marketing page",
+          'property="og:title"' not in feed and 'rel="canonical"' not in feed, True)
+
+    plain = app.app.test_client()
+    ptok = re.search(r'name="csrf_token" value="([^"]+)"',
+                     plain.get("/register").get_data(as_text=True)).group(1)
+    plain.post("/register", data={"email": "reader@example.com",
+                                  "password": "hunter2hunter2",
+                                  "password_confirm": "hunter2hunter2",
+                                  "csrf_token": ptok}, follow_redirects=True)
+    priced = plain.get("/pricing").get_data(as_text=True)
+    check("a free account is not told its group cap is None",
+          "/None" not in priced, True)
+    check("  and is told the post cap", "of 1,000 posts used" in priced, True)
+
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    blueprint = open(os.path.join(root, "render.yaml"), encoding="utf-8").read()
+    procfile = open(os.path.join(root, "Procfile"), encoding="utf-8").read()
+    cmd = "gunicorn app:app --workers 1 --threads 4 --timeout 120"
+    check("the blueprint start command is the live one-writer command",
+          cmd in blueprint, True)
+    check("  health check stays /api/ping",
+          "healthCheckPath: /api/ping" in blueprint, True)
+    check("  the disk stays 1 GB", "sizeGB: 1" in blueprint, True)
+    check("the Procfile matches it", cmd in procfile, True)
+    check("  neither file asks for a second worker",
+          "--workers 2" not in blueprint and "--workers 2" not in procfile, True)
+
     # ------------------------------------------------ what /api/ping promises
     #
     # The extension polls this every minute and compares extension_version to
@@ -207,7 +285,7 @@ def main():
     # fix is to put the in-review manifest version in `in_review` below — one
     # deliberate line, which is also the reminder to clear it and bump the
     # constant the day the submission goes live.
-    in_review = "31.0"          # packaged for upload; store is live on 28.7
+    in_review = "31.0"          # in the repo; the store listing is 30.1
     repo_ext = app._extension_version()
     if in_review:
         check("the manifest is the version said to be in review", repo_ext, in_review)

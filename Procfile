@@ -1,8 +1,7 @@
-# Must match render.yaml's startCommand. A bare `gunicorn app:app` takes
-# gunicorn's defaults — ONE thread and a THIRTY SECOND timeout — and this app
-# streams generations that sit quiet for minutes while a model thinks, on a
-# single worker whose threads are also what serve the extension's captures. So
-# the default would kill long generations and let one slow request block every
-# capture, and it would do it only in whichever environment happened to read
-# this file rather than the blueprint.
-web: gunicorn app:app --workers 1 --threads 12 --timeout 300
+# Must match render.yaml's startCommand, which is the live service:
+# one worker, four threads, 120s timeout. A bare `gunicorn app:app` is
+# gunicorn's default — one thread and a thirty second timeout — and that
+# would only be what ran in whichever environment read this file instead
+# of the blueprint. Do not raise --workers. SQLite on the attached disk
+# has one writer process.
+web: gunicorn app:app --workers 1 --threads 4 --timeout 120

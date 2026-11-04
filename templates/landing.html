@@ -18,7 +18,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ app_name }} — {{ app_tagline }}</title>
-<meta name="description" content="{{ app_tagline }} {{ app_name }} scores every post against the median for its own group, so a quiet group's runaway hit stops being buried under a big group's ordinary day — then helps you write the next one.">
+{% with title=app_name ~ " — " ~ app_tagline,
+        description=app_tagline ~ " " ~ app_name ~ " scores every post against the median for its own group, so a quiet group's runaway hit stops being buried under a big group's ordinary day — then helps you write the next one.",
+        canonical_path="/" %}
+{% include "_public_meta.html" %}
+{% endwith %}
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -310,7 +314,7 @@
   {# ---------------------------------------------------------- closing CTA #}
   <section class="lp-final glass">
     <h2>Ready to find your first breakout?</h2>
-    <p>Free to set up. Under a minute to your first captured post — and the people waiting on a reply.</p>
+    <p>Free to set up. Under a minute to your first captured post.</p>
     {% if allow_signups %}
     <a class="btn btn-primary lp-cta" href="{{ url_for('register') }}">Get started free</a>
     {% else %}
