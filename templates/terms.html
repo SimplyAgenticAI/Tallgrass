@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Terms — {{ app_name }}{% endblock %}
+{% block head_extra %}
+{% with title="Terms — " ~ app_name,
+        description=app_name ~ " is a research tool operated by MacRandle Acres. It records posts you are already viewing on Facebook and ranks each one against the median engagement of its own source.",
+        canonical_path="/terms" %}
+{% include "_public_meta.html" %}
+{% endwith %}
+{% endblock %}
 
 {% block content %}
 <section class="legal">

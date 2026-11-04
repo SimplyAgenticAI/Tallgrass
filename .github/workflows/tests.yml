@@ -35,17 +35,30 @@ jobs:
         run: sh tests/run.sh
 
       - name: Check the version was bumped
-        # Every change ships a version, and the manifest is the single source
-        # of truth for it. A PR that forgets is a build users cannot tell apart
-        # from the one before it.
+        # APP_VERSION moves on every dashboard change. The extension manifest
+        # moves only when extension/ does — bumping it on a dashboard-only PR
+        # is what made the store listing and the repo disagree.
         if: github.event_name == 'pull_request'
         run: |
           git fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF"
-          before=$(git show "origin/$GITHUB_BASE_REF:extension/manifest.json" \
-                   | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')
-          after=$(python -c 'import json; print(json.load(open("extension/manifest.json"))["version"])')
-          echo "manifest version: $before -> $after"
+          base="origin/$GITHUB_BASE_REF"
+          pyver() {
+            python -c 'import re,sys; m=re.search(r"^APP_VERSION = .([0-9.]+).", sys.stdin.read(), re.M); print(m.group(1) if m else "")'
+          }
+          before=$(git show "$base:app.py" | pyver)
+          after=$(pyver < app.py)
+          echo "APP_VERSION: $before -> $after"
           if [ "$before" = "$after" ]; then
-            echo "::error::extension/manifest.json version is unchanged ($after)"
+            echo "::error::APP_VERSION in app.py is unchanged ($after)"
             exit 1
+          fi
+          if git diff --name-only "$base" HEAD | grep -q '^extension/'; then
+            before_m=$(git show "$base:extension/manifest.json" \
+                       | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+            after_m=$(python -c 'import json; print(json.load(open("extension/manifest.json"))["version"])')
+            echo "manifest version: $before_m -> $after_m"
+            if [ "$before_m" = "$after_m" ]; then
+              echo "::error::extension/ changed but manifest.json version is unchanged ($after_m)"
+              exit 1
+            fi
           fi

@@ -74,7 +74,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.0"
+APP_VERSION = "33.1"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -83,23 +83,37 @@ APP_VERSION = "33.0"
 # This is the number a hosted browser can really obtain, so it is the one
 # /api/ping reports. Bump it when a store submission goes live, and at no
 # other time — see STORE_LISTING.md.
-# 28.7 approved and live on 27 September 2026, confirmed against the public
-# listing. Before that 28.4, and before that 22.9 — which sat stale for three
-# weeks, and the cost was not cosmetic: every hosted visitor's install page
-# concluded a submission was mid-review, opened the hand-install section and
-# told them the store copy was behind, walking new users into the Developer-mode
-# route the store listing exists to delete.
+#
+# The manifest is the only copy of the version in this repo (_manifest_version
+# reads extension/manifest.json). This constant is the only copy of the
+# published listing, because that number is not in the repo: it is whatever
+# the store is currently serving. Reading the manifest here instead would
+# advertise a build nobody can install yet.
+#
+# Confirmed against the public listing on 4 November 2026: version 30.1,
+# updated 20 October 2026, still described as drafting comment and Messenger
+# replies. The manifest in this repo is 31.0, which removes that, and it is
+# not the listing. Before 30.1 the constant sat at 28.7 — and before that
+# 22.9, which sat stale for three weeks. The cost was not cosmetic: every
+# hosted visitor's install page concluded a submission was mid-review, opened
+# the hand-install section and told them the store copy was behind, walking
+# new users into the Developer-mode route the store listing exists to delete.
 #
 # Bumping this is the LAST step of a submission going live, and it is easy to
 # forget because nothing breaks loudly when it is missed. It has now been missed
-# twice, so tests/consistency.test.py fails when this and the manifest disagree
-# without an in-review version being named on purpose.
-EXTENSION_STORE_VERSION = "28.7"
+# more than once, so tests/consistency.test.py fails when this and the manifest
+# disagree without an in-review version being named on purpose.
+EXTENSION_STORE_VERSION = "30.1"
 
 # The product name lives here and nowhere else. APP_SHORT_NAME is what prose
 # uses on the second mention — spelling out the full name mid-sentence reads
 # like boilerplate.
 APP_NAME = "Tallgrass"
+
+# The public site. Canonical URLs, the sitemap and robots.txt all point here
+# even when the request arrived on the onrender.com hostname, so a second host
+# does not become a second copy of the same pages.
+PUBLIC_ORIGIN = "https://tallgrassapp.com"
 APP_SHORT_NAME = "Tallgrass"
 
 # The umbrella brand. Shown under the mark, not inside it.
@@ -2191,6 +2205,7 @@ def inject_globals():
         "csrf_token": auth.csrf_token,
         "app_name": APP_NAME,
         "app_short_name": APP_SHORT_NAME,
+        "public_origin": PUBLIC_ORIGIN,
         "app_parent": APP_PARENT,
         "app_tagline": APP_TAGLINE,
         "support_email": SUPPORT_EMAIL,
@@ -3011,6 +3026,90 @@ def privacy():
 @app.route("/terms")
 def terms():
     return render_template("terms.html", version=APP_VERSION, active="legal")
+
+
+# Crawlers may read the marketing pages. The rest is the signed-in app, an
+# account flow, or an API, and none of those belong in an index.
+_ROBOTS_DISALLOW = (
+    "/api/",
+    "/admin",
+    "/account",
+    "/groups",
+    "/sage",
+    "/ideas",
+    "/write",
+    "/settings",
+    "/library",
+    "/capture",
+    "/diagnostics",
+    "/playbook",
+    "/results",
+    "/feedback",
+    "/post/",
+    "/img/",
+    "/extension/",
+    "/billing/",
+    "/login",
+    "/register",
+    "/forgot",
+    "/reset",
+    "/unsubscribe",
+    "/go/",
+    "/today",
+    "/comments",
+    "/messages",
+)
+
+_SITEMAP_PATHS = ("/", "/pricing", "/privacy", "/terms")
+
+# What the public pages actually say, and nothing they do not. The privacy
+# policy is linked rather than summarised, because it is the page that lists
+# what a scan collects.
+_LLMS_TXT = """# Tallgrass
+
+> Find the standout posts in your Facebook groups, and write the next one.
+
+Tallgrass is a research tool from MacRandle Acres, and a browser extension. It scores every Facebook post against the median for its own group, so a quiet group's runaway hit stops being buried under a big group's ordinary day. It works on the groups you belong to, the pages you follow, and creator profiles, and puts them in one ranked feed.
+
+It shows what the winners have in common and helps you write the next post. Remix takes a post that beat its group and drafts variants that reuse the mechanic that made it work. Sage answers questions from the posts you have captured, rather than from generic posting advice.
+
+It only reads the posts on pages you visit, while you visit them. It does not sign in on your behalf, and it cannot reach a group you are not a member of. It never posts, comments, likes, or sends a message for you.
+
+Free is the whole product, capped at 1,000 posts. Pro removes that cap, lets you re-scan as often as you like, keeps your own posts, saved posts and remixes, and keeps six months of everybody else's posts so the scores describe now. Payments are handled by Stripe. Captured data stays yours and stays exportable.
+
+## Pages
+
+- [Home](https://tallgrassapp.com/): What Tallgrass does
+- [Pricing](https://tallgrassapp.com/pricing): Free and Pro
+- [Privacy](https://tallgrassapp.com/privacy): What a scan collects, who else can see it, and how to delete it
+- [Terms](https://tallgrassapp.com/terms): The service agreement
+"""
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    lines = ["User-agent: *", "Allow: /"]
+    lines.extend("Disallow: %s" % path for path in _ROBOTS_DISALLOW)
+    lines.extend(["", "Sitemap: %s/sitemap.xml" % PUBLIC_ORIGIN, ""])
+    return Response("\n".join(lines), mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    urls = "\n".join(
+        "  <url><loc>%s%s</loc></url>" % (PUBLIC_ORIGIN, path)
+        for path in _SITEMAP_PATHS)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "%s\n</urlset>\n" % urls)
+    return Response(body, mimetype="application/xml")
+
+
+@app.route("/llms.txt")
+def llms_txt():
+    """A short description for agents. Only what the public pages say."""
+    return Response(_LLMS_TXT, mimetype="text/plain")
 
 
 @app.route("/billing/checkout/<interval>", methods=["POST"])
