@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Groups{% endblock %}
+{% block title %}{{ app_name }}: Groups{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -33,7 +33,7 @@
     posts and remixes are kept either way.
     {% if retention_months %}
     Posts from other people age out on their own after
-    {{ retention_months }} months — your own posts stay.
+    {{ retention_months }} months. Your own posts stay.
     {% endif %}
   </p>
 </div>
@@ -48,7 +48,7 @@
   <h2>Worth leaving?</h2>
   <p class="sub">
     {{ leaving | length }} group{{ '' if leaving | length == 1 else 's' }} where
-    the numbers say there is nothing to find — either a typical post gets almost
+    the numbers say there is nothing to find: either a typical post gets almost
     no engagement, or nothing has been posted in {{ stale_days }} days.
     Tallgrass never leaves a group for you; these are the doors.
   </p>
@@ -134,7 +134,7 @@
         {% if source.stats.top_multiple is not none %}
         <span class="s-val" data-countup="{{ source.stats.top_multiple }}">{{ source.stats.top_multiple }}</span><span class="s-unit">×</span>
         {% else %}
-        <span class="s-val stat-none">—</span>
+        <span class="s-val stat-none">-</span>
         {% endif %}
         <span class="s-lab">best</span>
       </div>

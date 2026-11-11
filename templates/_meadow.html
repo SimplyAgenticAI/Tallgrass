@@ -13,7 +13,7 @@
     <h2>The meadow</h2>
     <p class="fine">
       Every scored post in this group, standing on its median. Height is how
-      far past typical it landed — hover a blade to read it.
+      far past typical it landed. Hover a blade to read it.
     </p>
   </div>
 
@@ -37,7 +37,7 @@
 
       {% for blade in blades %}
       <a href="{{ url_for('post_detail', post_id=blade.id) }}" class="blade-link">
-        <title>{{ blade.multiple }}× the median — {{ blade.label }}</title>
+        <title>{{ blade.multiple }}× the median: {{ blade.label }}</title>
         {# Quadratic curve: a straight stalk that leans at the tip, which is
            what makes a rectangle read as grass rather than a bar chart. #}
         <path class="blade{{ ' is-breakout' if blade.breakout }}"

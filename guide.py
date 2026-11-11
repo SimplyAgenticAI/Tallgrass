@@ -81,7 +81,7 @@ def steps(user, urls):
     # rather than somewhere to go.
     add("feed", "This is your feed",
         "Every post here is scored against what's normal in the group it came "
-        "from — so a quiet group's breakout doesn't get buried under a big "
+        "from, so a quiet group's breakout doesn't get buried under a big "
         "group's ordinary post. Until you scan, these are samples, marked as "
         "such.",
         'a[href="%s"]' % urls["feed"])
@@ -89,7 +89,7 @@ def steps(user, urls):
     if not facts["connected"] or not facts["captured"]:
         add("extension", "One step to make it yours",
             "Tallgrass reads posts as you scroll Facebook, so it needs a "
-            "Chrome extension. It's on the Chrome Web Store — one click, then "
+            "Chrome extension. It's on the Chrome Web Store: one click, then "
             "come back here and it connects itself.",
             'a[href="%s"]' % urls["capture"], urls["capture"])
 
@@ -103,7 +103,7 @@ def steps(user, urls):
     if not facts["remixed"]:
         add("write", "Turn a winner into your own post",
             "Finding what worked is half of it. Write takes a post that beat "
-            "its group and builds versions in your voice — you pick the one "
+            "its group and builds versions in your voice. You pick the one "
             "you'd actually publish.",
             'a[href="%s"]' % urls["write"], urls["write"])
 
@@ -112,7 +112,7 @@ def steps(user, urls):
     # teaching it.
 
     add("playbook", "How to win in a group",
-        "The Playbook is what to do with a winner once you've found one — "
+        "The Playbook is what to do with a winner once you've found one: "
         "which ones repeat, which ones are a one-off, and how to borrow a "
         "mechanic without copying a post.",
         'a[href="%s"]' % urls["playbook"], urls["playbook"])

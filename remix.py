@@ -59,8 +59,8 @@ ANGLES = {
     # subject because it had been told to. A variant on somebody else's topic is
     # useless to the person who has to post it, however well written it is.
     "same_hook": (
-        "Keep the exact hook mechanic that worked — the same opening move, the "
-        "same promise, the same shape of first line — and change the story, the "
+        "Keep the exact hook mechanic that worked: the same opening move, the "
+        "same promise, the same shape of first line. Change the story, the "
         "examples and the specifics."
     ),
     # This used to ask for "one specific detail that could only come from having
@@ -69,8 +69,8 @@ ANGLES = {
     # operator's, none of it publishable.
     "personal": (
         "Tell it in the first person. You do not know this operator's life, so "
-        "every personal specific is a square-bracket blank for them to fill in "
-        "— [the client who almost walked away] — with finished, publishable "
+        "every personal specific is a square-bracket blank for them to fill in, "
+        "[the client who almost walked away], with finished, publishable "
         "copy around the blanks."
     ),
     "question": (
@@ -89,15 +89,15 @@ ANGLES = {
 ANGLES_LIKE_THIS = {
     "same_hook": (
         "Keep the exact hook mechanic that worked AND keep what the post is "
-        "about — the same opening move, the same promise, the same shape of "
+        "about: the same opening move, the same promise, the same shape of "
         "first line, the same subject. Change the wording and the particular "
         "details within that subject. Same topic, said again, better."
     ),
     "personal": (
         "Tell it in the first person, about the same subject as the original. "
         "You do not know this operator's life, so every personal specific is a "
-        "square-bracket blank for them to fill in — [the morning I first saw "
-        "it] — with finished, publishable copy around the blanks."
+        "square-bracket blank for them to fill in, [the morning I first saw "
+        "it], with finished, publishable copy around the blanks."
     ),
     "question": (
         "Lead with a question about the original's subject that the reader "
@@ -362,7 +362,7 @@ def _remix_prompt(post, angles=None, count=3, instructions="", mode=DEFAULT_MODE
     # failure; it is the only honest response to no input.
     if copy_len < MIN_COPY and not image_desc:
         return None, (
-            "There is nothing to remix on this post — no caption, and no words "
+            "There is nothing to remix on this post: no caption, and no words "
             "or description readable from its image. Whatever made it work was "
             "in the picture itself. If it was captured before image reading was "
             "added, scan it again and the graphic's words will come with it."
@@ -514,13 +514,13 @@ def _remix_anthropic(cfg, user_content):
             response = stream.get_final_message()
         aicost.note(response, MODEL)
     except anthropic.RateLimitError:
-        return None, "Rate limited by Anthropic — try again in a moment."
+        return None, "Rate limited by Anthropic. Try again in a moment."
     except anthropic.AuthenticationError:
         return None, "That Anthropic key was rejected. Check the key on the Settings page."
     except anthropic.APIStatusError as exc:
         return None, f"Anthropic error ({exc.status_code}): {exc.message}"
     except anthropic.APIConnectionError:
-        return None, "Could not reach Anthropic — check your network connection."
+        return None, "Could not reach Anthropic. Check your network connection."
 
     if response.stop_reason == "refusal":
         return None, "The model declined to rewrite this post."
@@ -586,7 +586,7 @@ def _stream_anthropic(cfg, user_content, array_key="variants",
             final = stream.get_final_message()
             aicost.note(final, MODEL)
     except anthropic.RateLimitError:
-        yield {"type": "error", "error": "Rate limited by Anthropic — try again in a moment."}
+        yield {"type": "error", "error": "Rate limited by Anthropic. Try again in a moment."}
         return
     except anthropic.AuthenticationError:
         yield {"type": "error",
@@ -596,7 +596,7 @@ def _stream_anthropic(cfg, user_content, array_key="variants",
         yield {"type": "error", "error": f"Anthropic error ({exc.status_code}): {exc.message}"}
         return
     except anthropic.APIConnectionError:
-        yield {"type": "error", "error": "Could not reach Anthropic — check your network connection."}
+        yield {"type": "error", "error": "Could not reach Anthropic. Check your network connection."}
         return
 
     if final.stop_reason == "refusal":
@@ -668,11 +668,11 @@ def _remix_openai(cfg, user_content):
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected. Check the key on the Settings page."
     except openai.RateLimitError:
-        return None, "Rate limited by OpenAI — try again in a moment."
+        return None, "Rate limited by OpenAI. Try again in a moment."
     except openai.APIStatusError as exc:
         return None, f"OpenAI error ({exc.status_code})."
     except openai.APIConnectionError:
-        return None, "Could not reach OpenAI — check your network connection."
+        return None, "Could not reach OpenAI. Check your network connection."
 
     text = (response.choices[0].message.content or "").strip()
     if not text:
@@ -1267,9 +1267,9 @@ def generate_graphic(hook, instructions="", body="", like_original=None,
         except openai.AuthenticationError:
             return None, "That OpenAI key was rejected. Check it on the Settings page."
         except openai.RateLimitError:
-            return None, "Rate limited by OpenAI — try again in a moment."
+            return None, "Rate limited by OpenAI. Try again in a moment."
         except openai.APIConnectionError:
-            return None, "Could not reach OpenAI — check your network connection."
+            return None, "Could not reach OpenAI. Check your network connection."
         except Exception as exc:                    # model unavailable, content policy, etc.
             last_err = getattr(exc, "message", None) or str(exc)
             continue

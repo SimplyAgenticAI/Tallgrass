@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Settings{% endblock %}
+{% block title %}{{ app_name }}: Settings{% endblock %}
 
 {% block content %}
 <section class="feed-head">
   <div>
     <h1>Settings</h1>
-    <p class="sub">How the app works for you — your AI, your brand, your sample data.</p>
+    <p class="sub">How the app works for you: your AI, your brand, your sample data.</p>
   </div>
 </section>
 
@@ -31,7 +31,7 @@
 {% if totals.demo %}
 <div class="glass notice reveal">
   <b>{{ totals.demo }} of your {{ totals.posts }} posts are generated sample data.</b>
-  They are written by the app to demonstrate the interface — they are not real
+  They are written by the app to demonstrate the interface. They are not real
   Facebook posts and nothing in them reflects a real group. Remove them once
   you have captures of your own.
 </div>
@@ -39,7 +39,7 @@
 
 <section class="glass panel reveal spotlight">
   <div class="panel-head">
-    <h2>Sage — your AI analyst</h2>
+    <h2>Sage: your AI analyst</h2>
     <span class="sub">
       {% if sage_config.has_key %}
         <span class="ok-tone">Connected</span> via
@@ -74,7 +74,7 @@
 
   <div class="key-row">
     <input type="password" id="ai-key" autocomplete="off"
-           placeholder="{{ 'Key saved — paste a new one to replace it' if sage_config.has_key else 'Paste your API key' }}">
+           placeholder="{{ 'Key saved. Paste a new one to replace it' if sage_config.has_key else 'Paste your API key' }}">
     <input type="text" id="ai-model" autocomplete="off"
            value="{{ sage_config.model }}" placeholder="model">
     <button class="btn btn-primary" id="save-ai">Save</button>
@@ -93,8 +93,8 @@
   <h2>Your brand profile</h2>
   <p class="sub">
     Tell Sage who you are. It makes Sage advise in your voice for your audience,
-    and steers the graphic generator toward your look. Every field is optional —
-    the more you add, the more on-brand the output.
+    and steers the graphic generator toward your look. Every field is optional.
+    The more you add, the more on-brand the output.
   </p>
 
   <div class="brand-form">
@@ -138,7 +138,7 @@
   <p class="sub">
     The answers you give people again and again. Suggested replies and messages
     use these, exactly as written, instead of leaving a <b>[price]</b> blank for
-    you to fill — and never go beyond them. Everything is optional.
+    you to fill, and never go beyond them. Everything is optional.
   </p>
   <div class="brand-form">
     <label class="brand-field">
@@ -183,11 +183,11 @@
 <section class="glass panel reveal" id="my-posts">
   <h2>Your posts</h2>
   <p class="sub">
-    Your own posts are usually captured already — they sit in the groups you
+    Your own posts are usually captured already. They sit in the groups you
     scan. Tell Tallgrass the name you post under and it scores them against
     each group's usual, the same way it scores everyone else's.
     {% if not mine.confirmed and mine.names %}
-    <b>{{ mine.names[0] }}</b> is from the comments you've written — save it
+    <b>{{ mine.names[0] }}</b> is from the comments you've written. Save it
     if that's you.
     {% endif %}
   </p>
@@ -243,7 +243,7 @@
     <h2>Sample data</h2>
     <p class="fine">
       Generated posts that demonstrate the interface. Safe to remove at any
-      time — it never touches anything you captured.
+      time. It never touches anything you captured.
     </p>
     <div class="demo-actions">
       <button class="btn btn-ghost" id="load-demo">Load sample data</button>
@@ -256,7 +256,7 @@
     {% if email_optout %}
     <p class="fine">
       You've turned off emails about getting set up. Password resets still
-      arrive — those are ones you ask for.
+      arrive. Those are ones you ask for.
     </p>
     <a class="btn btn-ghost"
        href="{{ url_for('unsubscribe', token=unsubscribe_token, resubscribe=1) }}">
@@ -278,7 +278,7 @@
     <h2>Danger zone</h2>
     <p class="fine">
       Deletes every post, source, saved item and remix. Use this when captures
-      were recorded with an older extension — posts carrying zeroed engagement
+      were recorded with an older extension. Posts carrying zeroed engagement
       distort every baseline they sit in, and re-capturing has to start clean.
     </p>
     <button class="btn btn-ghost danger" id="reset-all">Delete everything</button>
@@ -293,12 +293,12 @@
 <section class="glass panel reveal">
   <h2>Looking for something else?</h2>
   <ul class="settings-pointers">
-    <li><b>Your groups, pages and profiles</b> —
+    <li><b>Your groups, pages and profiles</b>:
       <a href="{{ url_for('groups') }}">Groups</a></li>
-    <li><b>Exporting your data</b> — <a href="{{ url_for('library') }}">Library</a></li>
-    <li><b>Username, plan, password and your extension key</b> —
+    <li><b>Exporting your data</b>: <a href="{{ url_for('library') }}">Library</a></li>
+    <li><b>Username, plan, password and your extension key</b>:
       <a href="{{ url_for('account') }}">Account</a></li>
-    <li><b>How scanning behaves</b>, including your own Facebook name —
+    <li><b>How scanning behaves</b>, including your own Facebook name:
       <a href="{{ url_for('capture') }}">Capture</a></li>
   </ul>
 </section>

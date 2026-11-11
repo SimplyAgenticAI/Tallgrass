@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Feedback{% endblock %}
+{% block title %}{{ app_name }}: Feedback{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -7,7 +7,7 @@
     <h1>Feedback</h1>
     <p class="sub">
       Report a bug or ask for something. Vote on what other people have asked
-      for — the most wanted rises to the top, and you'll be told when anything
+      for. The most wanted rises to the top, and you'll be told when anything
       you backed moves.
     </p>
   </div>
@@ -79,7 +79,7 @@
 </div>
 {% else %}
 <section class="glass panel reveal">
-  <p class="fine">Nothing here yet. Be the first — anything above is fine.</p>
+  <p class="fine">Nothing here yet. Be the first. Anything above is fine.</p>
 </section>
 {% endif %}
 {% endblock %}

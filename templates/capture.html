@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Extension{% endblock %}
+{% block title %}{{ app_name }}: Extension{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -32,14 +32,14 @@
       and "this broke out."
     </p>
     <ul class="scoring-list">
-      <li><span class="tier-dot tier-breakout"></span><b>Breakout</b> — 5× the group median or more</li>
-      <li><span class="tier-dot tier-strong"></span><b>Strong outlier</b> — 3× to 5×</li>
-      <li><span class="tier-dot tier-above"></span><b>Above baseline</b> — 1.5× to 3×</li>
-      <li><span class="tier-dot tier-typical"></span><b>Typical</b> — around the median</li>
+      <li><span class="tier-dot tier-breakout"></span><b>Breakout</b>: 5× the group median or more</li>
+      <li><span class="tier-dot tier-strong"></span><b>Strong outlier</b>: 3× to 5×</li>
+      <li><span class="tier-dot tier-above"></span><b>Above baseline</b>: 1.5× to 3×</li>
+      <li><span class="tier-dot tier-typical"></span><b>Typical</b>: around the median</li>
     </ul>
     <p class="fine">
-      Engagement is weighted: shares count 5×, comments 3×, reactions 1× —
-      shares put a post in front of a new audience, so they signal reach best.
+      Engagement is weighted: shares count 5×, comments 3×, reactions 1×.
+      Shares put a post in front of a new audience, so they signal reach best.
       A source needs 8+ posts before it gets scored at all.
     </p>
 
@@ -52,8 +52,8 @@
 
     <h2 class="mt">Worth knowing</h2>
     <p class="fine">
-      The extension reads posts already rendered in your own logged-in browser —
-      it doesn't use the Facebook API (no API exposes group engagement) and
+      The extension reads posts already rendered in your own logged-in browser.
+      It doesn't use the Facebook API (no API exposes group engagement) and
       doesn't log in for you. Automated collection is against Facebook's terms
       of service, which matters if you later want to publish this on the Chrome
       Web Store. For internal research use, it stays on your machine.
@@ -71,7 +71,7 @@
       {% for capture in recent_captures %}
       <tr>
         <td>{{ capture.created_at }}</td>
-        <td>{{ capture.source_name or '—' }}</td>
+        <td>{{ capture.source_name or '-' }}</td>
         <td>{{ capture.post_count }}</td>
         <td class="accent">+{{ capture.new_count }}</td>
       </tr>

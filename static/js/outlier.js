@@ -101,7 +101,7 @@
     note.className = "thumb-gone";
     // The detail page has room for the reason; a 92px card thumbnail does not.
     note.textContent = holder.classList.contains("detail-media")
-      ? "This image is no longer available from Facebook — its link expired. "
+      ? "This image is no longer available from Facebook. Its link expired. "
         + "The post and its numbers are unaffected."
       : "image expired";
     note.title = "Facebook's image links are signed and expire after a day or "
@@ -426,7 +426,7 @@
         })
         .then(function () {
           if (failure) throw new Error(failure);
-          if (!count) throw new Error("Nothing came back — try again.");
+          if (!count) throw new Error("Nothing came back. Try again.");
           writeStatus.className = "msg-line";
           writeStatus.textContent = "";
           toast(count === 1 ? "1 post ready" : count + " posts ready");
@@ -436,7 +436,7 @@
             // Whatever already arrived is real and stays on screen.
             writeStatus.className = "msg-line";
             writeStatus.textContent = count
-              ? "Stopped — kept the " + count + " already written."
+              ? "Stopped. Kept the " + count + " already written."
               : "Stopped.";
             return;
           }
@@ -893,8 +893,8 @@
       retentionToggle.disabled = true;
       retentionMsg.className = "msg-line";
       retentionMsg.textContent = turningOn
-        ? "Switching it on — old posts will start ageing out."
-        : "Switching it off — nothing more will be removed.";
+        ? "Switching it on. Old posts will start ageing out."
+        : "Switching it off. Nothing more will be removed.";
       post("/api/admin/retention", { action: "toggle", on: turningOn })
         .then(function (data) {
           if (!data.ok) throw new Error(data.error || "Could not change it");
@@ -957,7 +957,7 @@
       var perUser = Math.round((posts * 1500) / 1024);
       var at250 = Math.round((posts * 1500 * 250) / (1024 * 1024));
       sampleEstimate.textContent = sources
-        ? posts + " posts per new account — about " + perUser +
+        ? posts + " posts per new account, about " + perUser +
           "KB each, roughly " + at250 + "MB once there are 250 accounts."
         : "Tick a group or page to see what it costs.";
     }
@@ -994,7 +994,7 @@
       if (data.skipped && data.skipped.length) {
         for (var i = 0; i < data.skipped.length; i++) {
           var s = data.skipped[i];
-          var line = "Skipped " + s.name + " — " + s.reason +
+          var line = "Skipped " + s.name + ": " + s.reason +
                      " (" + s.usable + " usable";
           if (s.undated) line += ", " + s.undated + " with no date";
           line += ").";
@@ -1270,7 +1270,7 @@
           // A stale page carries an old CSRF token; the cure is a reload, so
           // say that instead of a dead-end error.
           if (/csrf|token/i.test(msg)) {
-            msg = "Your session refreshed in another tab — reload this page and try again.";
+            msg = "Your session refreshed in another tab. Reload this page and try again.";
           }
           toast(msg, true);
         });
@@ -1367,15 +1367,15 @@
     function reveal(copied) {
       if (keys) keys.hidden = false;
       if (copied) {
-        btn.textContent = "Copied — now paste it below";
+        btn.textContent = "Copied. Now paste it below";
         btn.classList.add("is-copied");
-        toast("Copied — paste it into the address bar");
+        toast("Copied. Paste it into the address bar");
         return;
       }
       /* Clipboard writes are refused outside a secure context and by some
          managed profiles. Selecting the text means the manual route is one
          keystroke rather than reading it off the screen and retyping it. */
-      btn.textContent = "Selected — copy it yourself";
+      btn.textContent = "Selected. Copy it yourself";
       if (code && window.getSelection && document.createRange) {
         var range = document.createRange();
         range.selectNodeContents(code);
@@ -1383,7 +1383,7 @@
         sel.removeAllRanges();
         sel.addRange(range);
       }
-      toast("Clipboard blocked — copy the selected address", true);
+      toast("Clipboard blocked. Copy the selected address", true);
     }
 
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -1441,7 +1441,7 @@
       brief.className = "graphic-brief";
       brief.rows = 2;
       brief.placeholder =
-        "Optional: describe the image you want — subject, style, colours, mood.";
+        "Optional: describe the image you want. Subject, style, colours, mood.";
 
       /* Put the words on the picture.
        *
@@ -1730,7 +1730,7 @@
     var hint = document.createElement("p");
     hint.className = "fine cap-hint";
     hint.textContent =
-      "Drag the words to move them — they snap to the centre. "
+      "Drag the words to move them. They snap to the centre. "
       + "Double-click to put them back.";
     controls.appendChild(hint);
 
@@ -1804,7 +1804,7 @@
       } catch (error) {
         // Only reachable if the plate came from another origin, which the
         // server inlines specifically to prevent.
-        toast("Could not save — the image came from another site", true);
+        toast("Could not save. The image came from another site", true);
         button.disabled = false;
         button.textContent = label;
         return;
@@ -1851,7 +1851,7 @@
     var ticker = window.setInterval(function () {
       var seconds = Math.round((Date.now() - started) / 1000);
       note.textContent = "Painting your graphic… " + seconds + "s" +
-        (seconds >= 30 ? " — larger images can take a minute" : "");
+        (seconds >= 30 ? ". Larger images can take a minute" : "");
     }, 1000);
     function stop() { window.clearInterval(ticker); }
 
@@ -1991,7 +1991,7 @@
           if (!data.ok) throw new Error(data.error || "Could not send that");
           // Reloaded rather than prepended: the board is sorted, and guessing
           // where a new row belongs is how a list starts lying about its order.
-          window.sessionStorage.setItem("outlier-reset", "Thanks — that's been sent.");
+          window.sessionStorage.setItem("outlier-reset", "Thanks. That's been sent.");
           window.location.href = "/feedback?sort=new";
         })
         .catch(function (error) {
@@ -2033,7 +2033,7 @@
              { status: set.dataset.status, note: note || undefined })
           .then(function (data) {
             if (!data.ok) throw new Error(data.error || "Could not update");
-            toast("Marked " + data.status + " — " + data.notified +
+            toast("Marked " + data.status + ": " + data.notified +
                   " notified.");
             window.location.reload();
           })
@@ -2217,7 +2217,7 @@
         .catch(function (error) {
           // Falling back to the copyable path keeps the step doable.
           folderMsg.className = "istep-msg error";
-          folderMsg.textContent = error.message + " — copy the path below instead.";
+          folderMsg.textContent = error.message + ". Copy the path below instead.";
         });
     });
   }
@@ -2302,7 +2302,7 @@
         var missing = document.createElement("p");
         missing.className = "fine msg-note";
         missing.textContent = "To draw it, add an OpenAI key on the Settings " +
-          "page — the words above are ready either way.";
+          "page. The words above are ready either way.";
         bubble.appendChild(missing);
         chat.scrollTop = chat.scrollHeight;
         return;
@@ -2324,7 +2324,7 @@
       var ticker = window.setInterval(function () {
         var seconds = Math.round((Date.now() - started) / 1000);
         note.textContent = "Painting your graphic… " + seconds + "s" +
-          (seconds >= 30 ? " — this one is taking a while" : "");
+          (seconds >= 30 ? ". This one is taking a while" : "");
       }, 1000);
 
       post("/api/graphic", {
@@ -2534,7 +2534,7 @@
           if (!data.ok) throw new Error(data.error || "Save failed");
           aiMsg.className = "msg-line ok";
           aiMsg.textContent = data.has_key
-            ? "Saved. Sage is ready — open the Sage tab."
+            ? "Saved. Sage is ready. Open the Sage tab."
             : "Provider saved, but no key is set yet.";
           document.getElementById("ai-key").value = "";
         })
@@ -2708,7 +2708,7 @@
       say(connectCopy, storeInstall
         ? "No extension detected yet. Install it above, then reload this page."
         : "No extension detected on this page. Install it from the Capture " +
-          "page, then reload here — or connect manually below.");
+          "page, then reload here, or connect manually below.");
     }, 1200);
 
     window.addEventListener("outlier:connect-result", function (event) {
@@ -2720,7 +2720,7 @@
       if (detail.ok) {
         say(connectMsg,
           "Connected. The extension will send captures to " + detail.endpoint +
-          " — reload any open Facebook tabs.", "msg-line ok");
+          ". Reload any open Facebook tabs.", "msg-line ok");
       } else {
         say(connectMsg, detail.error || "The extension didn't accept it.",
             "msg-line error");
@@ -2758,7 +2758,7 @@
           document.getElementById("new-key").textContent = data.api_key;
           document.getElementById("new-key-row").style.display = "flex";
           rotateMsg.className = "msg-line ok";
-          rotateMsg.textContent = "New key ready — copy it into the extension now.";
+          rotateMsg.textContent = "New key ready. Copy it into the extension now.";
         })
         .catch(function (error) {
           rotateMsg.className = "msg-line error";
@@ -2869,7 +2869,7 @@
       remixBtn.disabled = true;
       remixBtn.textContent = "Generating…";
       status.className = "remix-status";
-      status.textContent = "Writing variants — this takes a few seconds.";
+      status.textContent = "Writing variants. This takes a few seconds.";
 
       var steer = document.getElementById("remix-instructions");
       // The chosen opening, same as Write sends. Clicking a selected card
@@ -3032,14 +3032,14 @@
       var tier = esc(d.tier || "");
       return (
         '<p>Every ' + thing + ' is scored against what is <b>normal for its ' + place +
-          '</b> — never a global number, because ' + commas(d.typical) +
+          '</b>, never a global number, because ' + commas(d.typical) +
           ' is a lot in a quiet ' + place + ' and little in a busy one.</p>' +
         '<p class="sh-formula">Weighted = reactions + comments&times;3 + shares&times;5' +
           '<span>comments and shares take more than a tap, so they count for more</span></p>' +
         '<p class="sh-math"><b>' + commas(d.reactions) + '</b> + <b>' + commas(d.comments) +
           '</b>&times;3 + <b>' + commas(d.shares) + '</b>&times;5 = <b>' + commas(d.weighted) +
           '</b> weighted</p>' +
-        '<p>Typical here — the <b>' + medWord + '</b> — is <b>' + commas(d.typical) +
+        '<p>Typical here, the <b>' + medWord + '</b>, is <b>' + commas(d.typical) +
           '</b>, the middle score of all ' + pool +
           '. The median, not the average, so one viral ' + thing + " can't skew it.</p>" +
         '<p class="sh-multiple"><b>' + commas(d.weighted) + ' &divide; ' + commas(d.typical) +

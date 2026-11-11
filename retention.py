@@ -167,7 +167,7 @@ def sweep(months=None, floor=FLOOR_PER_SOURCE, limit=5000):
     run on a large account cannot sit inside somebody's page load.
     """
     if not enabled():
-        return 0, "Retention is switched off — nothing was removed."
+        return 0, "Retention is switched off. Nothing was removed."
     months = billing.RETENTION_MONTHS if months is None else months
     try:
         with db.get_db() as conn:

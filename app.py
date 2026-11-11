@@ -311,7 +311,7 @@ def record_unhandled(error):
     log.exception("unhandled error on %s %s", request.method, request.path)
     db.set_setting(
         CAPTURE_ERROR_KEY if request.path == "/api/capture" else UNHANDLED_ERROR_KEY,
-        "%s — %s %s: %s: %s" % (
+        "%s: %s %s: %s: %s" % (
             datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             request.method, request.path, type(error).__name__, error),
     )
@@ -599,7 +599,7 @@ def _next_step(user, scored):
             "key": "connect",
             "title": "Connect the extension",
             "body": ("Install it, then open this dashboard once while signed in "
-                     "— it picks up your key automatically."),
+                     ". It picks up your key automatically."),
             "cta": "Get the extension",
             "href": url_for("capture"),
             "scan_demo": False,
@@ -611,8 +611,8 @@ def _next_step(user, scored):
             "key": "scan",
             "title": "Scan your first group",
             "body": ("Open a Facebook group you're in, find the Tallgrass panel "
-                     "in the corner, and press Start. Scroll — or let it scroll "
-                     "— and posts arrive here as they're read."),
+                     "in the corner, and press Start. Scroll, or let it scroll, "
+                     "and posts arrive here as they're read."),
             "cta": "How scanning works",
             "href": url_for("capture"),
             "scan_demo": True,
@@ -623,7 +623,7 @@ def _next_step(user, scored):
         need = max(outliers.MIN_SAMPLE - sum(1 for s in real if s.get("engagement_read")), 1)
         return {
             "key": "more",
-            "title": "Keep scanning — nothing can be scored yet",
+            "title": "Keep scanning: nothing can be scored yet",
             "body": (f"A group needs about {outliers.MIN_SAMPLE} posts with readable "
                      f"engagement before a median means anything. Roughly {need} more "
                      "and this feed starts ranking properly."),
@@ -645,7 +645,7 @@ def _next_step(user, scored):
                 "key": "remix",
                 "title": f"Your top post beat its group by {best['outlier_multiple']}×",
                 "body": ("Finding it is half of this. The other half is writing your "
-                         "own version — open it and generate variants built on the "
+                         "own version. Open it and generate variants built on the "
                          "same mechanic."),
                 "cta": "Open it and remix",
                 "href": url_for("post_detail", post_id=best["id"]),
@@ -1057,7 +1057,7 @@ def api_write_stream():
         if not scored:
             return jsonify({
                 "ok": False,
-                "error": "This group has no scored posts yet — it needs 8+ "
+                "error": "This group has no scored posts yet. It needs 8+ "
                          "posts with engagement before there's a pattern.",
             }), 400
 
@@ -1537,7 +1537,7 @@ def _diagnosis():
     checks.append({
         "name": "Account key",
         "ok": bool(user.get("api_key_prefix")),
-        "detail": ("Issued — the extension picks it up automatically"
+        "detail": ("Issued. The extension picks it up automatically"
                    if user.get("api_key_prefix")
                    else "None issued. Open the Capture page while signed in."),
     })
@@ -1547,11 +1547,11 @@ def _diagnosis():
     # buried in a panel.
     allowed, reason = billing.capture_allowed(user)
     if billing.is_admin(user):
-        meter = "Owner — never metered"
+        meter = "Owner: never metered"
     elif billing.is_pro(user):
-        meter = "Pro — unlimited capture"
+        meter = "Pro: unlimited capture"
     else:
-        meter = f"Free — {total:,} of {billing.FREE_LIMITS['posts']:,} posts stored"
+        meter = f"Free: {total:,} of {billing.FREE_LIMITS['posts']:,} posts stored"
     checks.append({
         "name": "Plan",
         "ok": bool(allowed),
@@ -1565,7 +1565,7 @@ def _diagnosis():
             "name": "Last capture received",
             "ok": True,
             "detail": (f"{last['post_count']} posts from "
-                       f"{last['source_name'] or 'a source'} — {age_of(last['created_at'])}"),
+                       f"{last['source_name'] or 'a source'}: {age_of(last['created_at'])}"),
         })
     else:
         checks.append({
@@ -1579,7 +1579,7 @@ def _diagnosis():
         "ok": not db.storage_is_ephemeral(),
         "detail": ("Captures survive restarts"
                    if not db.storage_is_ephemeral()
-                   else "This host resets on deploy — captures will be lost."),
+                   else "This host resets on deploy. Captures will be lost."),
     })
 
     return {"checks": checks, "week": week, "total": total,
@@ -2497,7 +2497,7 @@ def forgot_password():
                     # generic, so without this the reason is nowhere.
                     db.set_setting(
                         MAIL_ERROR_KEY,
-                        "%s — %s" % (
+                        "%s: %s" % (
                             datetime.now(timezone.utc).strftime(
                                 "%Y-%m-%d %H:%M UTC"),
                             error),
@@ -2525,16 +2525,16 @@ def forgot_password():
             if delivered:
                 note = "An email was sent."
             elif failure:
-                note = ("The email FAILED to send: %s — open Admin to "
+                note = ("The email FAILED to send: %s. Open Admin to "
                         "generate a link and pass it on directly." % failure)
             else:
-                note = ("Email is NOT configured on this instance — open "
+                note = ("Email is NOT configured on this instance. Open "
                         "Admin to copy their reset link.")
 
             db.notify_admins(
                 "password-reset",
                 "Password reset requested"
-                + ("" if delivered else " — NOT DELIVERED"),
+                + ("" if delivered else ": NOT DELIVERED"),
                 body="%s asked to reset their password. %s"
                      % (user["email"], note),
                 url="/admin",
@@ -3424,8 +3424,8 @@ def _warn_approaching_cap(api_user):
         db.notify(
             api_user["id"], "quota",
             f"{stored:,} of {cap:,} posts stored",
-            body=("Capture stops at the cap. Everything else — Sage, remix, "
-                  "ideas, export — stays exactly as it is."),
+            body=("Capture stops at the cap. Everything else, Sage, remix, "
+                  "ideas, and export, stays exactly as it is."),
             url="/pricing",
         )
     except Exception:
@@ -3653,7 +3653,7 @@ def api_capture():
                 # below documents. set_setting never raises, so getting this
                 # wrong loses the diagnostic silently.
                 failed.append(post.get("fb_post_id"))
-                capture_failure = "%s — %s on post %s: %s" % (
+                capture_failure = "%s: %s on post %s: %s" % (
                     datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                     type(exc).__name__, post.get("fb_post_id"), exc)
                 log.exception("capture: post %s could not be stored",
@@ -3872,7 +3872,7 @@ def api_graphic():
     if drew.get("model") == "dall-e-3":
         note = (note + " " if note else "") + (
             "Drawn with DALL·E 3. Your OpenAI key cannot reach gpt-image-1, "
-            "which makes noticeably better pictures — verifying your "
+            "which makes noticeably better pictures. Verifying your "
             "organisation in the OpenAI dashboard unlocks it.")
     # `note` is how a partial success reports itself: the picture was made, but
     # not in the way that was asked for.
@@ -4336,7 +4336,7 @@ def api_export(fmt):
                 row = row_of(p)
                 headline = ("%sx" % row["outlier_multiple"]
                             if row["outlier_multiple"] is not None else "unscored")
-                yield "## %s — %s in %s\n" % (headline, row["author"], row["source"])
+                yield "## %s: %s in %s\n" % (headline, row["author"], row["source"])
                 yield ("*%s reactions · %s comments · %s shares · %s · %s*\n\n"
                        % (row["likes"], row["comments"], row["shares"],
                           row["type"], row["posted_at"]))

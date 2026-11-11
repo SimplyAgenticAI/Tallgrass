@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Pricing — {{ app_name }}{% endblock %}
+{% block title %}Pricing: {{ app_name }}{% endblock %}
 {% block head_extra %}
-{% with title="Pricing — " ~ app_name,
+{% with title="Pricing: " ~ app_name,
         description="Start free on as many groups as you like. " ~ app_name ~ " scores every post against the median for its own group. Free keeps 1,000 posts; Pro removes the cap.",
         canonical_path="/pricing" %}
 {% include "_public_meta.html" %}
@@ -40,7 +40,7 @@
     <div class="price-figure"><span class="price-amount">$0</span></div>
     <div class="price-period">forever</div>
     <p class="price-blurb">
-      The whole product, capped at 1,000 posts. Nothing is held back — you see
+      The whole product, capped at 1,000 posts. Nothing is held back. You see
       exactly what it does before deciding whether it's worth paying for.
     </p>
     <ul class="price-features">
@@ -85,7 +85,7 @@
     {% endfor %}
 
     <p class="price-blurb">
-      The same product with the cap removed — for people running this weekly
+      The same product with the cap removed, for people running this weekly
       across several groups.
     </p>
     <ul class="price-features">
@@ -95,7 +95,7 @@
     </ul>
 
     {% if user and user.is_admin %}
-      <div class="price-current">Owner — unlimited</div>
+      <div class="price-current">Owner: unlimited</div>
     {% elif is_pro %}
       <div class="price-current">Your current plan</div>
     {% elif user %}
@@ -116,7 +116,7 @@
   {% if shared_ai %}
   <p class="fine">
     <b>AI drafting is included.</b> Sage, remix
-    and the post-idea writer run on the included AI allowance —
+    and the post-idea writer run on the included AI allowance:
     {{ ai_limits.free }} generations a month on Free, {{ ai_limits.pro }} on Pro.
     Add your own Claude or OpenAI key in Settings and there's no cap at all.
   </p>

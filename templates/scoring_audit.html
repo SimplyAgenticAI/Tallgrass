@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Scoring audit — {{ app_name }}{% endblock %}
+{% block title %}Scoring audit: {{ app_name }}{% endblock %}
 
 {# Whether the model that the whole product rests on actually works.
    Read-only: it re-ranks in memory and writes nothing. #}
@@ -24,7 +24,7 @@
   <p class="sa-lede">
     Today a share counts 5×, a comment 3×, a reaction 1×.
     Those were a judgement call. Here is the same feed re-ranked under other
-    schemes — if the top {{ report.top_depth }} barely moves, the exact weights
+    schemes. If the top {{ report.top_depth }} barely moves, the exact weights
     are not load bearing and are not worth arguing about.
   </p>
 
@@ -39,10 +39,10 @@
         <td><b>{{ s.name }}</b></td>
         <td class="sa-num">{{ s.weights|join(' / ') }}</td>
         <td class="sa-num">
-          {% if s.same_in_top is none %}—
+          {% if s.same_in_top is none %}-
           {% else %}{{ s.same_in_top }} / {{ s.top_depth }}{% endif %}
         </td>
-        <td class="sa-num">{{ s.mean_move if s.mean_move is not none else '—' }}</td>
+        <td class="sa-num">{{ s.mean_move if s.mean_move is not none else '-' }}</td>
         <td class="sa-note">{{ s.note }}</td>
       </tr>
       {% endfor %}
@@ -52,11 +52,11 @@
   <p class="sa-verdict">
     {% if report.weights_load_bearing %}
       <b>The weights change the answer.</b> At least one scheme reorders your top
-      posts, which means 1/3/5 is doing real work — and that it deserves a better
+      posts, which means 1/3/5 is doing real work, and that it deserves a better
       justification than the one in the comments.
     {% else %}
-      <b>The weights barely matter.</b> Every alternative — including counting all
-      three equally — produces the same top {{ report.top_depth }}. That is good
+      <b>The weights barely matter.</b> Every alternative, including counting all
+      three equally, produces the same top {{ report.top_depth }}. That is good
       news: the ranking is driven by which posts genuinely outperformed their
       group, not by the weighting. It also means tuning these numbers is not
       where any effort should go.
@@ -86,10 +86,10 @@
     {% elif report.tier_concentration >= 70 %}
       <b>{{ report.tier_concentration }}% of banded posts are
       "{{ tier_labels.get(report.tier_dominant, report.tier_dominant) }}".</b>
-      One band holding that much is not separating anything — the cutoffs want
+      One band holding that much is not separating anything. The cutoffs want
       moving toward where your data actually sits.
     {% else %}
-      <b>Reasonably spread</b> — the largest band holds
+      <b>Reasonably spread</b>: the largest band holds
       {{ report.tier_concentration }}% of banded posts, so the cutoffs are
       dividing your feed rather than labelling all of it the same.
     {% endif %}
@@ -136,7 +136,7 @@
     below the floor.
     {% if report.measured_rate is not none and report.measured_rate < 80 %}
       <br><b>Only {{ report.measured_rate }}% of captures had their engagement
-      read.</b> That is the number to fix before tuning anything else — every
+      read.</b> That is the number to fix before tuning anything else. Every
       baseline above is computed from the posts that worked, and a source where
       most extractions failed has a baseline describing a minority of it.
     {% endif %}
@@ -159,7 +159,7 @@
   </p>
   <ul class="sa-suspects">
     {% for s in report.suspect_examples %}
-    <li>post {{ s.id }} — {{ "{:,}".format(s.shares) }} shares in {{ s.source }}</li>
+    <li>post {{ s.id }}: {{ "{:,}".format(s.shares) }} shares in {{ s.source }}</li>
     {% endfor %}
   </ul>
   {% else %}

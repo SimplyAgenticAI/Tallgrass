@@ -128,7 +128,7 @@ PROBLEM_LABELS = {
 }
 
 PROBLEM_ADVICE = {
-    "never": "The install did not take. Worth an email — this is the bucket "
+    "never": "The install did not take. Worth an email. This is the bucket "
              "where a product loses people without ever hearing why.",
     "blind": "Posts are arriving with their counts unread, so their feed has "
              "nothing ranked in it. Check Health, then ask them for a page "

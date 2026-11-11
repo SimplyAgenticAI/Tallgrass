@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Admin{% endblock %}
+{% block title %}{{ app_name }}: Admin{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -7,7 +7,7 @@
     <h1>Admin</h1>
     <p class="sub">
       Traffic and accounts for this install. Visitor counts come from the app's
-      own request log — no third-party analytics, no cookies beyond the session,
+      own request log: no third-party analytics, no cookies beyond the session,
       and no addresses stored.
     </p>
   </div>
@@ -51,7 +51,7 @@
   <h2 style="margin:0 0 4px;font-size:16px">Backups</h2>
   <p class="fine" style="margin:0 0 12px">
     A snapshot is taken automatically once a day. Kept on the same disk, which
-    survives corruption but <b>not</b> losing the disk — download one now and
+    survives corruption but <b>not</b> losing the disk. Download one now and
     then so a copy exists somewhere that isn't Render.
   </p>
   <div class="demo-actions" style="gap:10px">
@@ -109,7 +109,7 @@
      only thing in the app that deletes a user's captures. #}
   <div class="glass notice" style="margin:0 0 14px">
     <p class="fine" style="margin:0 0 6px">
-      <b>Ageing out other people's posts</b> —
+      <b>Ageing out other people's posts</b>:
       {% if retention.enabled %}
       <span style="color:var(--emerald-bright)">ON</span>. Posts older than
       {{ retention.months }} months are removed as pages are loaded.
@@ -141,7 +141,7 @@
   </div>
 
   {% if biggest %}
-  <p class="fine" style="margin:0 0 6px"><b>Who is holding the most</b> — a
+  <p class="fine" style="margin:0 0 6px"><b>Who is holding the most</b>: a
     captured post measures about 4KB, so this is where the database goes.
     Ingest is capped at {{ '{:,}'.format(ingest_per_hour) }} posts an hour per
     account, which is far above a real scan.</p>
@@ -250,7 +250,7 @@
          border-color:rgba(224,122,95,0.35)">
   <h2 style="margin:0 0 10px;font-size:16px;color:var(--ember)">Recent errors</h2>
   {% if capture_error %}
-  <p class="fine" style="margin:0 0 4px"><b>Last capture failure</b> — what the
+  <p class="fine" style="margin:0 0 4px"><b>Last capture failure</b>: what the
     extension saw as a 500 or a skipped post:</p>
   <div style="font-family:ui-monospace,monospace;font-size:12px;
               word-break:break-word;margin-bottom:12px">{{ capture_error }}</div>
@@ -270,7 +270,7 @@
      panel you stop reading, and this one is meant to be read. #}
   <div style="margin-top:12px">
     <button class="btn btn-ghost" id="clear-errors" type="button">
-      Clear — this is dealt with
+      Clear: this is dealt with
     </button>
     <div class="msg-line" id="clear-errors-msg"></div>
   </div>
@@ -286,7 +286,7 @@
 
   {% if snapshot %}
   <p class="fine" style="margin:0 0 14px">
-    <b>Using a real snapshot</b> — {{ snapshot.sources }}
+    <b>Using a real snapshot</b>: {{ snapshot.sources }}
     source{{ '' if snapshot.sources == 1 else 's' }},
     {{ snapshot.posts }} posts, {{ snapshot.images }} with pictures, captured
     {{ snapshot.captured_at }}.{% if snapshot.note %} {{ snapshot.note }}{% endif %}
@@ -296,15 +296,15 @@
   {% else %}
   <p class="fine" style="margin:0 0 14px">
     <b>Using the written sample set</b>, whose engagement numbers are invented.
-    Export real captures below and commit the file to replace it — every
+    Export real captures below and commit the file to replace it. Every
     number the demo shows then becomes one that actually happened.
   </p>
   {% endif %}
 
   {% if my_sources %}
   <div class="fine" style="margin-bottom:10px">
-    Tick what the sample set should be, then Save. It applies straight away —
-    nothing to download, commit or deploy — to new signups <b>and</b> to every
+    Tick what the sample set should be, then Save. It applies straight away,
+    nothing to download, commit or deploy, to new signups <b>and</b> to every
     existing account that hasn't captured anything real yet. Anyone with their
     own captures is left alone; the feed already hides samples for them.
   </div>
@@ -342,7 +342,7 @@
             · <b>live in the sample set</b>
           {% endif %}
           {% if s.post_count < min_sample %}
-            · <b>too few to score — needs {{ min_sample }}+, scan it first</b>
+            · <b>too few to score: needs {{ min_sample }}+, scan it first</b>
           {% endif %}
         </span>
       </span>
@@ -435,7 +435,7 @@
 
   {% if not outreach.configured %}
   <p class="fine" style="margin:0">
-    <b>Nothing can be sent</b> — see the SMTP settings below. Every email here
+    <b>Nothing can be sent</b>. See the SMTP settings below. Every email here
     needs it.
   </p>
   {% else %}
@@ -453,7 +453,7 @@
       {% else %}
         <b style="color:var(--gold)">Off.</b>
         Nothing automated is sent at all, whatever the individual switches
-        say. Password resets are unaffected — those are asked for.
+        say. Password resets are unaffected. Those are asked for.
       {% endif %}
     </span>
   </div>
@@ -534,7 +534,7 @@
   <p class="fine" style="margin:12px 0 0">
     You can use these anywhere in a subject or body:
     {% for token, what in outreach.tokens.items() %}
-    <br><code>{{ token }}</code> — {{ what }}
+    <br><code>{{ token }}</code>: {{ what }}
     {% endfor %}
   </p>
   <p class="fine" style="margin:8px 0 0">
@@ -564,7 +564,7 @@
          different Render service rather than wrong on this one. #}
       <br><b>This service has no SMTP variables at all.</b>
       Not one of <code>SMTP_HOST</code>, <code>SMTP_USER</code> or
-      <code>SMTP_PASS</code> is set here — check you added them to this
+      <code>SMTP_PASS</code> is set here. Check you added them to this
       service and not another one.
       {% elif email.missing %}
       <br>Found: <code>SMTP_HOST</code> = <b>{{ email.host or '(empty)' }}</b>,
@@ -617,7 +617,7 @@
         <td>{{ row.email }}</td>
         <td class="fine">{{ row.created_at }}</td>
         <td class="fine">{{ row.expires_at }}</td>
-        <td class="fine">{{ 'yes' if row.delivered else 'no — needs you' }}</td>
+        <td class="fine">{{ 'yes' if row.delivered else 'no: needs you' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -635,18 +635,18 @@
   <h2>Payments</h2>
   <ul class="settings-pointers">
     <li>
-      <b>Stripe key</b> —
+      <b>Stripe key</b>:
       {% if stripe.key %}<span class="ok-tone">set</span>
-      {% else %}<span class="warn-tone">missing</span> — checkout is inert until
+      {% else %}<span class="warn-tone">missing</span>. Checkout is inert until
         <code>STRIPE_SECRET_KEY</code> is set in Render's environment{% endif %}
     </li>
     <li>
-      <b>Webhook secret</b> —
+      <b>Webhook secret</b>:
       {% if stripe.webhook %}<span class="ok-tone">set</span>
-      {% else %}<span class="warn-tone">missing</span> — subscriptions won't
+      {% else %}<span class="warn-tone">missing</span>. Subscriptions won't
         activate after payment until <code>STRIPE_WEBHOOK_SECRET</code> is set{% endif %}
     </li>
-    <li><b>Price ids</b> — <span class="ok-tone">in the code</span> (public identifiers, safe to commit)</li>
+    <li><b>Price ids</b>: <span class="ok-tone">in the code</span> (public identifiers, safe to commit)</li>
   </ul>
 </section>
 
@@ -677,7 +677,7 @@
       <tbody>
         {% for s in funnel.steps %}
         {% if loop.previtem and loop.previtem.chain != s.chain %}
-        <tr class="fn-divider"><td colspan="6">Buying — separate from install; anyone can open pricing</td></tr>
+        <tr class="fn-divider"><td colspan="6">Buying: separate from install; anyone can open pricing</td></tr>
         {% endif %}
         <tr>
           <td>
@@ -687,7 +687,7 @@
           <td class="sa-num">{{ s.count }}</td>
           <td class="sa-num">{{ s.pct }}%</td>
           <td class="sa-num {{ 'sa-warn' if s.lost }}">{{ s.lost if s.lost is not none else '' }}</td>
-          <td class="sa-num">{{ s.median or '—' }}</td>
+          <td class="sa-num">{{ s.median or '-' }}</td>
           <td class="sa-num">{{ s.recent }}{% if s.key != 'signup' %} / {{ funnel.recent_total }}{% endif %}</td>
         </tr>
         {% endfor %}
@@ -731,7 +731,7 @@
         <td>{{ u.email }}{% if u.is_admin %} <span class="uh-tag">admin</span>{% endif %}</td>
         <td class="sa-num">{{ u.posts }}</td>
         <td class="sa-num {{ 'sa-warn' if u.problem == 'blind' }}">
-          {{ u.read_rate if u.read_rate is not none else '—' }}{{ '%' if u.read_rate is not none }}
+          {{ u.read_rate if u.read_rate is not none else '-' }}{{ '%' if u.read_rate is not none }}
         </td>
         <td class="sa-num {{ 'sa-warn' if u.problem == 'unscored' }}">{{ u.scoreable_sources }}</td>
         <td class="sa-num">
@@ -739,7 +739,7 @@
           {% elif u.days_since_capture == 0 %}today
           {% else %}{{ u.days_since_capture }}d ago{% endif %}
         </td>
-        <td class="fine">{{ funnel.furthest.get(u.id) or '—' }}</td>
+        <td class="fine">{{ funnel.furthest.get(u.id) or '-' }}</td>
         <td>
           {% if u.problem %}
           <span class="uh-flag uh-{{ u.problem }}">{{ problem_labels[u.problem] }}</span>

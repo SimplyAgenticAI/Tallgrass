@@ -292,9 +292,9 @@ RANK_BASIS_ORDER = {"unread": 0, "recency": 1, "engagement": 2, "baseline": 3}
 
 RANK_BASIS_LABELS = {
     "baseline": "Scored against this group's median",
-    "engagement": "Ranked by raw engagement — this group has no baseline yet",
-    "recency": "No engagement on this post — ordered by when it was captured",
-    "unread": "Engagement couldn't be read from this post — re-capture the group",
+    "engagement": "Ranked by raw engagement. This group has no baseline yet",
+    "recency": "No engagement on this post, ordered by when it was captured",
+    "unread": "Engagement couldn't be read from this post. Re-capture the group",
 }
 
 

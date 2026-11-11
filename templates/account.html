@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Account — {{ app_name }}{% endblock %}
+{% block title %}Account: {{ app_name }}{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -12,14 +12,14 @@
 {% if fresh_api_key %}
 {# Shown once. The key is stored hashed, so it cannot be displayed again. #}
 <div class="glass notice reveal">
-  <b>Welcome. Here's your extension key — copy it now.</b>
+  <b>Welcome. Here's your extension key. Copy it now.</b>
   <div class="path-line" style="margin-top:11px">
     <code id="fresh-key">{{ fresh_api_key }}</code>
     <button class="copy-btn" data-copy-target="fresh-key">Copy</button>
   </div>
   <p class="fine" style="margin-top:10px">
     It's stored hashed, so this is the only time it can be shown. If you lose
-    it, generate a new one below — the old one stops working immediately.
+    it, generate a new one below. The old one stops working immediately.
   </p>
   {% if claimed_rows %}
   <p class="fine">Claimed {{ claimed_rows }} existing rows from this install.</p>
@@ -43,13 +43,13 @@
     </div>
     {% if account.is_admin %}
     <p class="fine">
-      This account owns the instance — unlimited capture, no plan limits, and
+      This account owns the instance: unlimited capture, no plan limits, and
       nothing to pay.
     </p>
     {% elif account.plan == 'free' %}
     <p class="fine">
       Free covers unlimited groups and {{ "{:,}".format(free_limits.posts) }}
-      captured posts — enough to see whether the scoring tells you something
+      captured posts, enough to see whether the scoring tells you something
       useful. Pro removes the post limit.
     </p>
     <a class="btn btn-primary" href="{{ url_for('pricing') }}">See plans</a>
@@ -93,7 +93,7 @@
         <button class="copy-btn" data-copy-target="dash-origin">Copy</button>
       </div>
       <p class="fine" style="margin-top:10px">
-        Your key is stored hashed and can't be shown again — generate a new one
+        Your key is stored hashed and can't be shown again. Generate a new one
         to get a fresh copy. The old one stops working immediately.
       </p>
       <div class="path-line">
@@ -117,7 +117,7 @@
 <section class="glass panel reveal">
   <h2>Username</h2>
   <p class="fine">
-    How you appear to other users — on the feedback board and anywhere else the
+    How you appear to other users, on the feedback board and anywhere else the
     app is shared. Your email is never shown to anyone but you.
   </p>
   <div class="key-row">
@@ -125,7 +125,7 @@
            placeholder="yourname" value="{{ user.username or '' }}">
     <button class="btn btn-primary" id="save-username">Save</button>
   </div>
-  <p class="fine">3–20 characters — letters, numbers, underscore or hyphen.</p>
+  <p class="fine">3–20 characters: letters, numbers, underscore or hyphen.</p>
 </section>
 
 <section class="glass panel reveal">

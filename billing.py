@@ -33,7 +33,7 @@ PLANS = {
         "amount": 19000,
         "display": "$190",
         "period": "per year",
-        "note": "Two months free — works out at $15.83/mo.",
+        "note": "Two months free. Works out at $15.83/mo.",
         "badge": "Save 17%",
     },
 }
@@ -72,7 +72,7 @@ FREE_LIMITS = {"sources": None, "posts": 1000}   # None = unlimited
 RETENTION_MONTHS = 6
 
 PRO_FEATURES = [
-    "Scan as much as you like — no total cap",
+    "Scan as much as you like: no total cap",
     "Re-scan as often as you like, so scores stay current",
     "Your own posts, saved posts and remixes kept for good",
     "%d months of everybody else's posts, so the scores describe now" % RETENTION_MONTHS,
@@ -82,7 +82,7 @@ PRO_FEATURES = [
 # in your voice - described features removed in V32.6, and this is the page
 # somebody reads before paying.
 FREE_FEATURES = [
-    "Every feature — Sage, remix, ideas, export",
+    "Every feature: Sage, remix, ideas, export",
     "Full outlier scoring and the meadow",
     "What your winners have in common, from your own data",
     "Unlimited groups, pages and profiles",
@@ -287,7 +287,7 @@ def ai_allowed(user, key_source):
         )
     return False, (
         "Free covers %d generations a month on the shared key and you've "
-        "reached it. Upgrade, or add your own API key in Settings — with your "
+        "reached it. Upgrade, or add your own API key in Settings. With your "
         "own key there is no limit." % cap
     )
 
@@ -345,7 +345,7 @@ def capture_allowed(user):
     if counts["posts"] >= FREE_LIMITS["posts"]:
         return False, (
             f"Free covers {FREE_LIMITS['posts']:,} posts and you've reached it. "
-            "Upgrade and keep scanning — there's no total cap on Pro."
+            "Upgrade and keep scanning. There's no total cap on Pro."
         )
 
     return True, None

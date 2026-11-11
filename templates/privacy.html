@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Privacy — {{ app_name }}{% endblock %}
+{% block title %}Privacy: {{ app_name }}{% endblock %}
 {% block head_extra %}
-{% with title="Privacy — " ~ app_name,
+{% with title="Privacy: " ~ app_name,
         description=app_name ~ " reads posts you are already looking at on Facebook and scores them against the median for their own group. This page says what leaves your browser, who else sees it, and how to delete it.",
         canonical_path="/privacy" %}
 {% include "_public_meta.html" %}
@@ -22,7 +22,7 @@
 
   <h2>What the extension collects</h2>
   <p>
-    The extension only reads a page <b>while a scan is running</b> — after you
+    The extension only reads a page <b>while a scan is running</b>, after you
     press Start in the extension window. Opening Facebook, or opening a group,
     collects nothing. When you press Stop, it stops.
   </p>
@@ -60,7 +60,7 @@
     <li><b>Suggest a message</b> reads the recent messages in the conversation
       you have open and sends them to the AI provider once, to write a draft.
       The conversation is not stored by {{ app_name }}, and the draft is put in
-      Messenger's box for you to send — {{ app_name }} never sends a message.</li>
+      Messenger's box for you to send. {{ app_name }} never sends a message.</li>
     <li><b>AI sorting</b> is off unless you turn it on in Settings. When it is
       on, the preview line the chat list shows for each chat waiting on you,
       and the recent messages of a chat you open, are sent to the AI provider
@@ -72,7 +72,7 @@
   <ul>
     <li>Your Facebook password, or any Facebook credential. The extension never sees the login form.</li>
     <li>Your Facebook cookies or session token.</li>
-    <li>The text of your messages, except as described under Messenger above: sent to the AI provider for a draft when you ask, or to be sorted if you turned AI sorting on — and never stored.</li>
+    <li>The text of your messages, except as described under Messenger above: sent to the AI provider for a draft when you ask, or to be sorted if you turned AI sorting on, and never stored.</li>
     <li>Your friend list, your notifications, or your own profile data.</li>
     <li>Comment text during a scan. A scan reads only the comment <i>count</i>; comments themselves are read only from a post you open and save, as described above.</li>
     <li>Private groups you are not a member of. The extension can only see what your own logged-in account can already see on screen.</li>
@@ -85,9 +85,9 @@
   <h2>What the dashboard stores</h2>
   <ul>
     <li><b>Your account:</b> your email address and a password hash. Your password is stored using scrypt and is never stored, logged or transmitted in readable form.</li>
-    <li><b>Your API key:</b> stored as a hash, not as the key itself. We cannot read your key back — a lost key has to be reissued, not recovered.</li>
+    <li><b>Your API key:</b> stored as a hash, not as the key itself. We cannot read your key back. A lost key has to be reissued, not recovered.</li>
     <li><b>Your captured posts:</b> the fields listed above, kept under your account and visible only to you.</li>
-    <li><b>Messenger chats:</b> the chat summaries described above — names, links, who spoke last and when, and with AI sorting on a label and a few-word reason; never message text. <b>Forget all chats</b> on the Messages page removes them immediately.</li>
+    <li><b>Messenger chats:</b> the chat summaries described above: names, links, who spoke last and when, and with AI sorting on a label and a few-word reason; never message text. <b>Forget all chats</b> on the Messages page removes them immediately.</li>
     <li><b>Comments you save:</b> the commenter names, comment text and links described above, kept under your account and visible only to you. <b>Forget</b> on the Comments page removes a post's comments immediately.</li>
   </ul>
 
@@ -99,11 +99,11 @@
     </p>
     <p>
       If you use <b>Sage</b>, <b>remix</b>, <b>Suggest reply</b> or
-      <b>Suggest a message</b> — or save comments while an AI key is set up,
+      <b>Suggest a message</b>, or save comments while an AI key is set up,
       which sends each new comment once so it can be sorted into hot lead,
-      question, praise, tag or spam — the posts, comments or messages involved are
-      sent to a third-party AI provider
-      — <b>Anthropic</b> or <b>OpenAI</b>, whichever is configured — so it can
+      question, praise, tag or spam, the posts, comments or messages involved are
+      sent to a third-party AI provider,
+      <b>Anthropic</b> or <b>OpenAI</b>, whichever is configured, so it can
       answer or rewrite. Those posts are typically written by other people, so
       you are sending someone else's public post to a third party. Both
       providers state that API content is not used to train their models, but
@@ -118,7 +118,7 @@
   <p>
     If you save your own provider API key in settings, it is stored in our
     database so it can be replayed on your requests. Unlike your password, a
-    provider key cannot be hashed — it has to be sent onward to work. Prefer
+    provider key cannot be hashed. It has to be sent onward to work. Prefer
     setting it as a server environment variable if that matters to you.
   </p>
 
@@ -132,9 +132,9 @@
 
   <h2>Who else receives data</h2>
   <ul>
-    <li><b>Render</b> — hosts the application and its database.</li>
-    <li><b>Stripe</b> — payments and subscription status.</li>
-    <li><b>Anthropic or OpenAI</b> — only when you use Sage or remix, as described above.</li>
+    <li><b>Render</b>: hosts the application and its database.</li>
+    <li><b>Stripe</b>: payments and subscription status.</li>
+    <li><b>Anthropic or OpenAI</b>: only when you use Sage or remix, as described above.</li>
   </ul>
   <p>
     There are no analytics trackers, no advertising pixels, and no third-party
