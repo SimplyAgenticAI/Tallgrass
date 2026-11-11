@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Terms — {{ app_name }}{% endblock %}
+{% block title %}Terms: {{ app_name }}{% endblock %}
 {% block head_extra %}
-{% with title="Terms — " ~ app_name,
+{% with title="Terms: " ~ app_name,
         description=app_name ~ " is a research tool operated by MacRandle Acres. It records posts you are already viewing on Facebook and ranks each one against the median engagement of its own source.",
         canonical_path="/terms" %}
 {% include "_public_meta.html" %}
@@ -28,8 +28,8 @@
 
   <h2>Your account</h2>
   <p>
-    You are responsible for your login and your API key. Do not share them —
-    anyone holding your API key can write posts into your account. If you
+    You are responsible for your login and your API key. Do not share them.
+    Anyone holding your API key can write posts into your account. If you
     believe your key has leaked, reissue it from the Account page, which
     immediately invalidates the old one.
   </p>
@@ -68,7 +68,7 @@
   </p>
   <p>
     We do not automatically refund partial periods. If something went wrong,
-    write to us — refunds are handled case by case and we would rather sort it
+    write to us. Refunds are handled case by case and we would rather sort it
     out than argue.
   </p>
   <p>
@@ -84,7 +84,7 @@
   <p>
     <b>Keep your own copy of anything you cannot lose.</b> {{ app_name }} is
     not a backup service. Depending on how your instance is hosted, captures
-    may not survive a restart — where that is the case the dashboard warns you
+    may not survive a restart. Where that is the case the dashboard warns you
     at the top of every page.
   </p>
 

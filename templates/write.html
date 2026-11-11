@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Write — {{ app_name }}{% endblock %}
+{% block title %}Write: {{ app_name }}{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -9,7 +9,7 @@
       {% if source %}
         Modelled on what actually outperformed in <b>{{ source.name }}</b>.
       {% else %}
-        Every choice here comes from posts that beat their own median — not
+        Every choice here comes from posts that beat their own median, not
         from a list of hooks somebody wrote once.
       {% endif %}
     </p>
@@ -29,7 +29,7 @@
   <p>
     Nothing captured has enough scored posts to learn from yet. A group, page
     or profile needs
-    <b>8+ posts</b> with engagement before there's a baseline — and without a
+    <b>8+ posts</b> with engagement before there's a baseline, and without a
     baseline there's no evidence of what works there.
   </p>
   <a class="btn btn-primary" href="{{ url_for('capture') }}">Capture a group</a>
@@ -105,7 +105,7 @@
                 data-graphic-brief="{{ '1' if p.id in graphic_briefs else '0' }}">
           <span class="pp-mult tier-{{ p.tier }}">{{ p.outlier_multiple }}×</span>
           <span class="pp-body">
-            {{ (p.body or 'No caption — ' + (p.post_type or 'post'))[:96] }}{% if (p.body or '')|length > 96 %}…{% endif %}
+            {{ (p.body or 'No caption: ' + (p.post_type or 'post'))[:96] }}{% if (p.body or '')|length > 96 %}…{% endif %}
           </span>
         </button>
         {% endfor %}
@@ -119,7 +119,7 @@
     <section class="glass panel reveal spotlight">
       <div class="panel-head">
         <h2><span class="step-n">3</span> Opening line</h2>
-        <span class="sub">Optional — leave it and the model chooses.</span>
+        <span class="sub">Optional. Leave it and the model chooses.</span>
       </div>
 
       {% if not hook_set.hooks %}
@@ -192,7 +192,7 @@
       <p class="fine">
         Pick how you want to work and press <b>Write it</b>. Everything you get
         back is built from the {{ scored_count }} scored
-        post{{ '' if scored_count == 1 else 's' }} here — not from a
+        post{{ '' if scored_count == 1 else 's' }} here, not from a
         template.
       </p>
     </div>

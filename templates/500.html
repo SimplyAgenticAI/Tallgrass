@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Something broke{% endblock %}
+{% block title %}{{ app_name }}: Something broke{% endblock %}
 
 {% block content %}
 <section class="empty-hero">
@@ -7,8 +7,8 @@
   {# What happened, not a shrug. The reason is recorded on the admin page, so
      the person running this can find out rather than guess. #}
   <p class="empty-lead">
-    That page hit an unexpected error. Nothing you captured has been lost —
-    the failure was in showing this page, not in storing your posts.
+    That page hit an unexpected error. Nothing you captured has been lost.
+    The failure was in showing this page, not in storing your posts.
   </p>
   <p class="empty-note">The details have been recorded for the operator.</p>
   <div class="empty-actions">

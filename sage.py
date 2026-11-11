@@ -495,11 +495,11 @@ def _ask_anthropic(config, messages):
     except anthropic.AuthenticationError:
         return None, "That Anthropic key was rejected."
     except anthropic.RateLimitError:
-        return None, "Rate limited by Anthropic — try again shortly."
+        return None, "Rate limited by Anthropic. Try again shortly."
     except anthropic.APIStatusError as exc:
         return None, f"Anthropic error ({exc.status_code}): {exc.message}"
     except anthropic.APIConnectionError:
-        return None, "Could not reach Anthropic — check your connection."
+        return None, "Could not reach Anthropic. Check your connection."
 
     if response.stop_reason == "refusal":
         return None, "Sage declined to answer that."
@@ -527,11 +527,11 @@ def _ask_openai(config, messages):
     except openai.AuthenticationError:
         return None, "That OpenAI key was rejected."
     except openai.RateLimitError:
-        return None, "Rate limited by OpenAI — try again shortly."
+        return None, "Rate limited by OpenAI. Try again shortly."
     except openai.APIStatusError as exc:
         return None, f"OpenAI error ({exc.status_code})."
     except openai.APIConnectionError:
-        return None, "Could not reach OpenAI — check your connection."
+        return None, "Could not reach OpenAI. Check your connection."
 
     text = response.choices[0].message.content
     return (text or None), (None if text else "Sage returned an empty response.")
@@ -589,13 +589,13 @@ def _stream_anthropic(config, messages):
         yield {"type": "error", "error": "That Anthropic key was rejected."}
         return
     except anthropic.RateLimitError:
-        yield {"type": "error", "error": "Rate limited by Anthropic — try again shortly."}
+        yield {"type": "error", "error": "Rate limited by Anthropic. Try again shortly."}
         return
     except anthropic.APIStatusError as exc:
         yield {"type": "error", "error": f"Anthropic error ({exc.status_code}): {exc.message}"}
         return
     except anthropic.APIConnectionError:
-        yield {"type": "error", "error": "Could not reach Anthropic — check your connection."}
+        yield {"type": "error", "error": "Could not reach Anthropic. Check your connection."}
         return
 
     if final.stop_reason == "refusal":

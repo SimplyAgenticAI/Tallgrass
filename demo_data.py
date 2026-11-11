@@ -66,7 +66,7 @@ DEMO_POSTS = [
      "Ask before you build. I clearly didn't.", "text", 7.1),
     ("Anyone else getting absolutely destroyed by shipping costs this quarter? "
      "Our margins are down 6 points and it's entirely postage.", "text", 0.5),
-    ("Quick one — what's everyone using for inventory sync these days? "
+    ("Quick one: what's everyone using for inventory sync these days? "
      "Currently on spreadsheets and it's held together with hope.", "text", 0.4),
     ("I fired our biggest client on Tuesday.\n\nThey were 40% of revenue and about "
      "110% of our stress. Two people on my team were ready to quit over them.\n\n"
@@ -81,8 +81,8 @@ DEMO_POSTS = [
     ("Our best performing ad this month was filmed on a phone in a car park. "
      "The £4k studio production did a third of the numbers.", "video", 3.1),
     ("Genuinely curious how many people here are profitable vs just busy.", "text", 0.85),
-    ("Three years in, first month over six figures. Not posting numbers to brag — "
-     "posting because in year one I read posts like this and assumed they were fake. "
+    ("Three years in, first month over six figures. Not posting numbers to brag. "
+     "Posting because in year one I read posts like this and assumed they were fake. "
      "They weren't. It just takes much longer than anyone admits.", "text", 5.4),
     ("What's your actual close rate on discovery calls? Mine's 22% and I can't tell "
      "if that's good or terrible.", "text", 0.75),

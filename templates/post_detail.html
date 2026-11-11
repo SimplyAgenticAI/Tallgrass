@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — {% if post.has_baseline %}{{ post.outlier_multiple }}× post{% else %}captured post{% endif %}{% endblock %}
+{% block title %}{{ app_name }}: {% if post.has_baseline %}{{ post.outlier_multiple }}× post{% else %}captured post{% endif %}{% endblock %}
 
 {% block content %}
 <a class="back-link" href="{{ url_for('feed') }}">← Back to feed</a>
@@ -50,15 +50,15 @@
           {{ (parent.body or 'the post')[:120] }}{% if (parent.body or '')|length > 120 %}…{% endif %}
         </a>
       {% else %}
-        <span class="reply-lab">A comment. The post it replied to wasn't captured
-        — scroll that group again with the post on screen to pick it up.</span>
+        <span class="reply-lab">A comment. The post it replied to wasn't captured.
+        Scroll that group again with the post on screen to pick it up.</span>
       {% endif %}
     </div>
     {% endif %}
 
     <p class="detail-body{{ ' is-empty' if not post.body }}">
       {%- if post.body -%}{{ post.body }}
-      {%- elif post.image_url or post.has_video -%}No caption — {{ 'video' if post.has_video else 'image' }} post
+      {%- elif post.image_url or post.has_video -%}No caption: {{ 'video' if post.has_video else 'image' }} post
       {%- else -%}No caption captured{%- endif -%}
     </p>
     {% if post.body_from_image %}
@@ -110,7 +110,7 @@
       <h3 class="replies-head">
         {{ replies|length }} preview comment{{ '' if replies|length == 1 else 's' }}
         <span class="replies-note">
-          — what Facebook showed inline, not the top ones. Comments aren't
+          What Facebook showed inline, not the top ones. Comments aren't
           ranked: only a couple are visible per post and Facebook chooses them.
         </span>
       </h3>
@@ -120,7 +120,7 @@
           <a href="{{ url_for('post_detail', post_id=reply.id) }}">
             <span class="reply-count">
               {%- if reply.engagement_known -%}{{ "{:,}".format(reply.total_engagement) }}
-              {%- else -%}&mdash;{%- endif -%}
+              {%- else -%}-{%- endif -%}
             </span>
             <span class="reply-body">{{ (reply.body or 'No text captured')[:140] }}</span>
           </a>
@@ -156,7 +156,7 @@
     </a>
     <p class="fine">
       Facebook only exposes a post's own link on hover, so this one wasn't
-      captured — this opens the {{ post.source_kind or 'source' }} instead.
+      captured. This opens the {{ post.source_kind or 'source' }} instead.
     </p>
     {% endif %}
   </div>
@@ -164,7 +164,7 @@
   <div class="glass remix-panel reveal spotlight">
     <h2>Remix this post</h2>
     <p class="sub">
-      Generate new posts that reuse what made this one work — the same mechanic,
+      Generate new posts that reuse what made this one work: the same mechanic,
       your subject, new specifics.
     </p>
 
@@ -224,7 +224,7 @@
       </label>
       {% endfor %}
       <p class="fine remix-mode-note">
-        The first keeps the subject — a post about bees stays about bees. The
+        The first keeps the subject: a post about bees stays about bees. The
         second borrows only the mechanic and writes about what you do.
       </p>
     </fieldset>

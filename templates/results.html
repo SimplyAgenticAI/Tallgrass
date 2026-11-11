@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — My results{% endblock %}
+{% block title %}{{ app_name }}: My results{% endblock %}
 
 {% block content %}
 <section class="feed-head">
@@ -29,7 +29,7 @@
   {% include "_empty_mark.html" %}
   <p>
     No captured posts by {{ r.names | join(' or ') }} yet. Scan a group you've
-    posted in — your posts are picked up with everybody else's.
+    posted in. Your posts are picked up with everybody else's.
   </p>
   <a class="btn btn-ghost" href="{{ url_for('settings') }}#my-posts">Check your name</a>
 </div>
@@ -40,7 +40,7 @@
     {% if r.overall.median is not none %}
     <span class="stat-value">{{ r.overall.median }}</span><span class="stat-unit">×</span>
     {% else %}
-    <span class="stat-value stat-none">—</span>
+    <span class="stat-value stat-none">-</span>
     {% endif %}
     <span class="stat-label">Your typical post</span>
   </div>
@@ -48,7 +48,7 @@
     {% if r.overall.best is not none %}
     <span class="stat-value">{{ r.overall.best }}</span><span class="stat-unit">×</span>
     {% else %}
-    <span class="stat-value stat-none">—</span>
+    <span class="stat-value stat-none">-</span>
     {% endif %}
     <span class="stat-label">Your best</span>
   </div>
@@ -79,9 +79,9 @@
     <tr>
       <td>{{ m.label }}</td>
       <td>{{ m.count }}</td>
-      <td>{% if m.median is not none %}{{ m.median }}×{% else %}—{% endif %}</td>
-      <td>{% if m.best is not none %}{{ m.best }}×{% else %}—{% endif %}</td>
-      <td>{% if m.scored %}{{ m.beat }} of {{ m.scored }}{% else %}—{% endif %}</td>
+      <td>{% if m.median is not none %}{{ m.median }}×{% else %}-{% endif %}</td>
+      <td>{% if m.best is not none %}{{ m.best }}×{% else %}-{% endif %}</td>
+      <td>{% if m.scored %}{{ m.beat }} of {{ m.scored }}{% else %}-{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>
@@ -97,7 +97,7 @@
       <td>{{ g.name }}</td>
       <td>{{ g.count }}</td>
       <td>{% if g.median is not none %}{{ g.median }}×{% else %}Needs more data{% endif %}</td>
-      <td>{% if g.best is not none %}{{ g.best }}×{% else %}—{% endif %}</td>
+      <td>{% if g.best is not none %}{{ g.best }}×{% else %}-{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>

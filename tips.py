@@ -32,7 +32,7 @@ CRAFT = [
     "Ask of any winner: would this still work next month with different "
     "specifics? If it only worked because of the moment, there is nothing in it "
     "to reuse.",
-    "The median, not the average — so one viral post in a group can't drag "
+    "The median, not the average, so one viral post in a group can't drag "
     "everything else down to looking ordinary.",
     "Comments and shares are weighted heavier than reactions, because they cost "
     "the reader more than a tap.",
@@ -43,7 +43,7 @@ CRAFT = [
 # What a particular page is for, said where somebody is standing in it.
 BY_PAGE = {
     "feed": "The notch on each card is that group's median. The glow is how far "
-            "the post cleared it — so you can see the story without reading a "
+            "the post cleared it, so you can see the story without reading a "
             "number.",
     "groups": '"Needs more data" never means a group did badly. It means too '
               "few of its posts could be read to know what normal is there.",
@@ -59,7 +59,7 @@ BY_PAGE = {
     # worth repeating where the drafts are.
     "comments": "Nothing here is ever sent for you. Every draft waits for you "
                 "to read it, change it, and press the button yourself.",
-    "library": "Saved posts and remixes are kept for good — they are never aged "
+    "library": "Saved posts and remixes are kept for good. They are never aged "
                "out, whatever happens to the rest of a group's history.",
 }
 
@@ -199,7 +199,7 @@ def deep(user, active=None, urls=None):
     if breakouts:
         tips.append(_fact(
             "You have %d post%s at 5× or better. Those are the ones worth "
-            "taking apart — Write builds on one rather than starting cold."
+            "taking apart. Write builds on one rather than starting cold."
             % (breakouts, "" if breakouts == 1 else "s"),
             urls.get("write")))
 

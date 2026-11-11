@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} — Feed{% endblock %}
+{% block title %}{{ app_name }}: Feed{% endblock %}
 
 {% block content %}
 
@@ -18,8 +18,7 @@
 
     <h1>Nothing captured yet</h1>
     <p class="empty-lead">
-      Tallgrass ranks posts by how far they beat the median post in their own group —
-      so a breakout in a small group outranks a mediocre post from a big page.
+      Tallgrass ranks posts by how far they beat the median post in their own group, so a breakout in a small group outranks a mediocre post from a big page.
       To do that it needs posts, and posts come from the extension.
     </p>
 
@@ -48,11 +47,11 @@
   <div class="glass notice reveal sample-banner">
     <b>This is sample data, so you can see how {{ app_name }} works.</b>
     Three made-up groups, {{ sample_count }} posts, scored exactly the way your
-    own will be — ranked against the median of the group they came from, not
+    own will be, ranked against the median of the group they came from, not
     against each other.
     <p class="fine" style="margin:9px 0 0">
       Open any post to see why it beat its group, or try
-      <a href="{{ url_for('write_page') }}">Write</a> — it works on this data now.
+      <a href="{{ url_for('write_page') }}">Write</a>. It works on this data now.
       Your first real scan hides all of it automatically, and
       <a href="{{ url_for('settings') }}">Settings</a> wipes it whenever you
       like.
@@ -72,7 +71,7 @@
       {% else %}
       {# Nothing is scored, so there is no biggest outlier. Showing a dash beats
          showing a multiple computed from a baseline the app itself rejected. #}
-      <span class="stat-value stat-none">—</span>
+      <span class="stat-value stat-none">-</span>
       <span class="stat-label">
         Biggest outlier
         <span class="stat-hint">nothing scored yet</span>
@@ -111,7 +110,7 @@
     from them.
     <p class="fine" style="margin:9px 0 0">
       Almost always this means they were captured by an older build of the
-      extension. Counts are read once, when a post is captured — an existing
+      extension. Counts are read once, when a post is captured. An existing
       row does not heal itself. Update the extension, wipe what is here, and
       scan the group again.
     </p>
@@ -132,7 +131,7 @@
           Unscored captures follow, ordered by raw engagement.
           {% endif %}
         {% else %}
-          Ranked by raw engagement — no group has a baseline yet.
+          Ranked by raw engagement. No group has a baseline yet.
         {% endif %}
       </p>
     </div>
@@ -171,7 +170,7 @@
            engagement" is a real change in what the ordering means. #}
         <div class="list-divider">
           <span>
-            Not scored yet — {{ unscored_visible }} below, ranked by raw engagement
+            Not scored yet: {{ unscored_visible }} below, ranked by raw engagement
             {%- if total_unscored > unscored_visible %} ({{ total_unscored }} in total){% endif %}
           </span>
         </div>
@@ -205,8 +204,8 @@
     {% if tier_filter != 'all' and unscored_count %}
       <p>
         No posts in the <b>{{ tier_filter }}</b> band. Only scored posts can land
-        in a band, and {{ unscored_count }} of your captures aren't scored yet —
-        their groups need more posts, or were captured without engagement counts.
+        in a band, and {{ unscored_count }} of your captures aren't scored yet.
+        Their groups need more posts, or were captured without engagement counts.
       </p>
       <a class="btn btn-primary" href="{{ url_for('feed') }}">Show all posts</a>
     {% elif tier_filter != 'all' %}

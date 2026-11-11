@@ -74,7 +74,7 @@ def _contradiction(baseline, peak):
     """The one sentence for a median a single post has already disproved."""
     return ("A typical post here scores %s, but one of them scored %s. A "
             "median that far below a single post is a reading failure, not a "
-            "quiet room — scan it again before judging it."
+            "quiet room. Scan it again before judging it."
             % (round(baseline, 1), _number(peak)))
 
 
@@ -207,7 +207,7 @@ def of(source, stats, newest=None, now=None):
                 verdict,
                 "The newest post captured here is %d days old, but one of them "
                 "scored %s. That reads as a thin capture rather than a quiet "
-                "room — scan it again before judging it."
+                "room. Scan it again before judging it."
                 % (int(days), _number(peak)))
         verdict["band"] = "dead"
         verdict["why"].append(
@@ -224,7 +224,7 @@ def of(source, stats, newest=None, now=None):
         verdict["band"] = "dead"
         verdict["label"] = LABELS["dead"]
         verdict["why"].append(
-            "A typical post here scores %s — below %d, which is where scoring "
+            "A typical post here scores %s, below %d, which is where scoring "
             "itself stops trusting a median."
             % (round(baseline, 1), outliers.MIN_BASELINE))
         verdict["why"].append(

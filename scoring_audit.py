@@ -33,7 +33,7 @@ import outliers
 # because they cost the reader the most effort.
 WEIGHT_SCHEMES = [
     ("current", (1, 3, 5), "What ships today."),
-    ("flat", (1, 1, 1), "No distinction at all — every interaction equal."),
+    ("flat", (1, 1, 1), "No distinction at all: every interaction equal."),
     ("mild", (1, 2, 3), "Same ordering, half the spread."),
     ("share-heavy", (1, 3, 10), "Shares worth double what they are now."),
     ("comment-heavy", (1, 5, 3), "Comments as the strongest signal, not shares."),

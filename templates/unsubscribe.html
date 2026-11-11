@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Email preferences — {{ app_name }}</title>
+<title>Email preferences: {{ app_name }}</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,7 +31,7 @@
     {% if not ok %}
     <h1>That link didn't work</h1>
     <p class="auth-sub">
-      It may have been cut in half by an email client — they sometimes wrap
+      It may have been cut in half by an email client. They sometimes wrap
       long links. You can turn these emails off from
       <a href="{{ url_for('settings') }}">Settings</a> once you're signed in,
       or just reply to any email from us and we'll do it.
@@ -48,7 +48,7 @@
     </p>
 
     {% else %}
-    <h1>Done — no more emails</h1>
+    <h1>Done. No more emails</h1>
     <p class="auth-sub">
       No more getting-started emails and no weekly brief. Your account is
       untouched and everything in it still works.

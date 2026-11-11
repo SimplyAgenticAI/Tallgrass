@@ -23,7 +23,7 @@
     <span class="badge-num">
       <span class="raw-count">
         {%- if post.engagement_known -%}{{ "{:,}".format(post.total_engagement) }}
-        {%- else -%}&mdash;{%- endif -%}
+        {%- else -%}-{%- endif -%}
       </span>
     </span>
     <span class="badge-label">
@@ -55,7 +55,7 @@
       <span class="type-chip">{{ post.post_type }}</span>
       {% endif %}
       {% if post.is_demo %}
-      <span class="demo-chip" title="Generated sample content — not a real Facebook post">sample</span>
+      <span class="demo-chip" title="Generated sample content, not a real Facebook post">sample</span>
       {% endif %}
       {% if post.age_label %}
       {# The age, not a verdict on it. "Still climbing" asserted the post was
@@ -86,7 +86,7 @@
         {%- if post.body -%}
           {{ post.body }}
         {%- elif post.image_url or post.has_video -%}
-          No caption — {{ 'video' if post.has_video else 'image' }} post
+          No caption: {{ 'video' if post.has_video else 'image' }} post
         {%- else -%}
           No caption captured
         {%- endif -%}
