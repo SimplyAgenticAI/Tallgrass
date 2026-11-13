@@ -57,10 +57,13 @@ def main():
     db.init_db()
 
     me = appmod.app.test_client()
+    reg = me.get("/register").get_data(as_text=True)
+    rtok = re.search(r'name="csrf_token" value="([^"]+)"', reg).group(1)
     me.post("/register", data={"email": "me@example.com",
                                "password": "a-long-enough-pass",
                                "password_confirm": "a-long-enough-pass",
-                               "username": "birchwood"})
+                               "username": "birchwood",
+                               "csrf_token": rtok})
     page = me.get("/").get_data(as_text=True)
     with me.session_transaction() as s:
         key = s["fresh_api_key"]

@@ -10,6 +10,7 @@ a stranger which email addresses have accounts here.
 Run: python tests/reset.test.py
 """
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -211,8 +212,10 @@ def main():
     print("the request form answers identically either way")
     auth._RESETS.clear()
     client = appmod.app.test_client()
-    real = client.post("/forgot", data={"email": "locked@example.com"})
-    fake = client.post("/forgot", data={"email": "nobody@example.com"})
+    form = client.get("/forgot").get_data(as_text=True)
+    tok = re.search(r'name="csrf_token" value="([^"]+)"', form).group(1)
+    real = client.post("/forgot", data={"email": "locked@example.com", "csrf_token": tok})
+    fake = client.post("/forgot", data={"email": "nobody@example.com", "csrf_token": tok})
     check("same status", real.status_code, fake.status_code)
     check("same page", real.data, fake.data)
     check("and it does not confirm the account exists",
@@ -228,7 +231,7 @@ def main():
     os.environ["SMTP_USER"] = "someone@example.com"
     os.environ["SMTP_PASS"] = "not-a-real-password"
     check("it believes it is configured", mailer.is_configured(), True)
-    failed = client.post("/forgot", data={"email": "locked@example.com"})
+    failed = client.post("/forgot", data={"email": "locked@example.com", "csrf_token": tok})
     check("the page still renders", failed.status_code, 200)
     check("but it does NOT tell them to check their inbox and wait",
           b"This instance can't send email yet" in failed.data, True)

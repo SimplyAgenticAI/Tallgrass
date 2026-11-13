@@ -1,0 +1,25 @@
+{# Three steps, ticked from the database in app._first_run.
+
+   Shown on the feed until install, a real scan, and a remix have all
+   happened. Nothing here is dismissed by hand. #}
+<section class="glass panel reveal first-run" aria-label="Your first three steps">
+  <span class="next-step-eyebrow">Start here</span>
+  <h2>Three steps to your first breakout</h2>
+  <p class="fine">Install from the store, scan one group, then remix the post that beat it.</p>
+  <ol class="first-run-steps">
+    {% for step in first_run %}
+    <li class="first-run-step{% if step.done %} is-done{% elif step.current %} is-now{% endif %}"
+        data-step="{{ step.key }}" data-done="{{ '1' if step.done else '0' }}">
+      <span class="first-run-mark" aria-hidden="true">{% if step.done %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+      <div>
+        <h3>{{ step.title }}</h3>
+        <p class="fine">{{ step.body }}</p>
+        {% if step.current and step.cta and step.href %}
+        <a class="btn btn-primary" href="{{ step.href }}"
+           {% if step.external %}target="_blank" rel="noopener"{% endif %}>{{ step.cta }}</a>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>

@@ -29,11 +29,15 @@ def check(name, got, want=True):
 
 
 def sign_up(client, email, username):
+    import re
+    page = client.get("/register").get_data(as_text=True)
+    tok = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
     return client.post("/register", data={
         "email": email,
         "password": "a-long-enough-pass",
         "password_confirm": "a-long-enough-pass",
         "username": username,
+        "csrf_token": tok,
     })
 
 
@@ -96,6 +100,7 @@ def main():
     check("the click is recorded", step(funnel.report(), "store_click")["count"], 1)
     signed_out = appmod.app.test_client().get("/go/store")
     check("a signed-out click still reaches the store", signed_out.status_code, 302)
+    check("and is not counted", step(funnel.report(), "store_click")["count"], 1)
     # Tests run as a local dashboard, which has no store button to render, so
     # the hosted template is checked at the source.
     here = os.path.dirname(os.path.abspath(__file__))

@@ -11,7 +11,10 @@
 {% block content %}
 <section class="legal">
   <h1>Privacy Policy</h1>
-  <p class="legal-date">Last updated {{ updated }}</p>
+  <p class="legal-date">Last updated {{ privacy_31_updated if privacy_extension_31 else updated }}</p>
+  {% if privacy_extension_31 %}
+  {% include "_privacy_31.html" %}
+  {% else %}
 
   <p class="legal-lede">
     {{ app_name }} reads posts you are already looking at on Facebook and
@@ -188,5 +191,6 @@
     <a href="mailto:{{ support_email }}">{{ support_email }}</a>.
   </p>
   <p class="legal-foot">{{ app_name }} {{ app_parent }}.</p>
+  {% endif %}
 </section>
 {% endblock %}

@@ -32,24 +32,26 @@ log = logging.getLogger("tallgrass.demo")
 
 SEED = 20260807  # fixed so the demo set is identical on every machine
 
+# Real estate is one example, not the whole set. The homepage sample uses
+# the same spread: one property group, one local business, one coaching group.
 DEMO_SOURCES = [
     {
         "fb_id": "demo-group-ecom",
         "kind": "group",
-        "name": "[DEMO] Ecommerce Founders UK",
-        "member_count": 24800,
+        "name": "[DEMO] Title & Escrow Pros",
+        "member_count": 8400,
     },
     {
         "fb_id": "demo-group-agency",
         "kind": "group",
-        "name": "[DEMO] Agency Owners Lounge",
-        "member_count": 9100,
+        "name": "[DEMO] Main Street Owners",
+        "member_count": 12600,
     },
     {
         "fb_id": "demo-group-local",
         "kind": "group",
-        "name": "[DEMO] Local Service Business Growth",
-        "member_count": 41200,
+        "name": "[DEMO] Creator Coaching Circle",
+        "member_count": 19200,
     },
 ]
 

@@ -36,6 +36,12 @@
      last looked. #}
   {% include "_whats_new.html" %}
 
+  {% if first_run %}
+    {% include "_first_run.html" %}
+  {% elif next_step %}
+    {% with step = next_step %}{% include "_next_step.html" %}{% endwith %}
+  {% endif %}
+
   {% if not real_count and sample_count %}
   {# Everything below is the sample set, which a new account is given so the
      product can be seen working before anybody is asked to install anything.
@@ -57,10 +63,6 @@
       like.
     </p>
   </div>
-  {% endif %}
-
-  {% if next_step %}
-    {% with step = next_step %}{% include "_next_step.html" %}{% endwith %}
   {% endif %}
 
   <section class="stat-row">

@@ -42,11 +42,15 @@ def check(name, got, want=True):
 
 def sign_up(client, email, username):
     """Register through the real form. Returns the response."""
+    import re
+    page = client.get("/register").get_data(as_text=True)
+    tok = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
     return client.post("/register", data={
         "email": email,
         "password": "a-long-enough-pass",
         "password_confirm": "a-long-enough-pass",
         "username": username,
+        "csrf_token": tok,
     })
 
 
@@ -101,6 +105,10 @@ def main():
     check("the banner is shown", "This is sample data" in page, True)
     check("  and points at the real next step",
           "Scan your first group" in page, True)
+    check("the first step is still install",
+          'data-step="install" data-done="0"' in page, True)
+    check("  with the store button", 'href="/go/store"' in page and "Add to Chrome" in page, True)
+    check("remix has not happened", 'data-step="remix" data-done="0"' in page, True)
 
     print()
     print("the payoff page works immediately")
@@ -168,12 +176,20 @@ def main():
           "A post somebody actually captured." in after, True)
     check("the sample banner is gone", "This is sample data" in after, False)
     check("and so are the sample cards",
-          "Ecommerce Founders" in after, False)
+          "Creator Coaching Circle" in after, False)
     # Hidden, not deleted — they are still reachable behind the filter, and
     # Settings is still the thing that removes them.
     shown = newbie.get("/?samples=1").get_data(as_text=True)
     check("but they are hidden, not destroyed",
-          "Ecommerce Founders" in shown, True)
+          "Creator Coaching Circle" in shown, True)
+    check("a real scan ticks install and the scan",
+          'data-step="install" data-done="1"' in after
+          and 'data-step="scan" data-done="1"' in after, True)
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO remixes (output, user_id) VALUES ('a variant', 1)")
+    finished = newbie.get("/").get_data(as_text=True)
+    check("a remix retires the checklist", 'data-step="install"' not in finished, True)
 
     print()
     print("a failure to seed never costs somebody their account")

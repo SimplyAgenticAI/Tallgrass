@@ -1,10 +1,22 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }}: Not found{% endblock %}
+{% block title %}Page not found: {{ app_name }}{% endblock %}
+{% block head_extra %}
+<meta name="robots" content="noindex">
+{% endblock %}
 
 {% block content %}
 <section class="empty-hero">
-  <h1>Not found</h1>
-  <p class="empty-lead">That post or group isn't in the database.</p>
-  <a class="btn btn-primary" href="{{ url_for('feed') }}">Back to the feed</a>
+  <h1>Page not found</h1>
+  <p class="empty-lead">
+    That page isn't here. The address may be mistyped, or the link may be old.
+  </p>
+  <div class="empty-actions">
+    {% if user %}
+    <a class="btn btn-primary" href="{{ url_for('feed') }}">Back to the feed</a>
+    {% else %}
+    <a class="btn btn-primary" href="{{ url_for('feed') }}">Home</a>
+    <a class="btn btn-ghost" href="{{ url_for('login') }}">Sign in</a>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}

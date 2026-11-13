@@ -2390,6 +2390,36 @@ body.score-help-open { overflow: hidden; }
   .scan-demo { width: 100%; }
 }
 
+/* Three steps on a new account's feed. Ticked from real state. */
+.first-run { margin-bottom: 18px; }
+.first-run h2 { margin: 0 0 6px; font-size: 18px; }
+.first-run > .fine { margin: 0; max-width: 62ch; }
+.first-run-steps {
+  list-style: none; margin: 16px 0 0; padding: 0;
+  display: grid; gap: 10px;
+}
+.first-run-step {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px; border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.first-run-step.is-now { border-color: var(--border-lit); }
+.first-run-step.is-done { opacity: 0.72; }
+.first-run-mark {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700;
+  background: rgba(255, 255, 255, 0.04); color: var(--text-muted);
+}
+.first-run-step.is-done .first-run-mark { background: var(--emerald); color: #04170e; }
+.first-run-step.is-now .first-run-mark {
+  background: rgba(52, 211, 153, 0.16); color: var(--emerald-bright);
+}
+.first-run-step h3 { margin: 2px 0 4px; font-size: 15px; }
+.first-run-step .fine { margin: 0 0 10px; }
+.first-run-step.is-done .fine { margin-bottom: 0; }
+.first-run-step .btn { margin-top: 2px; }
+
 /* ------------------------------------------------------------ feedback */
 
 .fb-compose { display: grid; gap: 10px; margin-bottom: 16px; }
@@ -2716,6 +2746,17 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   border: 1px solid var(--border-lit); background: transparent; color: var(--text);
 }
 .lp-reassure { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
+.lp-byok {
+  margin: 18px 0 0; max-width: 62ch;
+  color: var(--text-muted); font-size: 14.5px; line-height: 1.55;
+}
+.public-foot {
+  max-width: 1180px; margin: 0 auto; padding: 0 30px 36px;
+}
+.public-foot .lp-foot { margin-top: 0; }
+.auth-byok {
+  margin: -8px 0 18px; font-size: 13px; line-height: 1.5; color: var(--text-muted);
+}
 
 /* The feed preview. Its own classes rather than .post-card, which expects
    real rows plus the scripts that count the multiple up and sweep the ring. */
@@ -2842,6 +2883,7 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
 .lp-pipeline { max-width: 420px; margin: 28px auto 0; }
 
 .lp-final { text-align: center; padding: 44px 24px; border-radius: var(--r-xl); margin-top: 56px; }
+.lp-final .lp-cta-row { margin-top: 0; }
 .lp-final h2 { margin: 0; font-size: clamp(22px, 3.2vw, 30px); }
 .lp-final p { margin: 10px 0 24px; color: var(--text-muted); font-size: 14.5px; }
 

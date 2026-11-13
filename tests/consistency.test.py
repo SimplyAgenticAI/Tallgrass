@@ -9,6 +9,7 @@ These are the bugs this file exists to prevent, all reported from real use:
 
 Run: python tests/consistency.test.py
 """
+import json
 import os
 import re
 import sys
@@ -162,6 +163,7 @@ def main():
     sitemap = anon.get("/sitemap.xml").get_data(as_text=True)
     check("sitemap.xml", anon.get("/sitemap.xml").status_code, 200)
     for loc in ("https://tallgrassapp.com/",
+                "https://tallgrassapp.com/welcome",
                 "https://tallgrassapp.com/pricing",
                 "https://tallgrassapp.com/privacy",
                 "https://tallgrassapp.com/terms"):
@@ -202,6 +204,105 @@ def main():
     feed = c.get("/").get_data(as_text=True)
     check("the signed-in feed is not tagged as a marketing page",
           'property="og:title"' not in feed and 'rel="canonical"' not in feed, True)
+
+    print()
+    print("the homepage sells the store, and more than one kind of group")
+    check("Add to Chrome is on the hero and the close", home.count("Add to Chrome") >= 2, True)
+    check("each one goes through /go/store", home.count('href="/go/store"') >= 2, True)
+    check("signup is still offered", "Get started free" in home, True)
+    check("the sample is called Tallgrass feed", "Tallgrass feed" in home, True)
+    check("the old sample label is gone", "Outlier feed" not in home, True)
+    check("one real estate example remains", "Title &amp; Escrow Pros" in home, True)
+    check("a local business group is there too", "Main Street Owners" in home, True)
+    check("and a creator group", "Creator Coaching Circle" in home, True)
+    check("twitter card is a large image", "summary_large_image" in home, True)
+    check("og:image points at the brand image",
+          'property="og:image"' in home and "og.png" in home, True)
+    blob = re.search(r'<script type="application/ld\+json">(.*?)</script>', home, re.S)
+    check("the homepage carries SoftwareApplication JSON-LD", blob is not None, True)
+    if blob:
+        data = json.loads(blob.group(1))
+        prices = sorted(offer["price"] for offer in data["offers"])
+        check("offers are Free, Pro monthly and Pro yearly", prices, ["0", "19", "190"])
+    check("no FAQ schema without an FAQ section", "FAQPage" not in home, True)
+
+    saved_keys = {}
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        if key in os.environ:
+            saved_keys[key] = os.environ.pop(key)
+    try:
+        bare = anon.get("/").get_data(as_text=True)
+        reg = anon.get("/register").get_data(as_text=True)
+        check("without a server key, the homepage says you bring your own",
+              "You bring your own AI key" in bare, True)
+        check("register says the same", "You bring your own AI key" in reg, True)
+        os.environ["ANTHROPIC_API_KEY"] = "sk-test-only"
+        hosted = anon.get("/").get_data(as_text=True)
+        reg_on = anon.get("/register").get_data(as_text=True)
+        check("with a server key, the homepage does not demand one",
+              "You bring your own AI key" not in hosted, True)
+        check("  and says drafting is included", "AI drafting is included" in hosted, True)
+        check("register follows", "You bring your own AI key" not in reg_on, True)
+    finally:
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        for key, value in saved_keys.items():
+            os.environ[key] = value
+
+    print()
+    print("signed-out marketing pages do not wear the app nav")
+    for path in ("/pricing", "/privacy", "/terms"):
+        html = anon.get(path).get_data(as_text=True)
+        check("signed-out %s uses the marketing bar" % path, 'class="lp-bar"' in html, True)
+        check("  %s has no app nav" % path, 'class="topnav"' not in html, True)
+        check("  %s has no version pill" % path, "version-pill" not in html, True)
+    missing = anon.get("/no-such-page-anywhere")
+    missing_html = missing.get_data(as_text=True)
+    check("an unknown URL is a 404", missing.status_code, 404)
+    check("  that says page not found", "Page not found" in missing_html, True)
+    check("  and does not pretend it was a missing post",
+          "isn't in the database" not in missing_html, True)
+    check("  with noindex", 'name="robots" content="noindex"' in missing_html, True)
+    check("  and the header", missing.headers.get("X-Robots-Tag"), "noindex")
+    check("  marketing bar for a stranger", 'class="lp-bar"' in missing_html, True)
+    check("  a way home", ">Home</a>" in missing_html, True)
+    check("  and a way to sign in", ">Sign in</a>" in missing_html, True)
+    signed_missing = c.get("/no-such-page-anywhere")
+    signed_html = signed_missing.get_data(as_text=True)
+    check("a signed-in 404 keeps the app nav", 'class="topnav"' in signed_html, True)
+    check("  and links back to the feed", "Back to the feed" in signed_html, True)
+    check("signed-in pricing keeps the app nav",
+          'class="topnav"' in c.get("/pricing").get_data(as_text=True), True)
+
+    priv = anon.get("/privacy").get_data(as_text=True)
+    check("live privacy still names Messenger", 'id="messenger"' in priv, True)
+    check("live privacy date is unchanged", "16 September 2026" in priv, True)
+    check("the 31.0 date is not live", "13 November 2026" not in priv, True)
+    was_flag = app.PRIVACY_EXTENSION_31
+    app.PRIVACY_EXTENSION_31 = True
+    try:
+        drafted = anon.get("/privacy").get_data(as_text=True)
+    finally:
+        app.PRIVACY_EXTENSION_31 = was_flag
+    check("the draft drops the Messenger section", 'id="messenger"' not in drafted, True)
+    check("the draft drops comment saving", "Save comments" not in drafted, True)
+    check("the draft date is the new one", "13 November 2026" in drafted, True)
+    check("the draft still says what a scan collects",
+          "while a scan is running" in drafted, True)
+
+    ico = anon.get("/favicon.ico")
+    apple = anon.get("/apple-touch-icon.png")
+    check("favicon.ico is served", ico.status_code, 200)
+    check("  as an image", (ico.mimetype or "").startswith("image/"), True)
+    check("apple-touch-icon is served", apple.status_code, 200)
+    check("  as a png", apple.mimetype, "image/png")
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    listing = open(os.path.join(root, "extension", "STORE_LISTING.md"), encoding="utf-8").read()
+    check("the 31.0 listing ranks against the median", "median" in listing.lower(), True)
+    check("  and says the key is yours", "your own" in listing.lower(), True)
+    check("  and does not sell comment saving", "Save comments" not in listing, True)
+    check("the store zip script is there",
+          os.path.isfile(os.path.join(root, "extension", "package_store_zip.sh")), True)
 
     plain = app.app.test_client()
     ptok = re.search(r'name="csrf_token" value="([^"]+)"',
