@@ -89,8 +89,8 @@ take three weeks.
 
 The block below is the live 30.1 listing. For the 31.0 package, paste the
 short description, full description, and single-purpose line from
-`extension/STORE_LISTING.md` instead. Build that zip with
-`sh extension/package_store_zip.sh`. The permission table further down
+`docs/STORE_LISTING_31.md` instead. Build that zip with
+`sh scripts/package_store_zip.sh`. The permission table further down
 still applies: 31.0 does not add a permission.
 
 **Item name**

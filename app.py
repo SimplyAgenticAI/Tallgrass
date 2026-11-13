@@ -75,7 +75,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.2"
+APP_VERSION = "33.3"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -155,7 +155,7 @@ LEGAL_UPDATED = "16 September 2026"
 # Extension 31.0 drops Messenger and comment saving. The live privacy page
 # still describes both, because the store listing reviewers open is 30.1,
 # which still does them. The replacement is templates/_privacy_31.html.
-# extension/PRIVACY_AFTER_31.md says how to switch it on.
+# docs/PRIVACY_AFTER_31.md says how to switch it on.
 #
 # Leave this False until 31.0 is approved. Privacy then shows
 # PRIVACY_31_UPDATED. Terms stay on LEGAL_UPDATED, which this does not bump.

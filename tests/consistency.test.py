@@ -297,12 +297,12 @@ def main():
     check("  as a png", apple.mimetype, "image/png")
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    listing = open(os.path.join(root, "extension", "STORE_LISTING.md"), encoding="utf-8").read()
+    listing = open(os.path.join(root, "docs", "STORE_LISTING_31.md"), encoding="utf-8").read()
     check("the 31.0 listing ranks against the median", "median" in listing.lower(), True)
     check("  and says the key is yours", "your own" in listing.lower(), True)
     check("  and does not sell comment saving", "Save comments" not in listing, True)
     check("the store zip script is there",
-          os.path.isfile(os.path.join(root, "extension", "package_store_zip.sh")), True)
+          os.path.isfile(os.path.join(root, "scripts", "package_store_zip.sh")), True)
 
     plain = app.app.test_client()
     ptok = re.search(r'name="csrf_token" value="([^"]+)"',

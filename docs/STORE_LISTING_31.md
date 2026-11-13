@@ -8,14 +8,16 @@ until then.
 Build the zip from the repo root:
 
 ```sh
-sh extension/package_store_zip.sh
+sh scripts/package_store_zip.sh
 ```
 
 `manifest.json` is at the archive root. The zip is not stamped with a
 dashboard origin. Do not upload the file from `/extension/download`.
 
-The manifest `description` and the short description below are the same
-string (98 characters, store limit 132).
+The manifest `description` stays the sentence already in `extension/manifest.json`
+(version 31.0). The short description below is the store listing field, which
+has the same 132 character cap. Do not bump the manifest version for this
+copy. The package is already 31.0, ahead of the live 30.1 listing.
 
 ## Short description
 
@@ -62,5 +64,5 @@ Privacy policy URL, unchanged until you switch the draft on:
 https://tallgrassapp.com/privacy
 ```
 
-After 31.0 is approved, follow `extension/PRIVACY_AFTER_31.md` before you
+After 31.0 is approved, follow `docs/PRIVACY_AFTER_31.md` before you
 point the listing at a policy that no longer mentions Messenger.
