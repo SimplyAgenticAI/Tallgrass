@@ -81,6 +81,14 @@ function emptyPage() {
     innerWidth: 1280, innerHeight: 800
   };
   global.matchMedia = global.window.matchMedia;
+  /* Node 20, which CI runs, has no navigator. Node 22 does. The script reads
+     it while loading, to label the install shortcut, so the stand-in browser
+     has to provide one or that read throws and every handler after it is lost. */
+  global.navigator = {
+    platform: "Linux",
+    userAgent: "node",
+    clipboard: { writeText: function () { return Promise.resolve(); } }
+  };
   global.performance = { now: function () { return 0; } };
   global.requestAnimationFrame = function (fn) { return setTimeout(fn, 0); };
   global.IntersectionObserver = function () {
