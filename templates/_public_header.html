@@ -1,0 +1,22 @@
+<header class="lp-bar">
+  <a class="brand" href="{{ url_for('feed') }}">
+    <span class="brand-mark">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="5" cy="18" r="1.8"/><circle cx="9" cy="16" r="1.8"/>
+        <circle cx="13" cy="17" r="1.8"/><circle cx="17" cy="15" r="1.8"/>
+        <circle class="mark-outlier" cx="19" cy="5" r="2.6"/>
+      </svg>
+    </span>
+    <span class="brand-text">
+      <span class="brand-name">{{ app_name }}</span>
+      <span class="brand-parent">{{ app_parent }}</span>
+    </span>
+  </a>
+  <nav class="lp-bar-links">
+    <a href="{{ url_for('pricing') }}">Pricing</a>
+    <a href="{{ url_for('login') }}">Sign in</a>
+    {% if allow_signups %}
+    <a class="btn btn-primary lp-bar-cta" href="{{ url_for('register') }}">Get started</a>
+    {% endif %}
+  </nav>
+</header>

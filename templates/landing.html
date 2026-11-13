@@ -24,6 +24,9 @@
 {% include "_public_meta.html" %}
 {% endwith %}
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="icon" href="{{ url_for('favicon_ico') }}" sizes="any">
+<link rel="apple-touch-icon" href="{{ url_for('apple_touch_icon') }}">
+<script type="application/ld+json">{{ software_jsonld | tojson }}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400..800&display=swap">
@@ -34,28 +37,7 @@
 <div class="ambient"></div>
 <canvas id="field" class="field" aria-hidden="true"></canvas>
 
-<header class="lp-bar">
-  <a class="brand" href="{{ url_for('feed') }}">
-    <span class="brand-mark">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="5" cy="18" r="1.8"/><circle cx="9" cy="16" r="1.8"/>
-        <circle cx="13" cy="17" r="1.8"/><circle cx="17" cy="15" r="1.8"/>
-        <circle class="mark-outlier" cx="19" cy="5" r="2.6"/>
-      </svg>
-    </span>
-    <span class="brand-text">
-      <span class="brand-name">{{ app_name }}</span>
-      <span class="brand-parent">{{ app_parent }}</span>
-    </span>
-  </a>
-  <nav class="lp-bar-links">
-    <a href="{{ url_for('pricing') }}">Pricing</a>
-    <a href="{{ url_for('login') }}">Sign in</a>
-    {% if allow_signups %}
-    <a class="btn btn-primary lp-bar-cta" href="{{ url_for('register') }}">Get started</a>
-    {% endif %}
-  </nav>
-</header>
+{% include "_public_header.html" %}
 
 <main class="lp">
 
@@ -73,6 +55,7 @@
       next one.
     </p>
     <div class="lp-cta-row">
+      <a class="btn btn-primary lp-cta" href="{{ url_for('go_store') }}" target="_blank" rel="noopener">Add to Chrome</a>
       {% if allow_signups %}
       <a class="btn btn-primary lp-cta" href="{{ url_for('register') }}">Get started free</a>
       {% endif %}
@@ -89,16 +72,17 @@
      which expects real rows and the scripts that animate them. #}
   <section class="lp-proof" aria-label="A preview of the ranked feed">
     <div class="lp-proof-head">
-      <span class="lp-proof-title">Outlier feed</span>
+      <span class="lp-proof-title">Tallgrass feed</span>
       <span class="lp-proof-note">Ranked by how far each post beat the median in its own group</span>
     </div>
 
     {# The figures are consistent, deliberately. Weighted engagement is
-       reactions + 3x comments + 5x shares, the two posts from the same group
-       share that group's typical, and every multiple below is that sum divided
-       by that typical — so anyone who checks the arithmetic finds it holds. A
-       landing page that invents numbers, for a product whose entire pitch is
-       honest numbers, would be the wrong first impression.
+       reactions + 3x comments + 5x shares, and every multiple below is that
+       sum divided by that group's typical, so anyone who checks the arithmetic
+       finds it holds. Real estate is one example. The other two are a local
+       business and a coaching group. A landing page that invents numbers, for
+       a product whose entire pitch is honest numbers, would be the wrong first
+       impression.
 
        Ampersands are written bare. Writing "&amp;" here sent it through Jinja's
        autoescape a second time and the group rendered on screen as the literal
@@ -109,13 +93,13 @@
          "caption": "The part of closing nobody warns first-time buyers about",
          "typical": "118", "r": "1,640", "c": "352", "s": "126", "bar": 96},
         {"mult": "3.8", "tier": "strong", "label": "Strong", "arc": 62,
-         "author": "Marcus Reyes", "group": "Realtor Growth Lab", "type": "photo", "age": "5d",
-         "caption": "Three things I stopped doing that doubled my referrals",
+         "author": "Marcus Reyes", "group": "Main Street Owners", "type": "photo", "age": "5d",
+         "caption": "Three things I stopped doing that doubled Saturday foot traffic",
          "typical": "640", "r": "1,910", "c": "104", "s": "45", "bar": 64},
-        {"mult": "0.6", "tier": "quiet", "label": "Below median", "arc": 18,
-         "author": "Priya Raman", "group": "Title & Escrow Pros", "type": "link", "age": "1w",
-         "caption": "New rate sheet for August is up on the site",
-         "typical": "118", "r": "44", "c": "6", "s": "1", "bar": 19}] %}
+        {"mult": "0.4", "tier": "quiet", "label": "Below median", "arc": 14,
+         "author": "Priya Raman", "group": "Creator Coaching Circle", "type": "link", "age": "1w",
+         "caption": "New session outline for the August cohort is up",
+         "typical": "160", "r": "38", "c": "7", "s": "1", "bar": 14}] %}
     <article class="lpc lpc-{{ row.tier }}">
       <div class="lpc-badge">
         <svg viewBox="0 0 52 52" aria-hidden="true">
@@ -182,7 +166,7 @@
             {"x": 20,  "label": "Title & Escrow Pros · 118 typical", "median": 150,
              "dots": [[46,156],[76,146],[106,158],[136,142],[166,152]],
              "peak": [200, 62], "mult": "28.2x"},
-            {"x": 300, "label": "Realtor Growth Lab · 640 typical", "median": 150,
+            {"x": 300, "label": "Main Street Owners · 640 typical", "median": 150,
              "dots": [[326,148],[356,138],[386,152],[416,144],[446,140]],
              "peak": [480, 124], "mult": "3.8x"}] %}
         <g>
@@ -286,6 +270,11 @@
         </p>
       </article>
     </div>
+    {% if shared_ai %}
+    <p class="lp-byok">AI drafting is included. Remix and Sage run on the included allowance. Add your own Claude or OpenAI key in Settings and there's no cap at all.</p>
+    {% else %}
+    <p class="lp-byok">You bring your own AI key. Remix and Sage run on your own Claude or OpenAI key.</p>
+    {% endif %}
   </section>
 
   {# A section here sold an inbox: unanswered comments, Messenger
@@ -315,22 +304,17 @@
   <section class="lp-final glass">
     <h2>Ready to find your first breakout?</h2>
     <p>Free to set up. Under a minute to your first captured post.</p>
-    {% if allow_signups %}
-    <a class="btn btn-primary lp-cta" href="{{ url_for('register') }}">Get started free</a>
-    {% else %}
-    <a class="btn btn-primary lp-cta" href="{{ url_for('login') }}">Sign in</a>
-    {% endif %}
+    <div class="lp-cta-row">
+      <a class="btn btn-primary lp-cta" href="{{ url_for('go_store') }}" target="_blank" rel="noopener">Add to Chrome</a>
+      {% if allow_signups %}
+      <a class="btn btn-primary lp-cta" href="{{ url_for('register') }}">Get started free</a>
+      {% else %}
+      <a class="btn btn-primary lp-cta" href="{{ url_for('login') }}">Sign in</a>
+      {% endif %}
+    </div>
   </section>
 
-  <footer class="lp-foot">
-    <span>{{ app_name }}, {{ app_parent }}</span>
-    <nav>
-      <a href="{{ url_for('pricing') }}">Pricing</a>
-      <a href="{{ url_for('privacy') }}">Privacy</a>
-      <a href="{{ url_for('terms') }}">Terms</a>
-      <a href="{{ url_for('login') }}">Sign in</a>
-    </nav>
-  </footer>
+  {% include "_public_footer.html" %}
 </main>
 
 <script src="{{ url_for('static', filename='js/field.js') }}"></script>

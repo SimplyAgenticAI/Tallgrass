@@ -11,7 +11,8 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from flask import (Flask, Response, g, jsonify, redirect, render_template, request,
-                   send_file, session, stream_with_context, url_for)
+                   send_file, send_from_directory, session, stream_with_context,
+                   url_for)
 from werkzeug.exceptions import HTTPException
 
 import auth
@@ -74,7 +75,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.1"
+APP_VERSION = "33.2"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -150,6 +151,16 @@ EXTENSION_STORE_URL = (
 # The date shown on the legal pages. Bump it when the terms change in a way
 # that affects what is collected or who receives it — not for typos.
 LEGAL_UPDATED = "16 September 2026"
+
+# Extension 31.0 drops Messenger and comment saving. The live privacy page
+# still describes both, because the store listing reviewers open is 30.1,
+# which still does them. The replacement is templates/_privacy_31.html.
+# extension/PRIVACY_AFTER_31.md says how to switch it on.
+#
+# Leave this False until 31.0 is approved. Privacy then shows
+# PRIVACY_31_UPDATED. Terms stay on LEGAL_UPDATED, which this does not bump.
+PRIVACY_EXTENSION_31 = False
+PRIVACY_31_UPDATED = "13 November 2026"
 
 # Under gunicorn the app's own logger is not configured by default, so
 # anything it writes is discarded. Nothing here logged at all, which meant the
@@ -337,6 +348,8 @@ def add_cors_headers(response):
     # to have vanished.
     if response.mimetype == "text/html":
         response.headers["Cache-Control"] = "no-store, must-revalidate"
+    if response.status_code == 404:
+        response.headers["X-Robots-Tag"] = "noindex"
 
     response.headers["Content-Security-Policy"] = CSP
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -575,6 +588,27 @@ PAGE_SIZE = 25
 # ---------------------------------------------------------------- pages
 
 
+def _extension_connected(user_id):
+    """True once the extension has talked to this account.
+
+    Signup mints a key, so api_key_prefix is not evidence of an install. The
+    extension records `connected` the first time it asks for one.
+    """
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM funnel_events WHERE user_id = ? AND step = 'connected' LIMIT 1",
+            (user_id,)).fetchone()
+    return row is not None
+
+
+def _has_remix(user_id):
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM remixes WHERE user_id = ? LIMIT 1", (user_id,)
+        ).fetchone()
+    return row is not None
+
+
 def _next_step(user, scored):
     """The one thing this account should do next, or None when there isn't one.
 
@@ -593,19 +627,20 @@ def _next_step(user, scored):
     if not user:
         return None
 
-    # Never issued a key: the extension cannot deliver anything yet.
-    if not user.get("api_key_prefix"):
+    real = [s for s in scored if not s["is_demo"]]
+    # A key exists from the moment of signup. Installed means the extension
+    # connected, or a real capture arrived, which implies the same thing.
+    if not (_extension_connected(user["id"]) or real):
         return {
             "key": "connect",
             "title": "Connect the extension",
-            "body": ("Install it, then open this dashboard once while signed in "
-                     ". It picks up your key automatically."),
-            "cta": "Get the extension",
-            "href": url_for("capture"),
+            "body": ("Install it, then open this dashboard once while signed in. "
+                     "It picks up your key automatically."),
+            "cta": "Add to Chrome",
+            "href": url_for("go_store"),
             "scan_demo": False,
         }
 
-    real = [s for s in scored if not s["is_demo"]]
     if not real:
         return {
             "key": "scan",
@@ -653,6 +688,76 @@ def _next_step(user, scored):
             }
 
     return None
+
+
+def _first_run(user, scored):
+    """Three steps a new account still has in front of it, or None when done.
+
+    Same facts as _next_step, shown together so the first job is obvious:
+    install from the store, scan one group, remix the first breakout. A step
+    ticks off from the database. It is not a tour and there is nothing to
+    dismiss. Signup minting a key does not count as an install.
+    """
+    if not user:
+        return None
+    real = [s for s in scored if not s["is_demo"]]
+    installed = _extension_connected(user["id"]) or bool(real)
+    scanned = bool(real)
+    remixed = _has_remix(user["id"])
+    if installed and scanned and remixed:
+        return None
+
+    best = max((s for s in real if s.get("outlier_multiple")),
+               key=lambda s: s["outlier_multiple"], default=None)
+    has_baseline = any(s.get("has_baseline") for s in real)
+    if scanned and not has_baseline:
+        remix_body = (
+            "A group needs about %d posts with readable engagement before a "
+            "median means anything. Keep scanning, then remix the post that "
+            "beats its group." % outliers.MIN_SAMPLE)
+    elif best:
+        remix_body = ("Finding it is half of this. The other half is writing "
+                      "your own version of the post that beat its group.")
+    else:
+        remix_body = ("Once a group can be scored, open the post that beat "
+                      "its median and generate your own version.")
+
+    steps = [
+        {
+            "key": "install",
+            "title": "Install from the Chrome Web Store",
+            "body": ("Add it to Chrome, then open this dashboard once while "
+                     "signed in. It picks up your key automatically."),
+            "done": installed,
+            "cta": "Add to Chrome",
+            "href": url_for("go_store"),
+            "external": True,
+        },
+        {
+            "key": "scan",
+            "title": "Scan your first group",
+            "body": ("Open a Facebook group you're in, find the Tallgrass panel "
+                     "in the corner, and press Start. Scroll, and posts arrive "
+                     "here as they're read."),
+            "done": scanned,
+            "cta": "How scanning works",
+            "href": url_for("capture"),
+            "external": False,
+        },
+        {
+            "key": "remix",
+            "title": "Remix your first breakout",
+            "body": remix_body,
+            "done": remixed,
+            "cta": "Open it and remix" if best else None,
+            "href": url_for("post_detail", post_id=best["id"]) if best else None,
+            "external": False,
+        },
+    ]
+    current = next((s["key"] for s in steps if not s["done"]), None)
+    for step in steps:
+        step["current"] = step["key"] == current
+    return steps
 
 
 @app.route("/")
@@ -753,6 +858,7 @@ def feed():
         tier_filter=tier_filter,
         tier_labels=outliers.TIER_LABELS,
         has_data=bool(scored),
+        first_run=_first_run(auth.current_user(), scored),
         next_step=_next_step(auth.current_user(), scored),
         real_count=real_count,
         sample_count=len(scored) - real_count,
@@ -1660,13 +1766,27 @@ def capture():
     )
 
 
+@app.route("/favicon.ico")
+def favicon_ico():
+    """Browsers request this path whether or not a page links it."""
+    return send_from_directory(
+        app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon")
+
+
+@app.route("/apple-touch-icon.png")
+def apple_touch_icon():
+    return send_from_directory(
+        app.static_folder, "apple-touch-icon.png", mimetype="image/png")
+
+
 @app.route("/go/store")
 def go_store():
     """The Add to Chrome button, counted on its way out to the store.
 
     A plain link to the store left no trace, so "never installed" could not be
-    split into "never tried" and "tried and it did not take". A redirect needs
-    no script and still works for a signed-out visitor, who just is not counted.
+    split into "never tried" and "tried and it did not take". Signed-out
+    visitors are redirected and not counted: there is no account to attach
+    the click to. Signed-in clicks are counted, same as before.
     """
     user = auth.current_user()
     if user:
@@ -2180,6 +2300,47 @@ def _tip_counts(user):
     return counts
 
 
+def _shared_ai():
+    """True when this server pays for the model.
+
+    False when the visitor brings their own Claude or OpenAI key. Pricing,
+    the homepage and the signup page all read this, so they say the same thing.
+    """
+    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY"))
+
+
+def _software_jsonld():
+    """Offers taken from the prices the pricing page shows."""
+    month = billing.PLANS["month"]["amount"] // 100
+    year = billing.PLANS["year"]["amount"] // 100
+    return {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": APP_NAME,
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Chrome",
+        "url": PUBLIC_ORIGIN + "/",
+        "description": APP_TAGLINE,
+        "offers": [
+            {"@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD"},
+            {
+                "@type": "Offer",
+                "name": "Pro",
+                "price": str(month),
+                "priceCurrency": "USD",
+                "description": "Pro, per month",
+            },
+            {
+                "@type": "Offer",
+                "name": "Pro",
+                "price": str(year),
+                "priceCurrency": "USD",
+                "description": "Pro, per year",
+            },
+        ],
+    }
+
+
 @app.context_processor
 def inject_globals():
     """Values every page needs, so no route can forget them."""
@@ -2211,6 +2372,13 @@ def inject_globals():
         "support_email": SUPPORT_EMAIL,
         "store_url": EXTENSION_STORE_URL,
         "updated": LEGAL_UPDATED,
+        "allow_signups": ALLOW_SIGNUPS,
+        # Same condition the pricing page uses. Homepage and register read it
+        # from here so they cannot claim the opposite of that page.
+        "shared_ai": _shared_ai(),
+        "privacy_extension_31": PRIVACY_EXTENSION_31,
+        "privacy_31_updated": PRIVACY_31_UPDATED,
+        "software_jsonld": _software_jsonld(),
         # The scoring thresholds, so no template hardcodes "8" and quietly
         # disagrees with the engine when it changes.
         "min_sample": outliers.MIN_SAMPLE,
@@ -2234,6 +2402,11 @@ CSRF_EXEMPT = {"/api/capture", "/api/ping", "/api/stripe/webhook",
                "/api/messages/threads", "/api/messages/draft", "/api/today", "/api/today/done",
                "/api/messages/signal", "/api/messages/sort"}
 
+# Signed-out forms that already carry a token. A cross-site post could
+# otherwise create an account, request a reset email, or submit credentials
+# from a page the visitor did not open. API-key routes stay exempt above.
+CSRF_ANON = {"/login", "/register", "/forgot"}
+
 
 @app.before_request
 def enforce_csrf():
@@ -2246,8 +2419,8 @@ def enforce_csrf():
         return None
     if request.path in CSRF_EXEMPT:
         return None
-    if not auth.current_user():
-        return None                       # nothing to forge against yet
+    if not auth.current_user() and request.path not in CSRF_ANON:
+        return None
     if auth.check_csrf():
         return None
 
@@ -3009,7 +3182,7 @@ def pricing():
         usage=billing.usage(user["id"]) if user else None,
         # Whether AI features run on an included key (metered by plan) or need
         # the user's own — the page says whichever is actually true here.
-        shared_ai=bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+        shared_ai=_shared_ai(),
         ai_limits=billing.AI_LIMITS,
         version=APP_VERSION,
         active="pricing",
@@ -3060,7 +3233,7 @@ _ROBOTS_DISALLOW = (
     "/messages",
 )
 
-_SITEMAP_PATHS = ("/", "/pricing", "/privacy", "/terms")
+_SITEMAP_PATHS = ("/", "/welcome", "/pricing", "/privacy", "/terms")
 
 # What the public pages actually say, and nothing they do not. The privacy
 # policy is linked rather than summarised, because it is the page that lists

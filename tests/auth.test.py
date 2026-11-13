@@ -10,6 +10,7 @@ that quietly starts accepting a browser session.
 Run: python tests/auth.test.py
 """
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -205,6 +206,63 @@ def main():
     check("a mismatched one is blocked", blocked.status_code, 403)
     missing = client.post("/api/username", json={"username": "hollowmere"})
     check("no token at all is blocked", missing.status_code, 403)
+
+    print()
+    print("login, register and forgot require the token even when signed out")
+    # These three forms already sent a token. The guard used to skip the
+    # check whenever nobody was signed in, so the token was decoration.
+
+    def token_from(client, path):
+        html = client.get(path).get_data(as_text=True)
+        return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+
+    guest = appmod.app.test_client()
+    check("login without a token is rejected",
+          guest.post("/login", data={"email": "a@b.c", "password": "x"}).status_code, 403)
+    check("register without a token is rejected",
+          guest.post("/register", data={
+              "email": "new@example.com", "password": "a-long-enough-pass",
+              "password_confirm": "a-long-enough-pass", "username": "newperson",
+          }).status_code, 403)
+    check("forgot without a token is rejected",
+          guest.post("/forgot", data={"email": "a@b.c"}).status_code, 403)
+
+    guest2 = appmod.app.test_client()
+    tok = token_from(guest2, "/login")
+    bad = guest2.post("/login", data={
+        "email": "owner@example.com", "password": "wrong-password-here",
+        "csrf_token": "not-the-token"})
+    check("login with the wrong token is rejected", bad.status_code, 403)
+    wrong_pw = guest2.post("/login", data={
+        "email": "owner@example.com", "password": "wrong-password-here",
+        "csrf_token": tok})
+    check("login with the right token reaches the view", wrong_pw.status_code, 400)
+
+    reg = appmod.app.test_client()
+    made = reg.post("/register", data={
+        "email": "csrf-ok@example.com", "password": "a-long-enough-pass",
+        "password_confirm": "a-long-enough-pass", "username": "csrftest",
+        "csrf_token": token_from(reg, "/register")})
+    check("register with the token still creates the account", made.status_code, 302)
+
+    forgot = appmod.app.test_client()
+    sent = forgot.post("/forgot", data={
+        "email": "nobody@example.com", "csrf_token": token_from(forgot, "/forgot")})
+    check("forgot with the token still renders", sent.status_code, 200)
+
+    print()
+    print("API-key routes stay exempt from that check")
+    ping = appmod.app.test_client().post("/api/ping")
+    check("ping without a token is not a CSRF failure", ping.status_code != 403, True)
+    capture = appmod.app.test_client().post(
+        "/api/capture", json={"posts": []}, headers={"X-Outlier-Key": fresh})
+    check("a keyed capture is not a CSRF failure", capture.status_code != 403, True)
+    comments = appmod.app.test_client().post("/api/comments", json={})
+    check("comment ingest without a session is not a CSRF failure",
+          comments.status_code != 403, True)
+    threads = appmod.app.test_client().post("/api/messages/threads", json={})
+    check("message ingest without a session is not a CSRF failure",
+          threads.status_code != 403, True)
 
     print()
     print("signing in clears whatever was in the session first")

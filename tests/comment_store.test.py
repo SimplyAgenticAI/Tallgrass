@@ -28,9 +28,13 @@ def check(name, got, want=True):
 
 
 def sign_up(client, email, username):
+    import re
+    page = client.get("/register").get_data(as_text=True)
+    tok = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
     return client.post("/register", data={
         "email": email, "password": "a-long-enough-pass",
-        "password_confirm": "a-long-enough-pass", "username": username})
+        "password_confirm": "a-long-enough-pass", "username": username,
+        "csrf_token": tok})
 
 
 def thread(extra=None):
