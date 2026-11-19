@@ -386,7 +386,7 @@ def main():
     # fix is to put the in-review manifest version in `in_review` below — one
     # deliberate line, which is also the reminder to clear it and bump the
     # constant the day the submission goes live.
-    in_review = "31.0"          # in the repo; the store listing is 30.1
+    in_review = "31.1"          # in the repo; the store listing is 30.1
     repo_ext = app._extension_version()
     if in_review:
         check("the manifest is the version said to be in review", repo_ext, in_review)
