@@ -1340,6 +1340,10 @@
      there is nothing to remember between clicking and pasting. */
 
   function macModifier() {
+    // This runs while the script is loading. A missing navigator must not
+    // throw, or every handler defined after this point never binds. Ctrl is
+    // already in the markup, so leaving it is the safe answer.
+    if (typeof navigator === "undefined" || !navigator) return false;
     var platform =
       (navigator.userAgentData && navigator.userAgentData.platform) ||
       navigator.platform || "";
