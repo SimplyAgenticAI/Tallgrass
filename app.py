@@ -75,7 +75,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.2"
+APP_VERSION = "33.3"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -93,7 +93,7 @@ APP_VERSION = "33.2"
 #
 # Confirmed against the public listing on 4 November 2026: version 30.1,
 # updated 20 October 2026, still described as drafting comment and Messenger
-# replies. The manifest in this repo is 31.0, which removes that, and it is
+# replies. The manifest in this repo is 31.1, which removes that, and it is
 # not the listing. Before 30.1 the constant sat at 28.7 — and before that
 # 22.9, which sat stale for three weeks. The cost was not cosmetic: every
 # hosted visitor's install page concluded a submission was mid-review, opened

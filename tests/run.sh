@@ -43,6 +43,8 @@ console.log("content.js clean");
 
 echo "--- scan captures posts ---"
 node tests/scan.test.js
+echo "--- auto-scroll keeps going ---"
+node tests/autoscroll.test.js
 echo "--- extraction ---"
 node tests/extract.test.js
 echo "--- truncation keeps characters whole ---"
