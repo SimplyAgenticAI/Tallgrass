@@ -284,11 +284,23 @@ const limitValEl = el("limit-val");
 const limitHintEl = el("limit-hint");
 
 function limitHint(n) {
-  if (n <= 75)  return "Quick look. Enough for a baseline, but thin — expect roughly 1–2 min.";
-  if (n <= 150) return "Good for a smaller or quieter group. Roughly 2–4 min.";
-  if (n <= 250) return "The sweet spot for most groups: a solid baseline from recent posts. Roughly 4–7 min.";
-  if (n <= 375) return "Deep scan. Reaches further back, so older posts get compared against newer ones. 7–12 min.";
-  return "Very deep. Mostly useful for slow groups where 200 posts spans years. 12+ min.";
+  if (n <= 100) return "Good for a smaller or quieter group. Roughly 2–4 min.";
+  if (n <= 200) return "The sweet spot for most groups: a solid baseline from recent posts. Roughly 4–7 min.";
+  return "Deep scan. Reaches further back, so older posts get compared against newer ones. 7–12 min.";
+}
+
+// The same three choices as the panel on the page. A number saved by an older
+// build (50, 500, or any step of the old slider) snaps to the nearest one, the
+// larger on a tie, exactly as content.js reads it.
+const POST_TARGETS = [100, 200, 300];
+function snapPostTarget(n) {
+  n = Number(n);
+  if (!isFinite(n) || n <= 0) return 200;
+  let best = POST_TARGETS[0];
+  for (const t of POST_TARGETS) {
+    if (Math.abs(t - n) <= Math.abs(best - n)) best = t;
+  }
+  return best;
 }
 
 function renderLimit(n) {
@@ -300,10 +312,11 @@ maxPostsEl.addEventListener("input", () => {
   renderLimit(parseInt(maxPostsEl.value, 10));
 });
 maxPostsEl.addEventListener("change", () => {
-  const n = parseInt(maxPostsEl.value, 10);
+  const n = snapPostTarget(parseInt(maxPostsEl.value, 10));
   // Scale the time ceiling with the post target so a big scan isn't cut short
-  // by a limit sized for a small one.
-  chrome.storage.local.set({ maxPosts: n, maxMinutes: Math.max(5, Math.round(n / 20)) });
+  // by a limit sized for a small one. Same figure as minutesFor in content.js,
+  // which recomputes it anyway: two 2.2s steps per post, five minutes at least.
+  chrome.storage.local.set({ maxPosts: n, maxMinutes: Math.max(5, Math.ceil(n * 4.4 / 60)) });
   say("Scans will stop at " + n + " posts.", "ok");
 });
 
@@ -327,7 +340,7 @@ autoUpdateEl.addEventListener("change", () => {
   toggleEl.checked = state.enabled !== false;
   autoUpdateEl.checked = state.autoUpdate !== false;
 
-  const limit = state.maxPosts || 200;
+  const limit = snapPostTarget(state.maxPosts);
   maxPostsEl.value = limit;
   renderLimit(limit);
   endpointEl.value = state.endpoint || "";
