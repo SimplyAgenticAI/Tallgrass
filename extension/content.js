@@ -33,6 +33,21 @@
   var SEEN = new Set();
   var IMAGES_SEEN = {};   // one post per image; see the note at the assignment
   var QUEUE = [];
+  /* When the queue last went from empty to not, or 0 while it is empty.
+   * A healthy scan always has a few posts waiting for the next send, so a
+   * queue is only worth showing once it has been waiting a while. */
+  var queueSince = 0;
+  var QUEUE_STUCK_MS = 12 * 1000;
+
+  function syncQueueClock() {
+    if (!QUEUE.length) queueSince = 0;
+    else if (!queueSince) queueSince = Date.now();
+  }
+
+  function queueStuck() {
+    return QUEUE.length > 0 &&
+           (!currentSourceId || Date.now() - queueSince >= QUEUE_STUCK_MS);
+  }
 
   // The last page we could name. Posts are captured while the page is
   // identifiable and sent a moment later, by which time Facebook may have
@@ -124,6 +139,7 @@
     SEEN = new Set();
     IMAGES_SEEN = {};
     QUEUE = [];
+    queueSince = 0;
     STATS = blankStats();
     if (source) logLine("— " + source.name.slice(0, 30) + " —");
     return true;
@@ -3034,6 +3050,7 @@
               body.slice(0, 30));
 
       QUEUE.push(payload);
+      syncQueueClock();
     }
   }
 
@@ -3065,10 +3082,14 @@
     if (!forceSource) lastKnownSource = source;
 
     var batch = QUEUE.splice(0, QUEUE.length);
+    // Not sent yet, but no longer waiting on us: the clock restarts if the
+    // batch has to come back.
+    syncQueueClock();
     STATS.queued = 0;
 
     if (!contextAlive()) {
       QUEUE = batch.concat(QUEUE);
+      syncQueueClock();
       handleOrphaned();
       return;
     }
@@ -3089,6 +3110,7 @@
         if (chrome.runtime.lastError) {
           STATS.lastError = "Extension worker asleep — retrying";
           QUEUE = batch.concat(QUEUE);   // don't lose the batch
+          syncQueueClock();
           renderHud();
           return;
         }
@@ -3111,6 +3133,7 @@
           }
           STATS.lastError = why;
           QUEUE = batch.concat(QUEUE);
+          syncQueueClock();
           renderHud();
           return;
         }
@@ -4380,7 +4403,43 @@
 
   function renderHud() {
     if (!hud) return;
-    hudBody.textContent = "";
+    syncQueueClock();
+    /* Built off to the side and swapped in only if it changed.
+     *
+     * This runs after every pass and every send. Tearing the rows down and
+     * putting identical ones back each time restyled and re-laid-out the
+     * panel for nothing, on the same main thread Facebook is scrolling on.
+     */
+    var live = hudBody;
+    hudBody = document.createElement("div");
+    try {
+      renderHudBody();
+    } finally {
+      var next = hudBody;
+      hudBody = live;
+      var html = typeof next.innerHTML === "string" ? next.innerHTML : null;
+      if (html === null || html !== live.__tallgrassLast) {
+        var kids = Array.prototype.slice.call(next.childNodes || next.children || []);
+        live.textContent = "";
+        for (var k = 0; k < kids.length; k++) live.appendChild(kids[k]);
+        live.__tallgrassLast = html;
+      }
+    }
+    var logText = STATS.log.length
+      ? STATS.log.join("\n")
+      : "Nothing captured yet.\nPress Start auto-scroll.";
+    if (hudLog.textContent !== logText) hudLog.textContent = logText;
+
+    var btnText = autoScrolling ? "Stop auto-scroll" : "Start auto-scroll";
+    if (hudBtn.textContent !== btnText) {
+      hudBtn.textContent = btnText;
+      hudBtn.style.background = autoScrolling
+        ? "rgba(224,122,95,0.92)" : "linear-gradient(135deg, #34d399, #10b981)";
+      hudBtn.style.color = autoScrolling ? "#fff" : "#04150c";
+    }
+  }
+
+  function renderHudBody() {
 
     // The reply queue was at the top here, whenever a scan was not running.
 
@@ -4440,14 +4499,21 @@
      *
      * Both are shown only when there is something to say, so a healthy scan
      * is not made noisier by diagnostics for a problem it does not have.
+     *
+     * "Something to say" used to be any post in the queue at all, which a
+     * healthy scan has between every send: the two rows appeared after each
+     * pass and vanished at each send four seconds later, and the panel
+     * bounced the whole way through. Now it is an error, a page that cannot
+     * be named, or posts that have sat unsent for QUEUE_STUCK_MS.
      */
-    if (QUEUE.length) {
+    var stuck = queueStuck();
+    if (stuck || (QUEUE.length && STATS.lastError)) {
       hudBody.appendChild(row(
         "Waiting to send", String(QUEUE.length),
         QUEUE.length >= 5 ? "#d9b45f" : null
       ));
     }
-    if (QUEUE.length || STATS.lastError) {
+    if (stuck || STATS.lastError) {
       hudBody.appendChild(row(
         "Filed under",
         currentSourceId || "NOT IDENTIFIED",
@@ -4521,18 +4587,9 @@
         color: "#ffb59d", fontSize: "0.92em", lineHeight: "1.45"
       });
       hudBody.appendChild(errBox);
-    } else if (STATS.queued > 0 && STATS.sent === 0) {
+    } else if (STATS.queued > 0 && STATS.sent === 0 && stuck) {
       hudBody.appendChild(row("⚠ waiting to send", String(STATS.queued), "#d9b45f"));
     }
-
-    hudLog.textContent = STATS.log.length
-      ? STATS.log.join("\n")
-      : "Nothing captured yet.\nPress Start auto-scroll.";
-
-    hudBtn.textContent = autoScrolling ? "Stop auto-scroll" : "Start auto-scroll";
-    hudBtn.style.background = autoScrolling
-      ? "rgba(224,122,95,0.92)" : "linear-gradient(135deg, #34d399, #10b981)";
-    hudBtn.style.color = autoScrolling ? "#fff" : "#04150c";
   }
 
   /* ------------------------------------------------------ wiring */
@@ -4567,7 +4624,10 @@
       maxMinutes = minutesFor(maxPosts);
     }
     if (changes.endpoint) endpointLabel = hostOf(changes.endpoint.newValue || "");
-    renderHud();
+    /* The worker writes totalCaptured and lastCapture after every batch it
+     * delivers, and this used to redraw the panel for each of those writes,
+     * none of which it shows. */
+    if (changes.enabled || changes.maxPosts || changes.endpoint) renderHud();
   });
 
   chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {

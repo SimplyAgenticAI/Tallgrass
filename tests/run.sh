@@ -55,6 +55,8 @@ echo "--- posts to scan, from the panel ---"
 node tests/limits.test.js
 echo "--- a scan keeps its pace ---"
 node tests/speed.test.js
+echo "--- a healthy scan keeps the panel still ---"
+node tests/quiet_hud.test.js
 echo "--- checking your recent posts ---"
 echo "--- captions ---"
 node tests/caption.test.js
