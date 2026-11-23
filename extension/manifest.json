@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tallgrass — by MacRandle Acres",
-  "version": "31.1",
+  "version": "31.2",
   "description": "Ranks Facebook posts against each group's own median, then helps you remix and write the next one.",
   "icons": {
     "16": "icons/icon16.png",

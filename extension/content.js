@@ -2309,8 +2309,9 @@
   }
 
   function push(list, nodes) {
+    var have = new Set(list);
     for (var i = 0; i < nodes.length; i++) {
-      if (list.indexOf(nodes[i]) === -1) list.push(nodes[i]);
+      if (!have.has(nodes[i])) { have.add(nodes[i]); list.push(nodes[i]); }
     }
   }
 
@@ -2426,16 +2427,40 @@
     return false;
   }
 
+  /* Same answer as asking every candidate whether it contains this one, but
+   * found by walking up from el instead. Asking all of them made each sweep
+   * n x n: at 500 posts that is 250,000 contains() calls, every sweep.
+   */
   function containedInAnother(el, all) {
-    for (var i = 0; i < all.length; i++) {
-      if (all[i] !== el && all[i].contains && all[i].contains(el)) return true;
+    var set = all.__tallgrassSet;
+    if (!set) {
+      set = new Set();
+      for (var i = 0; i < all.length; i++) set.add(all[i]);
+      all.__tallgrassSet = set;
+    }
+    for (var node = el.parentElement; node; node = node.parentElement) {
+      if (set.has(node)) return true;
     }
     return false;
+  }
+
+  /* Does node hold more than one of list, which is in document order and
+   * contains list[i]? Everything inside a node is one unbroken run of the
+   * document, so a second one is in there only if a neighbour of list[i] is.
+   * Same answer as node.querySelectorAll(selector).length > 1, which walked
+   * the whole feed once per post and made every sweep n x n.
+   */
+  function holdsAnotherOf(node, list, i) {
+    var before = i - 1;
+    if (before >= 0 && list[before] === node) before--;   // node is not inside itself
+    if (before >= 0 && node.contains(list[before])) return true;
+    return i + 1 < list.length && node.contains(list[i + 1]);
   }
 
   function containersAround(selector) {
     var anchors = document.querySelectorAll(selector);
     var out = [];
+    var taken = new Set();
     for (var i = 0; i < anchors.length; i++) {
       var anchor = anchors[i];
       if (anchor.closest(NOT_FEED)) continue;
@@ -2445,12 +2470,13 @@
       var node = anchor.parentElement;
       var best = null;
       for (var hop = 0; hop < 18 && node && node !== document.body; hop++) {
-        if (node.querySelectorAll(selector).length > 1) break;
+        if (holdsAnotherOf(node, anchors, i)) break;
         if (holdsMoreThanOnePost(node)) break;
         best = node;
         node = node.parentElement;
       }
-      if (best && out.indexOf(best) === -1 && (best.innerText || "").length > 40) {
+      if (best && !taken.has(best) && (best.innerText || "").length > 40) {
+        taken.add(best);
         out.push(best);
       }
     }
@@ -2461,32 +2487,35 @@
   // what the page report actually showed.
   function containersAroundShareText() {
     var candidates = document.querySelectorAll("div, span");
+    // Every bare Share on the page, in document order, including the ones
+    // outside the feed: the walk below counted those too, by re-reading the
+    // innerText of every leaf under every ancestor, which was n x n.
+    var allShares = [];
     var shares = [];
+    var at = [];
     for (var i = 0; i < candidates.length; i++) {
       var el = candidates[i];
       if (el.children && el.children.length) continue;
       if (!/^share$/i.test((el.innerText || "").trim())) continue;
+      allShares.push(el);
       if (el.closest(NOT_FEED)) continue;
       shares.push(el);
+      at.push(allShares.length - 1);
     }
 
     var out = [];
+    var taken = new Set();
     for (var s = 0; s < shares.length; s++) {
       var node = shares[s].parentElement;
       var best = null;
       for (var hop = 0; hop < 18 && node && node !== document.body; hop++) {
-        var inside = 0;
-        var leaves = node.querySelectorAll("div, span");
-        for (var l = 0; l < leaves.length; l++) {
-          if (leaves[l].children && leaves[l].children.length) continue;
-          if (/^share$/i.test((leaves[l].innerText || "").trim())) inside++;
-        }
-        if (inside > 1) break;
+        if (holdsAnotherOf(node, allShares, at[s])) break;
         if (holdsMoreThanOnePost(node)) break;
         best = node;
         node = node.parentElement;
       }
-      if (best && out.indexOf(best) === -1 && (best.innerText || "").length > 40) {
+      if (best && !taken.has(best) && (best.innerText || "").length > 40) {
+        taken.add(best);
         out.push(best);
       }
     }
@@ -2563,7 +2592,18 @@
     for (var v = 0; v < articles.length; v++) {
       var verdict;
       try {
-        verdict = classify(articles[v]);
+        /* A post already read in full is never looked at again (captureOne
+         * returns straight away), so classifying it again on every sweep was
+         * pure cost: at 500 posts, 500 classifications every couple of
+         * seconds. Its first verdict stands.
+         */
+        var done = articles[v].__tallgrassCaptured;
+        if (done && done.complete && articles[v].__tallgrassVerdict) {
+          verdict = articles[v].__tallgrassVerdict;
+        } else {
+          verdict = classify(articles[v]);
+          articles[v].__tallgrassVerdict = verdict;
+        }
       } catch (err) {
         // One malformed article must not abort the classification pass and
         // take the whole sweep with it.
@@ -4415,8 +4455,22 @@
    * as Facebook renders them, but it does nothing until a scan is live.
    */
   var scanTimer;
-  new MutationObserver(function () {
+  new MutationObserver(function (mutations) {
     if (!autoScrolling) return;
+    /* The panel's own redraw is not Facebook loading posts.
+     *
+     * renderHud rebuilds the panel, which lives in document.body, at the end
+     * of every sweep. That woke this observer, which queued another sweep,
+     * which redrew the panel: a scan that never paused, with each sweep
+     * costing more as the feed grew. Only a change outside the panel counts.
+     */
+    if (hud && mutations && mutations.length) {
+      var outside = false;
+      for (var m = 0; m < mutations.length && !outside; m++) {
+        if (!hud.contains(mutations[m].target)) outside = true;
+      }
+      if (!outside) return;
+    }
     clearTimeout(scanTimer);
     scanTimer = setTimeout(scanPosts, 800);
   }).observe(document.body, { childList: true, subtree: true });
