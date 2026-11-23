@@ -42,11 +42,24 @@ function makeDoc() {
         var kids = e.children.map(function (c) { return c.textContent; }).join(" ");
         return (e._text + " " + kids).trim();
       },
-      set: function (v) { e._text = String(v); }
+      // As in a browser: setting it replaces the children too. Without that a
+      // panel redraw here piled new rows on top of the old ones.
+      set: function (v) { e._text = String(v); e.children.length = 0; }
     });
     Object.defineProperty(e, "innerText", {
       get: function () { return e.textContent; },
       set: function (v) { e._text = String(v); }
+    });
+    // Enough serialization to tell one subtree from another: tag, attributes,
+    // inline style, own text and children. A browser's is fuller; what
+    // content.js compares is only whether two of them differ.
+    Object.defineProperty(e, "innerHTML", {
+      get: function () {
+        return e.children.map(function (c) {
+          return "<" + c.tagName + " " + JSON.stringify(c.attrs) + " " +
+                 JSON.stringify(c.style) + ">" + c._text + c.innerHTML + "</>";
+        }).join("");
+      }
     });
     e.descendants = function () {
       return e.children.reduce(function (acc, c) {
