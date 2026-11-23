@@ -2271,6 +2271,13 @@
     for (var i = 0; i < found.length; i++) {
       var el = found[i];
       try {
+        // Already passed every check below on an earlier pass, and will not
+        // be read again: only whether it still sits inside another candidate
+        // can have changed.
+        if (isSettled(el)) {
+          if (!containedInAnother(el, found)) out.push(el);
+          continue;
+        }
         if (hasFeed && !el.closest('[role="feed"]')) continue;
         if (el.closest(NOT_FEED)) continue;
         if (isChatBubble(el)) continue;
@@ -2427,6 +2434,20 @@
     return false;
   }
 
+  /* Finished with, one way or the other.
+   *
+   * A post read in full (complete) and a card given up on (see giveUp) are
+   * never read again, so nothing about them needs re-checking on later
+   * passes either: not its text, not whether it is a loading shell, not
+   * whether it looks like a post. Re-checking them cost an innerText, and so
+   * a forced layout of the whole page, per post per pass.
+   */
+  function isSettled(el) {
+    if (!el || el.isConnected === false) return false;
+    var cap = el.__tallgrassCaptured;
+    return !!((cap && cap.complete) || el.__tallgrassDead);
+  }
+
   /* Same answer as asking every candidate whether it contains this one, but
    * found by walking up from el instead. Asking all of them made each sweep
    * n x n: at 500 posts that is 250,000 contains() calls, every sweep.
@@ -2467,6 +2488,15 @@
       var owning = anchor.closest('div[role="article"]');
       if (owning && isCommentArticle(owning)) continue;   // a reply's link
 
+      // The container this link led to last time, if that post is settled:
+      // the walk below would only find it again, at the cost of an innerText
+      // and four subtree searches per step.
+      var memo = anchor.__tallgrassBest;
+      if (isSettled(memo) && memo.contains(anchor)) {
+        if (!taken.has(memo)) { taken.add(memo); out.push(memo); }
+        continue;
+      }
+
       var node = anchor.parentElement;
       var best = null;
       for (var hop = 0; hop < 18 && node && node !== document.body; hop++) {
@@ -2475,6 +2505,7 @@
         best = node;
         node = node.parentElement;
       }
+      if (best) anchor.__tallgrassBest = best;
       if (best && !taken.has(best) && (best.innerText || "").length > 40) {
         taken.add(best);
         out.push(best);
@@ -2506,6 +2537,11 @@
     var out = [];
     var taken = new Set();
     for (var s = 0; s < shares.length; s++) {
+      var memo = shares[s].__tallgrassBest;
+      if (isSettled(memo) && memo.contains(shares[s])) {
+        if (!taken.has(memo)) { taken.add(memo); out.push(memo); }
+        continue;
+      }
       var node = shares[s].parentElement;
       var best = null;
       for (var hop = 0; hop < 18 && node && node !== document.body; hop++) {
@@ -2514,6 +2550,7 @@
         best = node;
         node = node.parentElement;
       }
+      if (best) shares[s].__tallgrassBest = best;
       if (best && !taken.has(best) && (best.innerText || "").length > 40) {
         taken.add(best);
         out.push(best);
@@ -2541,7 +2578,60 @@
     }
   }
 
+  /* Cards that will never be captured stop being read.
+   *
+   * An ad, a card with no readable origin or id, a second copy of a post
+   * already captured, a card with nothing in it: each was skipped, and then
+   * fully re-read on the next pass, and the next, for the rest of the scan.
+   * A profile is full of them. A card is given a few reads and some seconds
+   * first, because Facebook fills posts in late and a slow one must still be
+   * caught, and a card already captured once is never given up on: that one
+   * is waiting on its numbers.
+   */
+  var GIVE_UP_READS = 5;
+  var GIVE_UP_MS = 9000;
+
+  function giveUp(article) {
+    if (article.__tallgrassCaptured) return;
+    var tries = article.__tallgrassTries;
+    if (!tries) tries = article.__tallgrassTries = { reads: 0, since: Date.now() };
+    tries.reads++;
+    if (tries.reads >= GIVE_UP_READS && Date.now() - tries.since >= GIVE_UP_MS) {
+      article.__tallgrassDead = true;
+    }
+  }
+
+  /* How long a pass takes, for the panel log.
+   *
+   * Written to the log every PASS_LOG_MS at most, never per pass: the log is
+   * drawn inside the panel, which the mutation observer ignores, so this
+   * cannot start the redraw-rescan loop again, and it does not flood the log.
+   */
+  var PASS_LOG_MS = 30 * 1000;
+  var PASS = { n: 0, total: 0, max: 0, last: 0, loggedAt: 0 };
+
+  function notePass(ms, onPage) {
+    PASS.n++;
+    PASS.total += ms;
+    PASS.last = ms;
+    if (ms > PASS.max) PASS.max = ms;
+    if (!autoScrolling) return;
+    var now = Date.now();
+    if (!PASS.loggedAt) { PASS.loggedAt = now; return; }
+    if (now - PASS.loggedAt < PASS_LOG_MS) return;
+    PASS.loggedAt = now;
+    logLine("pass " + Math.round(ms) + " ms (avg " + Math.round(PASS.total / PASS.n) +
+            ", max " + Math.round(PASS.max) + ") · " + onPage + " on page");
+  }
+
+  function passSummary() {
+    if (!PASS.n) return "";
+    return " · passes avg " + Math.round(PASS.total / PASS.n) + " ms, max " +
+           Math.round(PASS.max) + " ms";
+  }
+
   function scanPosts() {
+    var started = (window.performance && performance.now) ? performance.now() : Date.now();
     try {
       return scanPostsInner();
     } catch (err) {
@@ -2554,6 +2644,11 @@
       console.error("[Tallgrass] scan failed:", err);
       try { renderHud(); } catch (e) { /* nothing further to do */ }
       return 0;
+    } finally {
+      try {
+        var ended = (window.performance && performance.now) ? performance.now() : Date.now();
+        notePass(ended - started, STATS.articles);
+      } catch (e) { /* timing must never break a pass */ }
     }
   }
 
@@ -2597,9 +2692,10 @@
          * pure cost: at 500 posts, 500 classifications every couple of
          * seconds. Its first verdict stands.
          */
-        var done = articles[v].__tallgrassCaptured;
-        if (done && done.complete && articles[v].__tallgrassVerdict) {
-          verdict = articles[v].__tallgrassVerdict;
+        // A confident comment stays a comment, so its verdict stands as well.
+        var cached = articles[v].__tallgrassVerdict;
+        if (cached && (isSettled(articles[v]) || (cached.confident && !cached.isPost))) {
+          verdict = cached;
         } else {
           verdict = classify(articles[v]);
           articles[v].__tallgrassVerdict = verdict;
@@ -2668,6 +2764,7 @@
        */
       var prior = article.__tallgrassCaptured;
       if (prior && prior.complete) return;
+      if (article.__tallgrassDead) return;
 
       var verdict = verdicts[articleIndex];
 
@@ -2706,11 +2803,13 @@
       if (onFeed) {
         if (isSponsoredOrSuggested(article)) {
           if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
+          giveUp(article);
           return;
         }
         effectiveSource = extractPostSource(article, author, bar);
         if (!effectiveSource) {
           if (!article.__tallgrassSkipped) { article.__tallgrassSkipped = true; STATS.skipped++; }
+          giveUp(article);
           return;
         }
       }
@@ -2781,6 +2880,7 @@
           article.__tallgrassSkipped = true;
           STATS.skipped++;
         }
+        giveUp(article);
         return;
       }
 
@@ -2800,8 +2900,8 @@
       // SEEN guards against capturing the same post twice from DIFFERENT
       // elements. A re-read of an element already captured is a deliberate
       // refresh, so it must not be blocked here.
-      if (!postId) return;
-      if (!prior && SEEN.has(postId)) return;
+      if (!postId) { giveUp(article); return; }
+      if (!prior && SEEN.has(postId)) { giveUp(article); return; }
 
       /* The target is a target, not a suggestion.
        *
@@ -3207,6 +3307,10 @@
   }
 
   // Scroll and read are one step. Both drivers call these two in order.
+  // How far the page moves per step, in screens. 0.85 was the intent before,
+  // and about 0.76 is what actually landed once two smooth scrolls collided.
+  var WINDOW_STEP = 1.4;
+
   function stepScroll() {
     if (!autoScrolling) return;
     if (!contextAlive()) { handleOrphaned(); return; }
@@ -3221,15 +3325,22 @@
       var arts = document.querySelectorAll('div[role="article"]');
       var last = arts[arts.length - 1];
       activeScroller = findFeedScroller(last);
-      if (last && last.scrollIntoView) {
-        try { last.scrollIntoView({ block: "end", behavior: behavior }); } catch (e) {}
-      }
-      // Past the last article, so the loader sitting under it actually
-      // enters view. block:end leaves it one pixel out of sight.
+
+      /* One scroll per scroller, per step.
+       *
+       * This used to start a smooth scrollIntoView on the last article and
+       * then, in the same tick, a smooth window.scrollBy. A new smooth scroll
+       * cancels the one in flight, so the jump to the last article never
+       * happened and each step moved the page about three quarters of a
+       * screen: a 300-post scan took 300 or more steps. Now the page moves
+       * once, by WINDOW_STEP of a screen, smoothly while visible so every
+       * post still passes through view and Facebook renders it on the way.
+       * A nested feed box keeps its own 0.85 of its height.
+       */
       var view = (activeScroller && activeScroller.clientHeight) || window.innerHeight || 800;
       var delta = Math.round(view * 0.85) || 600;
       if (activeScroller) scrollNode(activeScroller, delta, behavior);
-      window.scrollBy({ top: Math.round((window.innerHeight || view) * 0.85), behavior: behavior });
+      window.scrollBy({ top: Math.round((window.innerHeight || view) * WINDOW_STEP), behavior: behavior });
     } catch (err) {
       noteTickError(err);
     }
@@ -3343,6 +3454,7 @@
     seenAtLastStep = SEEN.size;
     activeScroller = null;
     scanStartedAt = Date.now();
+    PASS = { n: 0, total: 0, max: 0, last: 0, loggedAt: 0 };
     // Counted from the start, so a scan that never captures anything at all
     // stops after NO_PROGRESS_MS rather than running the whole clock.
     lastCaptureAt = Date.now();
@@ -3419,6 +3531,7 @@
   }
 
   function stopAutoScroll(reason, done) {
+    var wasScanning = autoScrolling;
     autoScrolling = false;
     clearInterval(scrollTimer);
     scrollTimer = null;
@@ -3426,9 +3539,14 @@
     // worker awake and stepping a scan that has ended.
     closeScanPort();
     if (reason) STATS.lastError = reason;
+    var took = scanStartedAt ? " · " + ((Date.now() - scanStartedAt) / 60000).toFixed(1) + " min" : "";
+    if (!wasScanning) took = "";
     if (done) {
       STATS.done = done;
-      logLine("✓ " + done);
+      logLine("✓ " + done + took + (wasScanning ? passSummary() : ""));
+    } else if (reason && wasScanning) {
+      // A stop with no "done" line used to leave nothing in the log at all.
+      logLine("■ Stopped: " + reason + took + passSummary());
     }
     try { chrome.storage.local.set({ capturing: false }); } catch (e) {}
     if (contextAlive()) flush();
@@ -4186,7 +4304,25 @@
    * ceiling scaled the same way), so the two always agree, and a change
    * applies to a scan already running.
    */
-  var POST_TARGETS = [50, 100, 200, 500];
+  var POST_TARGETS = [100, 200, 300];
+
+  /* Any saved target becomes one of the choices on offer.
+   *
+   * Earlier builds offered 50 and 500 here and any multiple of 25 from 50 to
+   * 500 on the popup slider, and that number is still sitting in storage for
+   * everybody who picked one. It snaps to the nearest choice, the larger one
+   * on a tie, so 50 reads as 100 and 500 as 300. Nothing saved, or nonsense,
+   * is the default.
+   */
+  function snapPostTarget(n) {
+    n = Number(n);
+    if (!isFinite(n) || n <= 0) return DEFAULT_MAX_POSTS;
+    var best = POST_TARGETS[0];
+    for (var i = 1; i < POST_TARGETS.length; i++) {
+      if (Math.abs(POST_TARGETS[i] - n) <= Math.abs(best - n)) best = POST_TARGETS[i];
+    }
+    return best;
+  }
 
   /* Seconds of budget per post asked for.
    *
@@ -4212,6 +4348,7 @@
   }
 
   function setPostTarget(n) {
+    n = snapPostTarget(n);
     maxPosts = n;
     maxMinutes = minutesFor(n);
     try { chrome.storage.local.set({ maxPosts: n, maxMinutes: maxMinutes }); } catch (e) {}
@@ -4404,7 +4541,7 @@
     ["enabled", "maxPosts", "maxMinutes", "endpoint"],
     function (state) {
       enabled = state.enabled !== false;
-      maxPosts = state.maxPosts || DEFAULT_MAX_POSTS;
+      maxPosts = snapPostTarget(state.maxPosts);
       // Derived, never read back from storage.
       //
       // It is a pure function of the target, and the stored copy is whatever
@@ -4426,7 +4563,7 @@
     // The target carries its own time ceiling with it, here as on load, so a
     // change made in the popup cannot leave the two disagreeing.
     if (changes.maxPosts) {
-      maxPosts = changes.maxPosts.newValue || DEFAULT_MAX_POSTS;
+      maxPosts = snapPostTarget(changes.maxPosts.newValue);
       maxMinutes = minutesFor(maxPosts);
     }
     if (changes.endpoint) endpointLabel = hostOf(changes.endpoint.newValue || "");

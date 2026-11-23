@@ -30,16 +30,27 @@ function check(name, got, want) {
 var api = H.runScan(H.buildPage([]), "/groups/1234567890/");
 check("a scan stops at 200 by default", api.postLimits().maxPosts, 200);
 
-api.setPostTarget(500);
-check("choosing 500 in the panel raises the limit now", api.postLimits().maxPosts, 500);
+api.setPostTarget(300);
+check("choosing 300 in the panel raises the limit now", api.postLimits().maxPosts, 300);
 chrome.storage.local.get(["maxPosts", "maxMinutes"], function (stored) {
   check("  and saved to the setting the popup's slider uses",
-        stored.maxPosts, 500);
+        stored.maxPosts, 300);
 });
 
-api.setPostTarget(50);
+api.setPostTarget(100);
 check("a small scan keeps a five-minute floor", api.postLimits(),
-      { maxPosts: 50, maxMinutes: 5 });
+      { maxPosts: 100, maxMinutes: 8 });
+
+console.log();
+console.log("the choices are 100, 200 and 300, and old saved numbers snap to them");
+[[50, 100], [75, 100], [150, 200], [225, 200], [250, 300], [500, 300],
+ [0, 200], [null, 200], ["x", 200]].forEach(function (pair) {
+  var r = H.runScan(H.buildPage([]), "/groups/1234567890/", { maxPosts: pair[0] });
+  check("  saved " + JSON.stringify(pair[0]) + " reads as " + pair[1],
+        r.postLimits().maxPosts, pair[1]);
+});
+api.setPostTarget(500);
+check("  and the panel cannot set one that is not offered", api.postLimits().maxPosts, 300);
 
 var saved = H.runScan(H.buildPage([]), "/groups/1234567890/", { maxPosts: 100 });
 check("a limit chosen earlier is what the next page load uses",
@@ -54,7 +65,7 @@ console.log("the clock allows the work to actually be done");
  * which is why the test asks for headroom rather than for feasibility by a
  * hair. */
 var STEP_SECONDS = 2.2;
-[50, 100, 200, 500].forEach(function (n) {
+[100, 200, 300].forEach(function (n) {
   api.setPostTarget(n);
   var minutes = api.postLimits().maxMinutes;
   var floorMinutes = n * STEP_SECONDS / 60;
@@ -65,9 +76,9 @@ var STEP_SECONDS = 2.2;
         minutes >= floorMinutes * 1.5, true);
 });
 
-api.setPostTarget(500);
-check("500 posts is no longer given 25 minutes",
-      api.postLimits().maxMinutes > 25, true);
+api.setPostTarget(300);
+check("300 posts is not given the old 15 minutes",
+      api.postLimits().maxMinutes > 15, true);
 
 /* A stored ceiling is never read back.
  *
@@ -75,9 +86,9 @@ check("500 posts is no longer given 25 minutes",
  * too-tight figure — so reading storage would have kept the bug for exactly
  * the people who hit it. The ceiling is derived from the target on load. */
 var stale = H.runScan(H.buildPage([]), "/groups/1234567890/",
-                      { maxPosts: 500, maxMinutes: 25 });
+                      { maxPosts: 300, maxMinutes: 15 });
 check("a stale ceiling saved by an older build is recomputed, not adopted",
-      stale.postLimits().maxMinutes > 25, true);
+      stale.postLimits().maxMinutes > 15, true);
 
 console.log();
 console.log("a scan that has stopped capturing says so, and says which fault");

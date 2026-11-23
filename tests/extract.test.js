@@ -441,15 +441,16 @@ check("only the first keeps the image",
 
 console.log("the target is a limit, not a suggestion");
 var many = [];
-for (var n = 0; n < 12; n++) {
+// 100 is the smallest target on offer; anything smaller snaps up to it.
+for (var n = 0; n < 112; n++) {
   many.push({ body: "Post number " + n + " with plenty of caption text on it.",
               likes: 50 + n });
 }
 var limited = buildPage(many);
-var limitApi = runScan(limited, "/groups/growth", { maxPosts: 5 });
+var limitApi = runScan(limited, "/groups/growth", { maxPosts: 100 });
 limitApi.scanPosts();
 limitApi.scanPosts();      // the passive sweep used to sail straight past
-check("capture stops at the target", limitApi.queue().length, 5);
+check("capture stops at the target", limitApi.queue().length, 100);
 
 console.log("comment and share tallies rendered as plain text");
 // Reactions came through because Facebook labels them; comments and shares
