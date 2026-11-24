@@ -1,0 +1,92 @@
+/* Seasonal accent, button glow, and card edge.
+
+   Loaded after outlier.css. Nothing here applies when data-theme is default
+   or missing, so a day outside the windows paints exactly as the base sheet.
+
+   The Black Friday card and its gold button are restated at the bottom of
+   each block. Their own rules in outlier.css are less specific than a
+   data-theme rule, and the promo has to keep its gold through every season.
+   Button fill is never set here: primary buttons stay emerald. */
+
+html[data-theme="halloween"] .lp-accent,
+html[data-theme="halloween"] .s-val.accent,
+html[data-theme="halloween"] .capture-log .accent {
+  color: #f59e42;
+}
+html[data-theme="halloween"] .lp-accent {
+  text-shadow: 0 0 14px rgba(245, 158, 66, 0.55);
+}
+
+html[data-theme="thanksgiving"] .lp-accent,
+html[data-theme="thanksgiving"] .s-val.accent,
+html[data-theme="thanksgiving"] .capture-log .accent {
+  color: #e3b65c;
+}
+
+html[data-theme="winter"] .lp-accent,
+html[data-theme="winter"] .s-val.accent,
+html[data-theme="winter"] .capture-log .accent {
+  color: #a7f3d0;
+}
+
+/* The glow only. The inset highlight and the emerald fill stay. */
+html[data-theme="halloween"] .btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 18px rgba(245, 158, 66, 0.42);
+}
+html[data-theme="halloween"] .btn-primary:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 24px rgba(245, 158, 66, 0.42);
+}
+
+html[data-theme="thanksgiving"] .btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 18px rgba(227, 182, 92, 0.40);
+}
+html[data-theme="thanksgiving"] .btn-primary:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 24px rgba(227, 182, 92, 0.40);
+}
+
+html[data-theme="winter"] .btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 18px rgba(186, 230, 253, 0.38);
+}
+html[data-theme="winter"] .btn-primary:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 24px rgba(186, 230, 253, 0.38);
+}
+
+html[data-theme="halloween"] .lp-promo .btn-primary,
+html[data-theme="thanksgiving"] .lp-promo .btn-primary,
+html[data-theme="winter"] .lp-promo .btn-primary {
+  box-shadow: 0 0 0 1px rgba(217, 180, 95, 0.4), 0 6px 22px rgba(217, 180, 95, 0.32);
+}
+html[data-theme="halloween"] .lp-promo .btn-primary:hover,
+html[data-theme="thanksgiving"] .lp-promo .btn-primary:hover,
+html[data-theme="winter"] .lp-promo .btn-primary:hover {
+  box-shadow: 0 0 0 1px rgba(217, 180, 95, 0.65), 0 8px 28px rgba(217, 180, 95, 0.48);
+}
+
+html[data-theme="halloween"] .glass,
+html[data-theme="halloween"] .post-card,
+html[data-theme="halloween"] .lp-proof {
+  border-color: rgba(245, 158, 66, 0.38);
+}
+html[data-theme="thanksgiving"] .glass,
+html[data-theme="thanksgiving"] .post-card,
+html[data-theme="thanksgiving"] .lp-proof {
+  border-color: rgba(227, 182, 92, 0.38);
+}
+html[data-theme="winter"] .glass,
+html[data-theme="winter"] .post-card,
+html[data-theme="winter"] .lp-proof {
+  border-color: rgba(186, 230, 253, 0.36);
+}
+
+html[data-theme="halloween"] .glass.lp-promo,
+html[data-theme="thanksgiving"] .glass.lp-promo,
+html[data-theme="winter"] .glass.lp-promo {
+  border-color: rgba(217, 180, 95, 0.62);
+}
+
+/* The mark's svg paints every shape in the faint grass color. The charm
+   names its own, and only exists in the markup during its season. */
+.brand-mark .season-pumpkin { fill: #f59e42; }
+.brand-mark .season-pumpkin .stem { fill: #b6cf62; }
+.brand-mark .season-leaf { fill: #e0a84f; }
+.brand-mark .season-flake { fill: none; stroke: #e0f2fe; }

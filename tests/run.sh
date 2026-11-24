@@ -88,6 +88,8 @@ echo "--- what broke out since you were last here ---"
 python tests/since.test.py
 echo "--- the palette, measured ---"
 python tests/contrast.test.py
+echo "--- the season follows the date ---"
+python tests/seasonal.test.py
 echo "--- what the dragonfly is allowed to say ---"
 python tests/tips.test.py
 echo "--- frontend survives a bare page ---"

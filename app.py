@@ -39,6 +39,7 @@ import remix
 import retention
 import replies
 import sage
+import seasonal
 import since
 from demo_data import refresh_sample_accounts, seed_demo_data
 
@@ -75,7 +76,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.6"
+APP_VERSION = "33.7"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2373,6 +2374,8 @@ def inject_globals():
         "store_url": EXTENSION_STORE_URL,
         "updated": LEGAL_UPDATED,
         "allow_signups": ALLOW_SIGNUPS,
+        # Accent, button glow, and the mark. ?theme= previews this request.
+        "theme": seasonal.current_theme(preview=request.args.get("theme")),
         # The Black Friday banner. offer_active() reads the env on each
         # request, so turning it off does not take a code change.
         "black_friday": billing.offer_active(),
