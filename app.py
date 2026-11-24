@@ -76,7 +76,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.9"
+APP_VERSION = "33.10"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #

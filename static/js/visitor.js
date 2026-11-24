@@ -1,3 +1,49 @@
+/* Heading math is shared with tests/visitor.test.js. The sprite is drawn
+   facing +x. scaleX(-1) turns it to face left. Pitch is only the small
+   tilt off that axis, so a right-side approach never spins through 180. */
+function normDeg(d) {
+  d = d % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
+}
+
+function poseForVelocity(vx, vy) {
+  var heading = Math.atan2(vy, vx) * 180 / Math.PI;
+  if (!isFinite(heading)) heading = 0;
+  var facing = vx < 0 ? -1 : 1;
+  var base = facing < 0 ? 180 : 0;
+  var pitch = normDeg(heading - base);
+  return { facing: facing, pitch: pitch, heading: heading };
+}
+
+function restCenterY(cardTop, spriteH) {
+  return cardTop - spriteH / 2;
+}
+
+function spriteBox(cx, cy, w, h) {
+  return {
+    left: cx - w / 2,
+    top: cy - h / 2,
+    right: cx + w / 2,
+    bottom: cy + h / 2
+  };
+}
+
+function boxesIntersect(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    normDeg: normDeg,
+    poseForVelocity: poseForVelocity,
+    restCenterY: restCenterY,
+    spriteBox: spriteBox,
+    boxesIntersect: boxesIntersect
+  };
+}
+
 /* A dragonfly that stops by, rarely.
  *
  * It is an inline SVG, not the meadow's canvas insect: that one lives in the
@@ -10,6 +56,7 @@
 (function () {
   "use strict";
 
+  if (typeof window === "undefined" || !window.matchMedia) return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
   var NS = "http://www.w3.org/2000/svg";
@@ -63,15 +110,24 @@
   var to = null;
   var ratio = 0.5;
   var target = null;
-  var REST = -8;
+  var restFacing = 1;
+  var coast = null;
   var hidden = false;
   var pausedAt = 0;
   var box = { w: 54, h: 32 };
 
-  function place(x, y, deg, opacity) {
+  function place(x, y, pitch, facing, opacity) {
     svg.style.transform = "translate3d(" + (x - box.w / 2).toFixed(1) + "px," +
-      (y - box.h / 2).toFixed(1) + "px,0) rotate(" + deg.toFixed(1) + "deg)";
+      (y - box.h / 2).toFixed(1) + "px,0) rotate(" + pitch.toFixed(1) +
+      "deg) scaleX(" + facing + ")";
     svg.style.opacity = String(opacity);
+  }
+
+  // The gap above the card is about the height of the sprite. A hover of
+  // a couple of pixels either covers the line above or drops into the card,
+  // and it was the hop at takeoff.
+  function bob() {
+    return 0;
   }
 
   var entrySide = 1;
@@ -113,9 +169,8 @@
 
   function pointOn(node) {
     var r = node.getBoundingClientRect();
-    // Center the body on the rim so its top sits on the outer edge and the
-    // paragraph above the card stays clear.
-    return { x: r.left + ratio * r.width, y: r.top + box.h / 2 };
+    // Feet on the rim: the whole sprite, wings included, sits above the edge.
+    return { x: r.left + ratio * r.width, y: restCenterY(r.top, box.h) };
   }
 
   function bezier(t) {
@@ -126,33 +181,27 @@
     };
   }
 
-  function heading(u) {
-    var a = bezier(Math.max(0, u - 0.04));
-    var b = bezier(Math.min(1, u + 0.04));
-    return Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  function bezierDeriv(u) {
+    var o = 1 - u;
+    return {
+      x: 2 * o * (control.x - from.x) + 2 * u * (to.x - control.x),
+      y: 2 * o * (control.y - from.y) + 2 * u * (to.y - control.y)
+    };
   }
 
-  function lerpAngle(a, b, u) {
-    var d = ((b - a + 540) % 360) - 180;
-    return a + d * u;
+  function alongOf(t) {
+    return phase === "in" ? easeOut(t) : easeIn(t);
   }
 
-  function smooth(u) {
-    return u * u * (3 - 2 * u);
+  function alongRate(t) {
+    if (phase === "in") return 3 * Math.pow(1 - t, 2) / duration;
+    return 3 * t * t / duration;
   }
 
-  // The last part of the approach eases from the flight angle onto the
-  // resting tilt, so the landing does not snap. The start of the departure
-  // eases back off that tilt.
-  function pose(t, along) {
-    var fly = heading(along);
-    if (phase === "in" && t > 0.68) {
-      return lerpAngle(fly, REST, smooth((t - 0.68) / 0.32));
-    }
-    if (phase === "out" && t < 0.32) {
-      return lerpAngle(REST, fly, smooth(t / 0.32));
-    }
-    return fly;
+  function velocityAt(t) {
+    var d = bezierDeriv(alongOf(t));
+    var rate = alongRate(t);
+    return { x: d.x * rate, y: d.y * rate };
   }
 
   function textRects() {
@@ -213,7 +262,10 @@
   }
 
   function planIn(land) {
-    entrySide = Math.random() < 0.5 ? -1 : 1;
+    var search = window.location.search || "";
+    if (/[?&]entry=right(?:&|$)/.test(search)) entrySide = 1;
+    else if (/[?&]entry=left(?:&|$)/.test(search)) entrySide = -1;
+    else entrySide = Math.random() < 0.5 ? -1 : 1;
     var texts = textRects();
     var floor = copyFloor(texts, land);
     var start = {
@@ -230,20 +282,25 @@
       start.y = Math.max(start.y, floor);
       if (control.y > land.y) control.y = land.y;
     }
+    // Level out onto the rim when that still misses the copy, so the rest
+    // pose (pitch 0, facing the way we arrived) matches the last velocity.
+    var flat = { x: control.x, y: land.y };
+    if (pathClear(start, flat, land, texts)) control = flat;
     return { start: start, control: control, end: land };
   }
 
   function planOut(land) {
-    var dir = -entrySide || (Math.random() < 0.5 ? -1 : 1);
+    // Keep going the way we arrived. entry from the left means leave right.
+    var dir = restFacing || (-entrySide || 1);
     var texts = textRects();
     var floor = copyFloor(texts, land);
     var end = {
       x: dir < 0 ? -100 : window.innerWidth + 100,
-      y: Math.max(floor, land.y - 40 - Math.random() * 16)
+      y: Math.max(floor, land.y - 28)
     };
     var control = {
-      x: dir < 0 ? Math.min(220, land.x - 60) : Math.max(window.innerWidth - 220, land.x + 60),
-      y: Math.max(floor, land.y - 28)
+      x: land.x + dir * 140,
+      y: land.y
     };
     var i;
     for (i = 0; i < 6 && !pathClear(land, control, end, texts); i++) {
@@ -286,6 +343,7 @@
     ratio = 0.32 + Math.random() * 0.36;
     var land = pointOn(perch);
     var path = planIn(land);
+    restFacing = entrySide < 0 ? 1 : -1;
     arm("in", 2800, path.start, path.end, perch, path.control);
   }
 
@@ -297,9 +355,28 @@
     return 1 - Math.pow(1 - t, 3);
   }
 
-  function flyOff(here) {
+  function depart(here) {
     var path = planOut(here);
     arm("out", 2100, path.start, path.end, null, path.control);
+  }
+
+  // Keep the current direction and speed. A new ease-in from zero would
+  // stop the insect in mid-air.
+  function coastOn(x, y, vx, vy) {
+    var sp = Math.hypot(vx, vy);
+    if (sp < 0.05) {
+      vx = (restFacing || 1) * 0.25;
+      vy = 0;
+      sp = 0.25;
+    }
+    phase = "coast";
+    coast = { x: x, y: y, vx: vx, vy: vy };
+    started = performance.now();
+    duration = 2100;
+    target = null;
+    svg.classList.add("is-flying");
+    svg.classList.remove("is-resting");
+    if (!raf) raf = requestAnimationFrame(tick);
   }
 
   function tick(now) {
@@ -307,46 +384,70 @@
     if (hidden) return;
 
     var t = Math.min(1, (now - started) / duration);
+    var wobble = bob(now);
+
+    if (phase === "coast") {
+      var dt = 16;
+      var damp = 1 - 0.35 * t;
+      coast.x += coast.vx * dt * damp;
+      coast.y += coast.vy * dt * damp;
+      var coastPose = poseForVelocity(coast.vx, coast.vy);
+      var coastFade = t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1;
+      place(coast.x, coast.y + wobble, coastPose.pitch, coastPose.facing,
+        0.9 * Math.max(0, coastFade));
+      if (t >= 1) {
+        phase = "idle";
+        svg.classList.remove("is-flying", "is-resting", "is-on");
+        svg.style.opacity = "0";
+        cancelAnimationFrame(raf);
+        raf = 0;
+        if (visits < MAX_VISITS) later(22000 + Math.random() * 8000);
+      }
+      return;
+    }
 
     if (phase === "resting") {
-      if (!edgeOk(target)) {
-        flyOff(to);
+      if (!target || !edgeOk(target)) {
+        coastOn(to.x, to.y, restFacing * 0.28, 0);
         return;
       }
-      to = pointOn(target);
-      var hover = Math.sin((now - started) / 420) * 2.4;
-      var tilt = REST + Math.sin((now - started) / 560) * 1.3;
-      place(to.x, to.y + hover, tilt, 0.88);
-      if (t >= 1) flyOff(to);
+      place(to.x, to.y + wobble, 0, restFacing, 0.88);
+      if (t >= 1) depart(to);
       return;
     }
 
     if (phase === "in" && target && !edgeOk(target)) {
       var lost = bezier(easeOut(t));
-      flyOff(lost);
+      var lostV = velocityAt(t);
+      coastOn(lost.x, lost.y, lostV.x, lostV.y);
       return;
     }
-    if (phase === "in" && target) to = pointOn(target);
 
-    var along = phase === "in" ? easeOut(t) : easeIn(t);
+    var along = alongOf(t);
     var pos = bezier(along);
-    var bob = Math.sin(now / 280) * 1.5;
+    var vel = velocityAt(t);
+    var flight = poseForVelocity(vel.x, vel.y);
     var fade = phase === "in" ? Math.min(1, t / 0.18) : (t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1);
-    place(pos.x, pos.y + bob, pose(t, along), 0.9 * Math.max(0, fade));
+    place(pos.x, pos.y + wobble, flight.pitch, flight.facing, 0.9 * Math.max(0, fade));
     if (t < 1) return;
 
     if (phase === "in" && target && edgeOk(target)) {
-      to = pointOn(target);
-      phase = "resting";
-      duration = 4600;
-      started = performance.now();
-      svg.classList.remove("is-flying");
-      svg.classList.add("is-resting");
-      place(to.x, to.y, REST, 0.88);
-      return;
+      var nowP = pointOn(target);
+      // One correction as the feet meet the rim, not a chase along the way.
+      // A layout shift of a few pixels still counts as the same perch.
+      if (Math.abs(nowP.x - to.x) < 48 && Math.abs(nowP.y - to.y) < 48) {
+        to = nowP;
+        phase = "resting";
+        duration = 4600;
+        started = performance.now();
+        svg.classList.remove("is-flying");
+        svg.classList.add("is-resting");
+        place(to.x, to.y, 0, restFacing, 0.88);
+        return;
+      }
     }
     if (phase === "in") {
-      flyOff(pos);
+      coastOn(pos.x, pos.y, vel.x, vel.y);
       return;
     }
 

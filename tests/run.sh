@@ -76,6 +76,8 @@ echo "--- a no is taken as a no ---"
 node tests/refusals.test.js
 echo "--- the dragonfly that visits the meadow ---"
 node tests/dragonfly.test.js
+echo "--- the visitor heads the way it flies ---"
+node tests/visitor.test.js
 echo "--- Sage's answers, laid out ---"
 node tests/sageformat.test.js
 echo "--- asked for a graphic, gets a graphic ---"
