@@ -81,6 +81,14 @@ function emptyPage() {
     innerWidth: 1280, innerHeight: 800
   };
   global.matchMedia = global.window.matchMedia;
+  // Node 20, which CI runs, has no navigator global. Node 22 does, so the
+  // same file passed locally and threw "navigator is not defined" in the
+  // suite. The page is empty; the browser object is not optional.
+  global.navigator = {
+    platform: "",
+    userAgentData: null,
+    clipboard: { writeText: function () { return Promise.resolve(); } }
+  };
   global.performance = { now: function () { return 0; } };
   global.requestAnimationFrame = function (fn) { return setTimeout(fn, 0); };
   global.IntersectionObserver = function () {
