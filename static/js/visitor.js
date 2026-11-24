@@ -34,13 +34,41 @@ function boxesIntersect(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+// A scroll or resize moves the perch. A couple of pixels is layout noise.
+function perchShifted(rest, live, tol) {
+  return Math.abs(live.x - rest.x) > tol || Math.abs(live.y - rest.y) > tol;
+}
+
+// The step at the end of an ease-in exit can be 40–70px. Keep the direction,
+// drop the length to a glide.
+function capStep(dx, dy, maxPx) {
+  var dist = Math.hypot(dx, dy);
+  if (!(dist > maxPx) || !(maxPx > 0)) return { x: dx, y: dy };
+  var scale = maxPx / dist;
+  return { x: dx * scale, y: dy * scale };
+}
+
+// Up and out. The first tangent rises more than it slides, so a perch that
+// moved does not drag the insect sideways across the copy.
+function liftGeometry(x, y, facing) {
+  var dir = facing < 0 ? -1 : 1;
+  return {
+    start: { x: x, y: y },
+    control: { x: x + dir * 40, y: y - 140 },
+    end: { x: x + dir * 180, y: -100 }
+  };
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     normDeg: normDeg,
     poseForVelocity: poseForVelocity,
     restCenterY: restCenterY,
     spriteBox: spriteBox,
-    boxesIntersect: boxesIntersect
+    boxesIntersect: boxesIntersect,
+    perchShifted: perchShifted,
+    capStep: capStep,
+    liftGeometry: liftGeometry
   };
 }
 
@@ -112,6 +140,11 @@ if (typeof module !== "undefined" && module.exports) {
   var target = null;
   var restFacing = 1;
   var coast = null;
+  var lifting = false;
+  var prevPos = null;
+  var lastNow = 0;
+  var PERCH_TOL = 3;
+  var EXIT_CAP = 16;
   var hidden = false;
   var pausedAt = 0;
   var box = { w: 54, h: 32 };
@@ -190,11 +223,12 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   function alongOf(t) {
-    return phase === "in" ? easeOut(t) : easeIn(t);
+    if (phase === "in" || lifting) return easeOut(t);
+    return easeIn(t);
   }
 
   function alongRate(t) {
-    if (phase === "in") return 3 * Math.pow(1 - t, 2) / duration;
+    if (phase === "in" || lifting) return 3 * Math.pow(1 - t, 2) / duration;
     return 3 * t * t / duration;
   }
 
@@ -318,6 +352,7 @@ if (typeof module !== "undefined" && module.exports) {
     to = end;
     control = controlPoint;
     target = perch || null;
+    prevPos = null;
     svg.classList.toggle("is-flying", next !== "resting");
     svg.classList.toggle("is-resting", next === "resting");
     svg.classList.add("is-on");
@@ -340,6 +375,7 @@ if (typeof module !== "undefined" && module.exports) {
       return;
     }
     visits += 1;
+    lifting = false;
     ratio = 0.32 + Math.random() * 0.36;
     var land = pointOn(perch);
     var path = planIn(land);
@@ -356,7 +392,16 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   function depart(here) {
+    lifting = false;
     var path = planOut(here);
+    arm("out", 2100, path.start, path.end, null, path.control);
+  }
+
+  // The card moved under a resting insect. Leave upward and outward now,
+  // instead of sitting on the old screen point and then sliding across copy.
+  function liftOff(here) {
+    var path = liftGeometry(here.x, here.y, restFacing || 1);
+    lifting = true;
     arm("out", 2100, path.start, path.end, null, path.control);
   }
 
@@ -369,6 +414,7 @@ if (typeof module !== "undefined" && module.exports) {
       vy = 0;
       sp = 0.25;
     }
+    lifting = false;
     phase = "coast";
     coast = { x: x, y: y, vx: vx, vy: vy };
     started = performance.now();
@@ -382,6 +428,13 @@ if (typeof module !== "undefined" && module.exports) {
   function tick(now) {
     raf = requestAnimationFrame(tick);
     if (hidden) return;
+
+    var frameMs = 16;
+    if (lastNow) {
+      frameMs = now - lastNow;
+      if (!(frameMs > 0) || frameMs > 48) frameMs = 16;
+    }
+    lastNow = now;
 
     var t = Math.min(1, (now - started) / duration);
     var wobble = bob(now);
@@ -407,8 +460,9 @@ if (typeof module !== "undefined" && module.exports) {
     }
 
     if (phase === "resting") {
-      if (!target || !edgeOk(target)) {
-        coastOn(to.x, to.y, restFacing * 0.28, 0);
+      var live = target ? pointOn(target) : null;
+      if (!live || !edgeOk(target) || perchShifted(to, live, PERCH_TOL)) {
+        liftOff(to);
         return;
       }
       place(to.x, to.y + wobble, 0, restFacing, 0.88);
@@ -426,8 +480,15 @@ if (typeof module !== "undefined" && module.exports) {
     var along = alongOf(t);
     var pos = bezier(along);
     var vel = velocityAt(t);
+    if (phase === "out" && prevPos) {
+      var capped = capStep(pos.x - prevPos.x, pos.y - prevPos.y, Math.min(EXIT_CAP, 0.9 * frameMs));
+      pos = { x: prevPos.x + capped.x, y: prevPos.y + capped.y };
+      if (Math.hypot(capped.x, capped.y) > 0.35) vel = { x: capped.x, y: capped.y };
+    }
+    if (phase === "out") prevPos = { x: pos.x, y: pos.y };
     var flight = poseForVelocity(vel.x, vel.y);
-    var fade = phase === "in" ? Math.min(1, t / 0.18) : (t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1);
+    var fade = phase === "in" ? Math.min(1, t / 0.18)
+      : (lifting ? Math.pow(1 - t, 3) : (t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1));
     place(pos.x, pos.y + wobble, flight.pitch, flight.facing, 0.9 * Math.max(0, fade));
     if (t < 1) return;
 
@@ -451,6 +512,7 @@ if (typeof module !== "undefined" && module.exports) {
       return;
     }
 
+    lifting = false;
     phase = "idle";
     svg.classList.remove("is-flying", "is-resting", "is-on");
     svg.style.opacity = "0";
