@@ -74,9 +74,25 @@
     svg.style.opacity = String(opacity);
   }
 
-  function inView(node) {
+  var entrySide = 1;
+
+  function headerFloor() {
+    var bar = document.querySelector(".lp-bar, .topbar");
+    if (!bar) return 24;
+    return bar.getBoundingClientRect().bottom + 24;
+  }
+
+  // The outer top edge, fully on screen: below the sticky header, and above
+  // the bottom of the viewport. A card slid under the bar is not a perch.
+  function edgeOk(node) {
+    if (!node || !node.getBoundingClientRect) return false;
     var r = node.getBoundingClientRect();
-    return r.width > 40 && r.bottom > 90 && r.top < window.innerHeight - 36;
+    var y = r.top + 1;
+    if (r.width < 40) return false;
+    if (y < headerFloor()) return false;
+    if (y > window.innerHeight - 40) return false;
+    if (r.right < 32 || r.left > window.innerWidth - 32) return false;
+    return true;
   }
 
   function choose() {
@@ -86,18 +102,20 @@
     var cards = document.querySelectorAll(".post-card, .lp-proof");
     var pool = [];
     var i;
-    if (promo && inView(promo)) pool.push(promo);
+    if (promo && edgeOk(promo)) pool.push(promo);
     for (i = 0; i < cards.length; i++) {
-      if (inView(cards[i])) pool.push(cards[i]);
+      if (cards[i] !== promo && edgeOk(cards[i])) pool.push(cards[i]);
     }
     if (!pool.length) return null;
-    if (promo && inView(promo) && Math.random() < 0.7) return promo;
+    if (promo && edgeOk(promo) && Math.random() < 0.7) return promo;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
   function pointOn(node) {
     var r = node.getBoundingClientRect();
-    return { x: r.left + ratio * r.width, y: r.top + 1 };
+    // Center the body on the rim so its top sits on the outer edge and the
+    // paragraph above the card stays clear.
+    return { x: r.left + ratio * r.width, y: r.top + box.h / 2 };
   }
 
   function bezier(t) {
@@ -108,9 +126,9 @@
     };
   }
 
-  function heading(t) {
-    var a = bezier(Math.max(0, t - 0.05));
-    var b = bezier(Math.min(1, t + 0.05));
+  function heading(u) {
+    var a = bezier(Math.max(0, u - 0.04));
+    var b = bezier(Math.min(1, u + 0.04));
     return Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
   }
 
@@ -126,8 +144,8 @@
   // The last part of the approach eases from the flight angle onto the
   // resting tilt, so the landing does not snap. The start of the departure
   // eases back off that tilt.
-  function pose(t) {
-    var fly = heading(t);
+  function pose(t, along) {
+    var fly = heading(along);
     if (phase === "in" && t > 0.68) {
       return lerpAngle(fly, REST, smooth((t - 0.68) / 0.32));
     }
@@ -150,52 +168,98 @@
     return rects;
   }
 
-  function hitsText(x, y, rects) {
+  function quad(start, control, end, u) {
+    var o = 1 - u;
+    return {
+      x: o * o * start.x + 2 * o * u * control.x + u * u * end.x,
+      y: o * o * start.y + 2 * o * u * control.y + u * u * end.y
+    };
+  }
+
+  function bodyHits(x, y, rects) {
+    var halfW = 28;
+    var halfH = 16;
     var i;
     for (i = 0; i < rects.length; i++) {
       var r = rects[i];
-      if (x > r.left - 6 && x < r.right + 6 && y > r.top - 6 && y < r.bottom + 6) {
-        return true;
-      }
+      if (x + halfW > r.left && x - halfW < r.right &&
+          y + halfH > r.top && y - halfH < r.bottom) return true;
     }
     return false;
   }
 
-  // Level with the card's outer top edge. If that line would cross copy,
-  // drop onto the rim rather than arc up into the paragraph.
-  function route(start, end) {
-    var texts = textRects();
-    var drop = 0;
-    var step;
-    for (step = 0; step < 5; step++) {
-      var clear = true;
-      var s;
-      for (s = 1; s <= 10; s++) {
-        var u = s / 10;
-        var x = start.x + (end.x - start.x) * u;
-        var y = start.y + (end.y - start.y) * u + drop;
-        // The body sits on the path. Its upper half must stay off the copy too.
-        if (hitsText(x, y, texts) || hitsText(x, y - 14, texts)) {
-          clear = false;
-          break;
-        }
-      }
-      if (clear) break;
-      drop += 5;
+  function pathClear(start, control, end, texts) {
+    var s;
+    for (s = 1; s <= 14; s++) {
+      var p = quad(start, control, end, s / 14);
+      if (bodyHits(p.x, p.y, texts)) return false;
     }
-    return {
-      x: (start.x + end.x) / 2,
-      y: (start.y + end.y) / 2 + drop
-    };
+    return true;
   }
 
-  function arm(next, ms, start, end, perch) {
+  // Come in from a side, bend through the margin beside the headline, and
+  // descend onto the rim. The bend is pushed out and down until it misses
+  // the copy. Leaving takes the other side.
+  // Lowest y the body center may use without the sprite covering copy
+  // that sits above the perch.
+  function copyFloor(texts, land) {
+    var bottom = headerFloor();
+    var i;
+    for (i = 0; i < texts.length; i++) {
+      var r = texts[i];
+      if (r.bottom < land.y + 4 && r.bottom > bottom) bottom = r.bottom;
+    }
+    return bottom + 18;
+  }
+
+  function planIn(land) {
+    entrySide = Math.random() < 0.5 ? -1 : 1;
+    var texts = textRects();
+    var floor = copyFloor(texts, land);
+    var start = {
+      x: entrySide < 0 ? -100 : window.innerWidth + 100,
+      y: Math.max(floor, land.y - 56 - Math.random() * 20)
+    };
+    var control = {
+      x: entrySide < 0 ? Math.min(200, land.x - 70) : Math.max(window.innerWidth - 200, land.x + 70),
+      y: Math.max(floor, land.y - 36)
+    };
+    var i;
+    for (i = 0; i < 6 && !pathClear(start, control, land, texts); i++) {
+      control.y = Math.max(control.y, floor) + 8;
+      start.y = Math.max(start.y, floor);
+      if (control.y > land.y) control.y = land.y;
+    }
+    return { start: start, control: control, end: land };
+  }
+
+  function planOut(land) {
+    var dir = -entrySide || (Math.random() < 0.5 ? -1 : 1);
+    var texts = textRects();
+    var floor = copyFloor(texts, land);
+    var end = {
+      x: dir < 0 ? -100 : window.innerWidth + 100,
+      y: Math.max(floor, land.y - 40 - Math.random() * 16)
+    };
+    var control = {
+      x: dir < 0 ? Math.min(220, land.x - 60) : Math.max(window.innerWidth - 220, land.x + 60),
+      y: Math.max(floor, land.y - 28)
+    };
+    var i;
+    for (i = 0; i < 6 && !pathClear(land, control, end, texts); i++) {
+      control.y = Math.min(land.y, control.y + 8);
+      end.y = Math.min(land.y, Math.max(end.y, floor));
+    }
+    return { start: { x: land.x, y: land.y }, control: control, end: end };
+  }
+
+  function arm(next, ms, start, end, perch, controlPoint) {
     phase = next;
     duration = ms;
     started = performance.now();
     from = start;
     to = end;
-    control = route(start, end);
+    control = controlPoint;
     target = perch || null;
     svg.classList.toggle("is-flying", next !== "resting");
     svg.classList.toggle("is-resting", next === "resting");
@@ -221,37 +285,57 @@
     visits += 1;
     ratio = 0.32 + Math.random() * 0.36;
     var land = pointOn(perch);
-    // From the left, level with the outer top edge, so the head (facing +x)
-    // leads and the path stays off the headline.
-    arm("in", 2800, { x: -80, y: land.y }, land, perch);
+    var path = planIn(land);
+    arm("in", 2800, path.start, path.end, perch, path.control);
+  }
+
+  function easeIn(t) {
+    return t * t * t;
+  }
+
+  function easeOut(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function flyOff(here) {
+    var path = planOut(here);
+    arm("out", 2100, path.start, path.end, null, path.control);
   }
 
   function tick(now) {
     raf = requestAnimationFrame(tick);
     if (hidden) return;
 
-    if (phase === "resting" || (phase === "in" && target)) {
-      to = pointOn(target);
-    }
-
     var t = Math.min(1, (now - started) / duration);
+
     if (phase === "resting") {
-      place(to.x, to.y, REST, 0.88);
-      if (t >= 1) {
-        arm("out", 2100, { x: to.x, y: to.y }, {
-          x: window.innerWidth + 80,
-          y: to.y
-        }, null);
+      if (!edgeOk(target)) {
+        flyOff(to);
+        return;
       }
+      to = pointOn(target);
+      var hover = Math.sin((now - started) / 420) * 2.4;
+      var tilt = REST + Math.sin((now - started) / 560) * 1.3;
+      place(to.x, to.y + hover, tilt, 0.88);
+      if (t >= 1) flyOff(to);
       return;
     }
 
-    var pos = bezier(t);
+    if (phase === "in" && target && !edgeOk(target)) {
+      var lost = bezier(easeOut(t));
+      flyOff(lost);
+      return;
+    }
+    if (phase === "in" && target) to = pointOn(target);
+
+    var along = phase === "in" ? easeOut(t) : easeIn(t);
+    var pos = bezier(along);
+    var bob = Math.sin(now / 280) * 1.5;
     var fade = phase === "in" ? Math.min(1, t / 0.18) : (t > 0.65 ? 1 - (t - 0.65) / 0.35 : 1);
-    place(pos.x, pos.y, pose(t), 0.9 * Math.max(0, fade));
+    place(pos.x, pos.y + bob, pose(t, along), 0.9 * Math.max(0, fade));
     if (t < 1) return;
 
-    if (phase === "in" && target) {
+    if (phase === "in" && target && edgeOk(target)) {
       to = pointOn(target);
       phase = "resting";
       duration = 4600;
@@ -259,6 +343,10 @@
       svg.classList.remove("is-flying");
       svg.classList.add("is-resting");
       place(to.x, to.y, REST, 0.88);
+      return;
+    }
+    if (phase === "in") {
+      flyOff(pos);
       return;
     }
 
