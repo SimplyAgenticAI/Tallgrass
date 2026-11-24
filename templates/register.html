@@ -31,11 +31,16 @@
     </div>
 
     <h1>Create your account</h1>
+    {% if signup_offer %}
+    <p class="auth-sub">Black Friday: Pro is free for 30 days. Then it's {{ pro_month_price }} a month.</p>
+    <p class="auth-offer">Create your account. The next page starts checkout. Stripe saves a card and charges it when the 30 days end.</p>
+    {% else %}
     <p class="auth-sub">Free to start: unlimited groups, {{ "{:,}".format(free_limits.posts) }} posts, no card needed.</p>
     {% if shared_ai %}
     <p class="auth-byok">AI drafting is included. Remix and Sage run on the included allowance.</p>
     {% else %}
     <p class="auth-byok">You bring your own AI key. Remix and Sage run on your own Claude or OpenAI key.</p>
+    {% endif %}
     {% endif %}
 
     {% if error %}
@@ -44,6 +49,9 @@
 
     <form method="post" class="auth-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if signup_offer %}
+      <input type="hidden" name="offer" value="{{ signup_offer }}">
+      {% endif %}
       {# Both fields keep what was typed when the form comes back with an
          error. "That username is taken" is a likely first outcome, and
          making somebody retype their address to fix a different field is a

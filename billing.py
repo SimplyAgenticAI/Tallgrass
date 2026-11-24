@@ -8,6 +8,7 @@ URL is attacker-controllable and a webhook is not.
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 
 import db
 
@@ -39,6 +40,125 @@ PLANS = {
 }
 
 FREE_LIMITS = {"sources": None, "posts": 1000}   # None = unlimited
+
+# Black Friday 2026: one free month of Pro for accounts that sign up through
+# the promo. The prices above are not touched. The free month is a trial on
+# the Checkout session, and only on that path, so an existing subscriber and
+# a normal signup are billed exactly as they are today.
+#
+# The banner hides itself. Leave both variables unset and it stays up through
+# the end of Cyber Monday 2026 in US Pacific (midnight PST, 1 December 08:00
+# UTC), then disappears. Set BLACK_FRIDAY_OFFER=0 to take it down immediately,
+# or BLACK_FRIDAY_OFFER=1 to keep it up past the date. BLACK_FRIDAY_ENDS
+# replaces the date: a YYYY-MM-DD runs through the end of that UTC day, and a
+# full timestamp is the instant it turns off.
+OFFER_CODE = "blackfriday"
+OFFER_TRIAL_DAYS = 30
+_DEFAULT_OFFER_END = datetime(2026, 12, 1, 8, 0, tzinfo=timezone.utc)
+_OFFER_ON = ("1", "on", "true", "yes")
+_OFFER_OFF = ("0", "off", "false", "no")
+
+
+def offer_ends_at():
+    """When the promo stops accepting new signups. Exclusive."""
+    raw = os.environ.get("BLACK_FRIDAY_ENDS", "").strip()
+    if raw:
+        parsed = _parse_offer_end(raw)
+        if parsed:
+            return parsed
+    return _DEFAULT_OFFER_END
+
+
+def _parse_offer_end(raw):
+    try:
+        if len(raw) == 10:
+            day = datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return day + timedelta(days=1)
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def offer_active(now=None):
+    """Whether the landing page should offer the free month.
+
+    Read on every request, so a dashboard change to the env var takes effect
+    on the next page without a code change. Accounts that already signed up
+    through the offer keep their trial either way: this only gates the banner
+    and new stamps.
+    """
+    flag = os.environ.get("BLACK_FRIDAY_OFFER", "").strip().lower()
+    if flag in _OFFER_OFF:
+        return False
+    if flag in _OFFER_ON:
+        return True
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment < offer_ends_at()
+
+
+def normalize_offer(value):
+    """The offer code to stamp, or None when the promo is off or unknown."""
+    code = (value or "").strip().lower()
+    if code == OFFER_CODE and offer_active():
+        return OFFER_CODE
+    return None
+
+
+def claim_offer(user_id, code):
+    """Remember that this new account came in through the promo.
+
+    Returns True when the stamp is written. A second call does not overwrite
+    it, and a code that is not the live offer writes nothing.
+    """
+    code = normalize_offer(code)
+    if not code:
+        return False
+    with db.get_db() as conn:
+        cur = conn.execute(
+            "UPDATE users SET signup_offer = ? "
+            "WHERE id = ? AND signup_offer IS NULL",
+            (code, user_id),
+        )
+        return cur.rowcount == 1
+
+
+def trial_days_for(user):
+    """Free days to put on this account's first Checkout, or 0.
+
+    The promise was made at signup, so it still applies after the banner has
+    hidden itself. It does not apply twice: once a subscription exists, the
+    next checkout bills the normal price from day one.
+    """
+    if not user or (user.get("signup_offer") or "") != OFFER_CODE:
+        return 0
+    if user.get("stripe_subscription_id"):
+        return 0
+    return OFFER_TRIAL_DAYS
+
+
+def checkout_is_trial(session):
+    """True when this Checkout was created with the free month attached."""
+    try:
+        return int((session.get("metadata") or {}).get("trial_days") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def subscription_period_end(subscription):
+    """Unix timestamp the account page should show, or None.
+
+    During a trial, current_period_end is the trial end on the API versions
+    this app already reads. trial_end covers a payload that only carries that.
+    """
+    period_end = subscription.get("current_period_end")
+    if not period_end and subscription.get("status") == "trialing":
+        period_end = subscription.get("trial_end")
+    return period_end or None
 
 # One difference between the tiers, and it is volume.
 #
@@ -135,9 +255,28 @@ def create_checkout_session(user, interval, success_url, cancel_url):
             f"STRIPE_PRICE_{'MONTH' if interval == 'month' else 'YEAR'}."
         )
 
+    # Same price ids as every other checkout. The free month is a trial on
+    # this session only, so the product catalog and every existing
+    # subscription stay exactly as they are.
+    metadata = {"user_id": str(user["id"]), "interval": interval}
+    subscription_data = None
+    trial_days = trial_days_for(user)
+    if trial_days:
+        metadata["trial_days"] = str(trial_days)
+        subscription_data = {
+            "trial_period_days": trial_days,
+            "trial_settings": {
+                "end_behavior": {"missing_payment_method": "cancel"},
+            },
+            "metadata": {
+                "user_id": str(user["id"]),
+                "offer": OFFER_CODE,
+            },
+        }
+
     try:
         stripe = _client()
-        session = stripe.checkout.Session.create(
+        params = dict(
             mode="subscription",
             line_items=[{"price": price, "quantity": 1}],
             success_url=success_url,
@@ -147,9 +286,12 @@ def create_checkout_session(user, interval, success_url, cancel_url):
             # Ties the completed checkout back to an account without trusting
             # anything the browser sends back on the return trip.
             client_reference_id=str(user["id"]),
-            metadata={"user_id": str(user["id"]), "interval": interval},
+            metadata=metadata,
             allow_promotion_codes=True,
         )
+        if subscription_data:
+            params["subscription_data"] = subscription_data
+        session = stripe.checkout.Session.create(**params)
         return session.url, None
     except Exception as exc:                      # noqa: BLE001 - surfaced to the user
         return None, f"Stripe rejected the request: {exc}"

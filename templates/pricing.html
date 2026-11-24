@@ -99,9 +99,17 @@
     {% elif is_pro %}
       <div class="price-current">Your current plan</div>
     {% elif user %}
+      {% if offer_trial_days %}
+      <p class="price-offer">
+        Black Friday: {{ offer_trial_days }} days free, then the price above.
+        The card is charged when the {{ offer_trial_days }} days end.
+      </p>
+      {% endif %}
       <button class="btn btn-primary price-cta" id="checkout-btn"
-              data-interval="month" {{ 'disabled' if not billing_ready }}>
-        Upgrade to Pro
+              data-interval="month"
+              {% if offer_trial_days %}data-trial-days="{{ offer_trial_days }}"{% endif %}
+              {{ 'disabled' if not billing_ready }}>
+        {{ 'Start my free month' if offer_trial_days else 'Upgrade to Pro' }}
       </button>
       <div class="msg-line" id="checkout-msg"></div>
     {% else %}

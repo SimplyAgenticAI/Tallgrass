@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS users (
     subscription_status   TEXT,                       -- active | past_due | canceled
     current_period_end    TEXT,
     is_admin              INTEGER DEFAULT 0,
-    created_at            TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at            TEXT DEFAULT CURRENT_TIMESTAMP,
+    -- Set when the account was created through a promo (see billing.py).
+    -- Checkout reads it to attach a trial. Null for everyone else.
+    signup_offer          TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_keyprefix ON users(api_key_prefix);
@@ -487,6 +490,12 @@ def _migrate(conn):
     if "email_optout" not in _columns(conn, "users"):
         conn.execute(
             "ALTER TABLE users ADD COLUMN email_optout INTEGER DEFAULT 0")
+
+    # Which promo this account signed up through, if any. Checkout attaches a
+    # trial from it. Added for the Black Friday 2026 month; null on every
+    # account that existed before, which is what keeps their price unchanged.
+    if "signup_offer" not in _columns(conn, "users"):
+        conn.execute("ALTER TABLE users ADD COLUMN signup_offer TEXT")
     # Case-insensitive uniqueness, in the index rather than in a check that
     # has to be remembered at every call site.
     conn.execute(

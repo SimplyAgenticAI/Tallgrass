@@ -54,6 +54,20 @@
       Then it shows you what the winners have in common, and helps you write the
       next one.
     </p>
+    {# One block, one flag. offer_active() is false after the end date, and
+       BLACK_FRIDAY_OFFER=0 turns it off sooner. Delete this block with the
+       helpers in billing.py when the season is done for good. #}
+    {% if black_friday and allow_signups %}
+    <aside class="glass lp-promo" aria-label="Black Friday offer">
+      <p class="lp-promo-kicker">Black Friday</p>
+      <p class="lp-promo-title">First month's on the house.</p>
+      <p class="lp-promo-copy">
+        Pro is free for 30 days. Then it's {{ pro_month_price }} a month.
+        Cancel before then and you pay nothing.
+      </p>
+      <a class="btn btn-primary lp-cta" href="{{ url_for('register', offer=offer_code) }}">Start my free month</a>
+    </aside>
+    {% endif %}
     <div class="lp-cta-row">
       <a class="btn btn-primary lp-cta" href="{{ url_for('go_store') }}" target="_blank" rel="noopener">Add to Chrome</a>
       {% if allow_signups %}
