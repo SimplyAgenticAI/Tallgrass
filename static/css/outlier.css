@@ -2768,6 +2768,20 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
   font-size: 14.5px; line-height: 1.55; color: var(--text-muted);
 }
 .lp-promo .lp-cta { margin-top: 16px; }
+/* Gold, so this one does not sit in the same green as the buttons under it.
+   #050b07 on #d9b45f is the page background on the brand gold. */
+.lp-promo .btn-primary {
+  background: #d9b45f;
+  color: #050b07;
+  box-shadow: 0 0 0 1px rgba(217, 180, 95, 0.4), 0 6px 22px rgba(217, 180, 95, 0.32);
+}
+.lp-promo .btn-primary:hover {
+  background: #e4c56e;
+  color: #050b07;
+  box-shadow: 0 0 0 1px rgba(217, 180, 95, 0.65), 0 8px 28px rgba(217, 180, 95, 0.48);
+}
+/* The row's own top margin is 30px. Following the card, the gap is this. */
+.lp-promo + .lp-cta-row { margin-top: 32px; }
 
 .auth-offer {
   margin: -8px 0 18px; font-size: 13.5px; line-height: 1.5; color: var(--text-muted);
@@ -2937,8 +2951,10 @@ a.notif-item:hover { background: rgba(110, 231, 183, 0.06); }
      two rows — sign-in and the CTA are what this bar is for. */
   .lp-bar .brand-parent, .lp-bar-links a[href$="/pricing"] { display: none; }
   .lp-hero { padding: 44px 0 36px; }
-  .lp-cta, .lp-cta-ghost { width: 100%; }
+  /* Full-width, but the label (and any icon) stays in the middle. */
+  .lp-cta, .lp-cta-ghost { width: 100%; justify-content: center; text-align: center; }
   .lp-promo { margin-top: 22px; padding: 16px 14px 18px; }
+  .lp-promo + .lp-cta-row { margin-top: 24px; }
   .lp-promo .lp-cta { width: 100%; justify-content: center; }
   .lp-section { padding: 40px 0; }
 
