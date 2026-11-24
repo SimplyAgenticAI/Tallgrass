@@ -32,10 +32,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400..800&display=swap">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/outlier.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/seasonal.css') }}">
+<script src="{{ url_for('static', filename='js/arrive.js') }}"></script>
 </head>
 <body class="landing-body">
 
-<div class="ambient"></div>
+{% include "_ambient.html" %}
 <canvas id="field" class="field" aria-hidden="true"></canvas>
 
 {% include "_public_header.html" %}
@@ -115,14 +116,14 @@
          "author": "Priya Raman", "group": "Creator Coaching Circle", "type": "link", "age": "1w",
          "caption": "New session outline for the August cohort is up",
          "typical": "160", "r": "38", "c": "7", "s": "1", "bar": 14}] %}
-    <article class="lpc lpc-{{ row.tier }}">
+    <article class="lpc lpc-{{ row.tier }} arrive">
       <div class="lpc-badge">
         <svg viewBox="0 0 52 52" aria-hidden="true">
           <circle class="lpc-track" cx="26" cy="26" r="22"/>
           <circle class="lpc-fill" cx="26" cy="26" r="22"
-                  style="stroke-dasharray: {{ (138.2 * row.arc / 100) | round(1) }} 138.2"/>
+                  style="--arc: {{ (138.2 * (100 - row.arc) / 100) | round(1) }}"/>
         </svg>
-        <span class="lpc-num">{{ row.mult }}<span class="lpc-x">&times;</span></span>
+        <span class="lpc-num"><span data-countup="{{ row.mult }}">{{ row.mult }}</span><span class="lpc-x">&times;</span></span>
         <span class="lpc-tier">{{ row.label }}</span>
       </div>
 
@@ -229,7 +230,7 @@
           {"name": "Profiles and creators",
            "body": "Track people who post constantly and find their few real winners without scrolling months of timeline.",
            "icon": "profile"}] %}
-      <article class="glass lp-card">
+      <article class="glass lp-card arrive">
         <span class="lp-card-icon" aria-hidden="true">
           {% if card.icon == "group" %}
           <svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><circle cx="16.5" cy="10.5" r="2.4"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M15 14.4c2.6.2 4.5 2 4.5 4.6"/></svg>
@@ -264,7 +265,7 @@
     <span class="lp-tag">Once you've found it</span>
     <h2 class="lp-h2">Turn a winner into your next post</h2>
     <div class="lp-cards lp-cards-two">
-      <article class="glass lp-card">
+      <article class="glass lp-card arrive">
         <h3>Remix</h3>
         <p>
           Take a post that beat its group and get variants that reuse the
@@ -275,7 +276,7 @@
           differently.
         </p>
       </article>
-      <article class="glass lp-card">
+      <article class="glass lp-card arrive">
         <h3>Sage</h3>
         <p>
           Ask questions of everything you've captured. Which group is worth your
@@ -316,7 +317,7 @@
   </section>
 
   {# ---------------------------------------------------------- closing CTA #}
-  <section class="lp-final glass">
+  <section class="lp-final glass arrive">
     <h2>Ready to find your first breakout?</h2>
     <p>Free to set up. Under a minute to your first captured post.</p>
     <div class="lp-cta-row">
@@ -333,5 +334,6 @@
 </main>
 
 <script src="{{ url_for('static', filename='js/field.js') }}"></script>
+<script src="{{ url_for('static', filename='js/visitor.js') }}"></script>
 </body>
 </html>
