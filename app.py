@@ -75,7 +75,7 @@ def _manifest_version(default="0.0.0"):
 #   APP_VERSION moves on every commit.
 #   The manifest version moves ONLY when something in extension/ moves — and
 #   when it does, that is the signal a store upload is owed.
-APP_VERSION = "33.3"
+APP_VERSION = "33.4"
 
 # What is actually PUBLISHED on the Chrome Web Store right now.
 #
@@ -2373,6 +2373,11 @@ def inject_globals():
         "store_url": EXTENSION_STORE_URL,
         "updated": LEGAL_UPDATED,
         "allow_signups": ALLOW_SIGNUPS,
+        # The Black Friday banner. offer_active() reads the env on each
+        # request, so turning it off does not take a code change.
+        "black_friday": billing.offer_active(),
+        "offer_code": billing.OFFER_CODE,
+        "pro_month_price": billing.PLANS["month"]["display"],
         # Same condition the pricing page uses. Homepage and register read it
         # from here so they cannot claim the opposite of that page.
         "shared_ai": _shared_ai(),
@@ -2526,6 +2531,10 @@ def register():
             allow_signups=False, version=APP_VERSION,
         ), 403
 
+    # Present only while the promo is live. A bookmarked offer link after
+    # the end date falls through to an ordinary signup.
+    signup_offer = billing.normalize_offer(request.values.get("offer"))
+
     error = None
     if request.method == "POST":
         password = request.form.get("password") or ""
@@ -2539,6 +2548,7 @@ def register():
                 username=request.form.get("username"))
             if user:
                 auth.record_signup(client_ip())
+                offered = billing.claim_offer(user["id"], signup_offer)
                 # A pre-existing single-user install would otherwise find its
                 # own captures invisible once everything is owner-scoped.
                 claimed = db.claim_unowned_data(user["id"])
@@ -2581,12 +2591,17 @@ def register():
                 # has to be switched on deliberately.
                 outreach.welcome_async(user, request.url_root)
 
+                # The offer's next step is the trial checkout. Everyone else
+                # lands in the product, the way signup always has.
+                if offered:
+                    return redirect(url_for("pricing"))
                 return redirect(url_for("feed"))
 
     return render_template(
         "register.html", error=error, min_length=auth.MIN_PASSWORD_LENGTH,
         form_email=(request.form.get("email") or "").strip(),
         form_username=(request.form.get("username") or "").strip(),
+        signup_offer=signup_offer,
         version=APP_VERSION,
     ), (400 if error else 200)
 
@@ -3184,6 +3199,7 @@ def pricing():
         # the user's own — the page says whichever is actually true here.
         shared_ai=_shared_ai(),
         ai_limits=billing.AI_LIMITS,
+        offer_trial_days=billing.trial_days_for(user),
         version=APP_VERSION,
         active="pricing",
     )
@@ -3339,22 +3355,28 @@ def stripe_webhook():
         user_id = (obj.get("client_reference_id")
                    or (obj.get("metadata") or {}).get("user_id"))
         if user_id:
+            # A trial checkout has not been paid yet. trialing already
+            # counts as Pro (see billing.is_pro). The charge, and the
+            # "paid" step, happen when the trial ends and the subscription
+            # moves to active.
+            trialing = billing.checkout_is_trial(obj)
             billing.apply_subscription(
                 int(user_id),
                 plan="pro",
                 billing_interval=(obj.get("metadata") or {}).get("interval"),
                 stripe_customer_id=obj.get("customer"),
                 stripe_subscription_id=obj.get("subscription"),
-                subscription_status="active",
+                subscription_status="trialing" if trialing else "active",
             )
-            funnel.record(int(user_id), "paid")
+            if not trialing:
+                funnel.record(int(user_id), "paid")
 
     elif kind in ("customer.subscription.updated", "customer.subscription.deleted"):
         user_id = billing.user_id_for_customer(obj.get("customer"))
         if user_id:
             status = obj.get("status")
             ended = kind.endswith("deleted") or status in ("canceled", "unpaid")
-            period_end = obj.get("current_period_end")
+            period_end = billing.subscription_period_end(obj)
             billing.apply_subscription(
                 user_id,
                 plan="free" if ended else "pro",
@@ -3364,6 +3386,11 @@ def stripe_webhook():
                     if period_end else None
                 ),
             )
+            # Trial conversions land here, not on checkout.session.completed.
+            # record() keeps the first timestamp, so a normal checkout that
+            # already recorded paid is unchanged.
+            if not ended and status == "active":
+                funnel.record(user_id, "paid")
 
     return jsonify({"ok": True})
 

@@ -53,6 +53,20 @@
       useful. Pro removes the post limit.
     </p>
     <a class="btn btn-primary" href="{{ url_for('pricing') }}">See plans</a>
+    {% elif account.subscription_status == 'trialing' %}
+    <p class="fine">
+      {% if account.current_period_end %}
+        Your free month ends {{ account.current_period_end[:10] }}.
+      {% else %}
+        Your first month is free.
+      {% endif %}
+      Then the normal price starts. Cancel before then and you pay nothing.
+      Billing is handled by Stripe.
+    </p>
+    <form method="post" action="{{ url_for('billing_portal') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-ghost" type="submit">Manage billing</button>
+    </form>
     {% else %}
     <p class="fine">
       {% if account.current_period_end %}
